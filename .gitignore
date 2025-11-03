@@ -1,0 +1,43 @@
+# 二进制文件
+build/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+performance-assessment
+
+# 测试相关
+*.test
+*.out
+coverage.out
+coverage.html
+
+# Go 工作空间文件
+go.work
+go.work.sum
+
+# 依赖目录
+vendor/
+
+# IDE 配置
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.kiro/
+
+# 操作系统文件
+.DS_Store
+Thumbs.db
+
+# 日志文件
+*.log
+
+# 配置文件（可能包含敏感信息）
+config.yaml
+config.json
+
+# GeoIP 数据库文件
+*.mmdb

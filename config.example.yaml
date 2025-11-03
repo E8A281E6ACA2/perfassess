@@ -1,0 +1,15 @@
+# 性能评估系统配置文件示例
+# 复制此文件为 config.yaml 并根据需要修改配置
+
+# 日志级别：debug, info, warn, error
+log_level: info
+
+# 输出格式：json, text
+output_format: json
+
+# 数据采集间隔（秒）
+collection_interval: 60
+
+# GeoIP 数据库文件路径（可选）
+# 如果不需要地理位置识别功能，可以留空
+geoip_db_path: ""
