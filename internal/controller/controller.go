@@ -140,6 +140,7 @@ func (ac *AssessmentController) RunAssessment(session *models.AssessmentSession)
 	// 可选步骤: 流媒体检测
 	var streamingResults map[string]*models.StreamingResult
 	var aiResults map[string]*models.AIServiceResult
+	var stressReport *models.StressTestReport
 	if ac.config.EnableStreaming {
 		ac.logger.Info("可选步骤: 执行流媒体检测")
 		streamingResults, err = ac.runStreamingDetection()
@@ -160,6 +161,16 @@ func (ac *AssessmentController) RunAssessment(session *models.AssessmentSession)
 		}
 	}
 
+	if ac.config.EnableStressTest {
+		ac.logger.Info("可选步骤: 执行长时间压力测试")
+		stressReport, err = ac.runStressTest()
+		if err != nil {
+			ac.logger.Warn("压力测试失败", zap.Error(err))
+		} else {
+			ac.logger.Info("压力测试完成")
+		}
+	}
+
 	// 步骤3: 生成报告
 	ac.logger.Info("步骤 3/3: 生成评估报告")
 	report, err := ac.generateReport(session.SessionID, systemInfo, testResults)
@@ -177,6 +188,9 @@ func (ac *AssessmentController) RunAssessment(session *models.AssessmentSession)
 	}
 	if aiResults != nil {
 		report.Summary["ai_results"] = aiResults
+	}
+	if stressReport != nil {
+		report.Summary["stress_report"] = stressReport
 	}
 
 	ac.logger.Info("评估报告生成完成")
@@ -340,6 +354,15 @@ func (ac *AssessmentController) runAIServiceDetection() (map[string]*models.AISe
 	}
 
 	return results, nil
+}
+
+// runStressTest 执行长时间压力测试
+func (ac *AssessmentController) runStressTest() (*models.StressTestReport, error) {
+	stressTester := tests.NewStressTest(ac.logger)
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Minute)
+	defer cancel()
+
+	return stressTester.Run(ctx)
 }
 
 // generateReport 生成评估报告

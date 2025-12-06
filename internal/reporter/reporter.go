@@ -371,6 +371,31 @@ func (rg *ReportGenerator) formatReport(report *models.Report, overallScore *mod
 			}
 			sb.WriteString("\n")
 		}
+
+		// 压力测试结果
+		if stressReport, ok := report.Summary["stress_report"].(*models.StressTestReport); ok && stressReport != nil {
+			sb.WriteString("=== 长时间压力测试 ===\n\n")
+			tempNote := "温度数据: 未提供"
+			if stressReport.TemperatureAvailable {
+				tempNote = "温度数据: 可获取"
+			}
+			sb.WriteString(fmt.Sprintf("%s\n总耗时: %.0f 秒\n\n", tempNote, stressReport.TotalDurationSeconds))
+			for _, comp := range stressReport.Components {
+				sb.WriteString(fmt.Sprintf("[%s] 状态: %s，持续 %.0f 秒\n", comp.Name, comp.Status, comp.DurationSeconds))
+				if comp.AverageTemperature > 0 {
+					sb.WriteString(fmt.Sprintf("  平均温度: %.1f°C，峰值: %.1f°C\n", comp.AverageTemperature, comp.PeakTemperature))
+				}
+				if len(comp.Metrics) > 0 {
+					for key, val := range comp.Metrics {
+						sb.WriteString(fmt.Sprintf("  %s: %v\n", key, val))
+					}
+				}
+				if comp.Notes != "" {
+					sb.WriteString(fmt.Sprintf("  备注: %s\n", comp.Notes))
+				}
+				sb.WriteString("\n")
+			}
+		}
 	}
 
 	sb.WriteString("════════════════════════════════════════════════════════════════\n")

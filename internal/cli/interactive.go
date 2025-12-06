@@ -80,9 +80,10 @@ func (im *InteractiveMenu) selectTests() error {
 	fmt.Println("  6. 路由追踪测试      - 测试到主要地区的网络路由")
 	fmt.Println("  7. 流媒体解锁检测    - 检测流媒体平台访问情况")
 	fmt.Println("  8. AI 服务检测       - 检测主流 AI 服务访问情况")
-	fmt.Println("  9. 自定义组合        - 自由选择多个检测项目")
+	fmt.Println("  9. 长时间压力测试    - 持续高压运行，观察稳定性")
+	fmt.Println(" 10. 自定义组合        - 自由选择多个检测项目")
 	fmt.Println()
-	fmt.Print("请输入选项 [1-9] (默认: 1): ")
+	fmt.Print("请输入选项 [1-10] (默认: 1): ")
 
 	choice, err := im.readLine()
 	if err != nil {
@@ -123,6 +124,10 @@ func (im *InteractiveMenu) selectTests() error {
 		im.config.Tests = []string{} // 只做AI检测
 		fmt.Println("✓ 已选择：AI 服务检测")
 	case "9":
+		im.config.EnableStressTest = true
+		im.config.Tests = []string{}
+		fmt.Println("✓ 已选择：长时间压力测试")
+	case "10":
 		return im.selectCustomTests()
 	default:
 		fmt.Println("⚠ 无效选项，使用默认：完整检测")
@@ -145,8 +150,9 @@ func (im *InteractiveMenu) selectCustomTests() error {
 	fmt.Println("  5 - 路由追踪测试")
 	fmt.Println("  6 - 流媒体解锁检测")
 	fmt.Println("  7 - AI 服务检测")
+	fmt.Println("  8 - 长时间压力测试")
 	fmt.Println()
-	fmt.Print("请输入选项 (例如: 1 2 3 或 1 2 5 6 7): ")
+	fmt.Print("请输入选项 (例如: 1 2 3 或 1 2 6 7 8): ")
 
 	input, err := im.readLine()
 	if err != nil {
@@ -179,10 +185,12 @@ func (im *InteractiveMenu) selectCustomTests() error {
 			im.config.EnableStreaming = true
 		case "7":
 			im.config.EnableAIServices = true
+		case "8":
+			im.config.EnableStressTest = true
 		}
 	}
 
-	if len(tests) == 0 && !im.config.EnableRouteTrace && !im.config.EnableStreaming && !im.config.EnableAIServices {
+	if len(tests) == 0 && !im.config.EnableRouteTrace && !im.config.EnableStreaming && !im.config.EnableAIServices && !im.config.EnableStressTest {
 		im.config.Tests = []string{"all"}
 		fmt.Println("✓ 无效选择，使用默认：完整检测")
 	} else {
@@ -201,6 +209,9 @@ func (im *InteractiveMenu) selectCustomTests() error {
 		}
 		if im.config.EnableAIServices {
 			selectedItems = append(selectedItems, "AI 服务检测")
+		}
+		if im.config.EnableStressTest {
+			selectedItems = append(selectedItems, "长时间压力测试")
 		}
 		fmt.Printf("✓ 已选择：%s\n", strings.Join(selectedItems, ", "))
 	}
@@ -315,6 +326,7 @@ func (im *InteractiveMenu) confirmConfiguration() bool {
 	fmt.Printf("  路由追踪:     %s\n", im.boolToString(im.config.EnableRouteTrace))
 	fmt.Printf("  流媒体检测:   %s\n", im.boolToString(im.config.EnableStreaming))
 	fmt.Printf("  AI 服务检测:  %s\n", im.boolToString(im.config.EnableAIServices))
+	fmt.Printf("  压力测试:     %s\n", im.boolToString(im.config.EnableStressTest))
 	fmt.Printf("  详细输出:     %s\n", im.boolToString(im.config.Verbose))
 	if im.config.Output != "" {
 		fmt.Printf("  输出文件:     %s\n", im.config.Output)

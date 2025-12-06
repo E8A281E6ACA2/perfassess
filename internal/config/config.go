@@ -27,6 +27,9 @@ type Config struct {
 	// EnableAIServices 是否启用AI服务检测功能
 	EnableAIServices bool `mapstructure:"enable_ai_services"`
 
+	// EnableStressTest 是否启用长时间压力测试
+	EnableStressTest bool `mapstructure:"enable_stress_test"`
+
 	// RouteTraceTargets 路由追踪的目标地址列表
 	// 默认包含常用的公共服务器地址
 	RouteTraceTargets []string `mapstructure:"route_trace_targets"`
@@ -55,6 +58,7 @@ func DefaultConfig() *Config {
 		EnableRouteTrace:  false,
 		EnableStreaming:   false,
 		EnableAIServices:  false,
+		EnableStressTest:  false,
 		RouteTraceTargets: []string{"8.8.8.8", "1.1.1.1", "cloudflare.com"},
 		LogLevel:          "info",
 		GeoIPDBPath:       "",
