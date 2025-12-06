@@ -10,7 +10,7 @@ import (
 	"os/signal"
 	"syscall"
 	"time"
-	
+
 	"performance-assessment-system/internal/models"
 	"performance-assessment-system/pkg/logger"
 )
@@ -34,17 +34,17 @@ func NewWebServer(port int, logger *logger.Logger) *WebServer {
 // Start 启动 Web 服务器
 func (ws *WebServer) Start(report *models.Report) error {
 	ws.report = report
-	
+
 	// 创建 HTTP 处理器
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", ws.handleReport)
-	
+
 	// 创建服务器
 	ws.server = &http.Server{
 		Addr:    fmt.Sprintf(":%d", ws.port),
 		Handler: mux,
 	}
-	
+
 	// 启动服务器
 	go func() {
 		ws.logger.Info(fmt.Sprintf("Web 服务器启动在端口 %d", ws.port))
@@ -52,7 +52,7 @@ func (ws *WebServer) Start(report *models.Report) error {
 			ws.logger.Error("Web 服务器错误", err)
 		}
 	}()
-	
+
 	// 打印访问地址
 	fmt.Println()
 	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
@@ -62,10 +62,10 @@ func (ws *WebServer) Start(report *models.Report) error {
 	fmt.Println("⏹  按 Ctrl+C 停止服务器")
 	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 	fmt.Println()
-	
+
 	// 等待中断信号
 	ws.waitForShutdown()
-	
+
 	return nil
 }
 
@@ -78,10 +78,10 @@ func (ws *WebServer) handleReport(w http.ResponseWriter, r *http.Request) {
 		ws.logger.Error("模板解析错误", err)
 		return
 	}
-	
+
 	// 准备模板数据
 	data := ws.prepareTemplateData()
-	
+
 	// 渲染模板
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := tmpl.Execute(w, data); err != nil {
@@ -94,26 +94,26 @@ func (ws *WebServer) handleReport(w http.ResponseWriter, r *http.Request) {
 // prepareTemplateData 准备模板数据
 func (ws *WebServer) prepareTemplateData() map[string]interface{} {
 	data := make(map[string]interface{})
-	
+
 	// 基本信息
 	data["SessionID"] = ws.report.SessionID
 	data["Timestamp"] = ws.report.Timestamp.Format("2006-01-02 15:04:05")
 	data["SystemInfo"] = ws.report.SystemInfo
-	
+
 	// 获取综合评分
 	overallScore := &models.OverallScore{}
 	if score, ok := ws.report.Summary["overall_score"].(*models.OverallScore); ok {
 		overallScore = score
 	}
 	data["OverallScore"] = overallScore
-	
+
 	// 评分颜色
 	data["OverallScoreColor"] = ws.getScoreColor(overallScore.TotalScore)
 	data["OverallGradeClass"] = ws.getGradeClass(overallScore.Grade)
-	
+
 	// 测试结果列表
 	testResultsList := []map[string]interface{}{}
-	
+
 	if ws.report.TestResults != nil {
 		if ws.report.TestResults.CPUResult != nil {
 			testResultsList = append(testResultsList, ws.formatTestResult("CPU性能测试", ws.report.TestResults.CPUResult))
@@ -128,22 +128,22 @@ func (ws *WebServer) prepareTemplateData() map[string]interface{} {
 			testResultsList = append(testResultsList, ws.formatTestResult("网络性能测试", ws.report.TestResults.NetworkResult))
 		}
 	}
-	
+
 	data["TestResultsList"] = testResultsList
-	
+
 	return data
 }
 
 // formatTestResult 格式化测试结果
 func (ws *WebServer) formatTestResult(name string, result *models.TestResult) map[string]interface{} {
 	formatted := make(map[string]interface{})
-	
+
 	formatted["TestName"] = name
 	formatted["Status"] = result.Status
 	formatted["StatusText"] = ws.getStatusText(result.Status)
 	formatted["DurationSeconds"] = result.DurationSeconds
 	formatted["KeyMetrics"] = ws.getKeyMetrics(result)
-	
+
 	return formatted
 }
 
@@ -166,26 +166,30 @@ func (ws *WebServer) getKeyMetrics(result *models.TestResult) string {
 	if result.Status != "success" || result.Metrics == nil {
 		return "-"
 	}
-	
+
 	switch result.TestName {
-	case "cpu":
+	case "cpu", "CPU性能测试":
 		if ops, ok := result.Metrics["single_core_operations"].(int64); ok {
 			return fmt.Sprintf("单核: %d 次操作", ops)
 		}
-	case "memory":
+	case "memory", "内存性能测试":
 		if speed, ok := result.Metrics["read_speed_mbps"].(float64); ok {
 			return fmt.Sprintf("读取: %.2f MB/s", speed)
 		}
-	case "disk":
+	case "disk", "磁盘性能测试":
 		if speed, ok := result.Metrics["sequential_read_mbps"].(float64); ok {
 			return fmt.Sprintf("顺序读: %.2f MB/s", speed)
+		} else if speed, ok := result.Metrics["read_speed_mbps"].(float64); ok {
+			return fmt.Sprintf("顺序读: %.2f MB/s", speed)
 		}
-	case "network":
+	case "network", "网络性能测试":
 		if latency, ok := result.Metrics["average_latency_ms"].(float64); ok {
+			return fmt.Sprintf("延迟: %.2f ms", latency)
+		} else if latency, ok := result.Metrics["latency_ms"].(float64); ok {
 			return fmt.Sprintf("延迟: %.2f ms", latency)
 		}
 	}
-	
+
 	return "-"
 }
 
@@ -222,15 +226,15 @@ func (ws *WebServer) waitForShutdown() {
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
-	
+
 	fmt.Println("\n正在关闭 Web 服务器...")
-	
+
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	
+
 	if err := ws.server.Shutdown(ctx); err != nil {
 		ws.logger.Error("Web 服务器关闭错误", err)
 	}
-	
+
 	fmt.Println("Web 服务器已关闭")
 }
