@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/http/cookiejar"
 	"strings"
 	"time"
 
@@ -28,10 +29,12 @@ type AIServiceDetector struct {
 
 // NewAIServiceDetector 创建 AI 服务检测器
 func NewAIServiceDetector(logger *logger.Logger) *AIServiceDetector {
+	jar, _ := cookiejar.New(nil)
 	detector := &AIServiceDetector{
 		logger: logger,
 		httpClient: &http.Client{
 			Timeout: 12 * time.Second,
+			Jar:     jar,
 			CheckRedirect: func(req *http.Request, via []*http.Request) error {
 				if len(via) >= 10 {
 					return fmt.Errorf("重定向次数过多")
@@ -103,15 +106,40 @@ func interpretGenericAIResponse(resp *http.Response, body string, loginHint stri
 	case resp.StatusCode == 401:
 		return true, loginHint
 	case resp.StatusCode == 403:
-		if strings.Contains(body, "not available") || strings.Contains(body, "Not available") {
+		lower := strings.ToLower(body)
+		if strings.Contains(lower, "not available") || strings.Contains(lower, "not yet available") {
 			return false, "地区限制"
 		}
-		return false, "访问被拒绝"
+		if looksLikeLoginPage(lower) {
+			return true, loginHint
+		}
+		return true, "需要额外验证"
 	case resp.StatusCode == 429:
 		return true, "请求过于频繁或地区限制"
 	default:
 		return false, fmt.Sprintf("HTTP %d", resp.StatusCode)
 	}
+}
+
+func looksLikeLoginPage(bodyLower string) bool {
+	signInHints := []string{
+		"sign in",
+		"log in",
+		"login",
+		"继续使用",
+		"continue with",
+		"please log in",
+		"please sign in",
+		"account.microsoft.com",
+		"登录",
+		"登入",
+	}
+	for _, hint := range signInHints {
+		if strings.Contains(bodyLower, hint) {
+			return true
+		}
+	}
+	return false
 }
 
 // CheckService 检测单个 AI 服务
