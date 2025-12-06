@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
-	
+
 	"performance-assessment-system/internal/config"
 )
 
@@ -27,28 +27,28 @@ func NewInteractiveMenu() *InteractiveMenu {
 // Show 显示交互式菜单并获取用户选择
 func (im *InteractiveMenu) Show() (*config.Config, error) {
 	im.printWelcome()
-	
+
 	// 选择测试类型
 	if err := im.selectTests(); err != nil {
 		return nil, err
 	}
-	
+
 	// 选择可选功能
 	if err := im.selectOptionalFeatures(); err != nil {
 		return nil, err
 	}
-	
+
 	// 选择输出选项
 	if err := im.selectOutputOptions(); err != nil {
 		return nil, err
 	}
-	
+
 	// 确认配置
 	if !im.confirmConfiguration() {
 		fmt.Println("\n已取消测试。")
 		os.Exit(0)
 	}
-	
+
 	return im.config, nil
 }
 
@@ -79,20 +79,21 @@ func (im *InteractiveMenu) selectTests() error {
 	fmt.Println("  5. 网络性能测试      - 测试网络延迟和带宽")
 	fmt.Println("  6. 路由追踪测试      - 测试到主要地区的网络路由")
 	fmt.Println("  7. 流媒体解锁检测    - 检测流媒体平台访问情况")
-	fmt.Println("  8. 自定义组合        - 自由选择多个检测项目")
+	fmt.Println("  8. AI 服务检测       - 检测主流 AI 服务访问情况")
+	fmt.Println("  9. 自定义组合        - 自由选择多个检测项目")
 	fmt.Println()
-	fmt.Print("请输入选项 [1-8] (默认: 1): ")
-	
+	fmt.Print("请输入选项 [1-9] (默认: 1): ")
+
 	choice, err := im.readLine()
 	if err != nil {
 		return err
 	}
-	
+
 	choice = strings.TrimSpace(choice)
 	if choice == "" {
 		choice = "1"
 	}
-	
+
 	switch choice {
 	case "1":
 		im.config.Tests = []string{"all"}
@@ -118,12 +119,16 @@ func (im *InteractiveMenu) selectTests() error {
 		im.config.Tests = []string{} // 只做流媒体检测
 		fmt.Println("✓ 已选择：流媒体解锁检测")
 	case "8":
+		im.config.EnableAIServices = true
+		im.config.Tests = []string{} // 只做AI检测
+		fmt.Println("✓ 已选择：AI 服务检测")
+	case "9":
 		return im.selectCustomTests()
 	default:
 		fmt.Println("⚠ 无效选项，使用默认：完整检测")
 		im.config.Tests = []string{"all"}
 	}
-	
+
 	fmt.Println()
 	return nil
 }
@@ -139,24 +144,25 @@ func (im *InteractiveMenu) selectCustomTests() error {
 	fmt.Println("  4 - 网络性能测试")
 	fmt.Println("  5 - 路由追踪测试")
 	fmt.Println("  6 - 流媒体解锁检测")
+	fmt.Println("  7 - AI 服务检测")
 	fmt.Println()
-	fmt.Print("请输入选项 (例如: 1 2 3 或 1 2 5 6): ")
-	
+	fmt.Print("请输入选项 (例如: 1 2 3 或 1 2 5 6 7): ")
+
 	input, err := im.readLine()
 	if err != nil {
 		return err
 	}
-	
+
 	input = strings.TrimSpace(input)
 	if input == "" {
 		im.config.Tests = []string{"all"}
 		fmt.Println("✓ 未选择，使用默认：完整检测")
 		return nil
 	}
-	
+
 	tests := []string{}
 	parts := strings.Fields(input)
-	
+
 	for _, part := range parts {
 		switch part {
 		case "1":
@@ -171,15 +177,17 @@ func (im *InteractiveMenu) selectCustomTests() error {
 			im.config.EnableRouteTrace = true
 		case "6":
 			im.config.EnableStreaming = true
+		case "7":
+			im.config.EnableAIServices = true
 		}
 	}
-	
-	if len(tests) == 0 && !im.config.EnableRouteTrace && !im.config.EnableStreaming {
+
+	if len(tests) == 0 && !im.config.EnableRouteTrace && !im.config.EnableStreaming && !im.config.EnableAIServices {
 		im.config.Tests = []string{"all"}
 		fmt.Println("✓ 无效选择，使用默认：完整检测")
 	} else {
 		im.config.Tests = tests
-		
+
 		// 显示选择的项目
 		selectedItems := []string{}
 		if len(tests) > 0 {
@@ -191,9 +199,12 @@ func (im *InteractiveMenu) selectCustomTests() error {
 		if im.config.EnableStreaming {
 			selectedItems = append(selectedItems, "流媒体检测")
 		}
+		if im.config.EnableAIServices {
+			selectedItems = append(selectedItems, "AI 服务检测")
+		}
 		fmt.Printf("✓ 已选择：%s\n", strings.Join(selectedItems, ", "))
 	}
-	
+
 	fmt.Println()
 	return nil
 }
@@ -211,7 +222,7 @@ func (im *InteractiveMenu) selectOutputOptions() error {
 	fmt.Println("【步骤 2/2】输出选项")
 	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 	fmt.Println()
-	
+
 	// 详细输出
 	fmt.Println("是否启用详细输出模式？")
 	fmt.Println("  1. 是 - 显示更多调试信息")
@@ -230,7 +241,7 @@ func (im *InteractiveMenu) selectOutputOptions() error {
 		fmt.Println("✗ 使用标准输出模式")
 	}
 	fmt.Println()
-	
+
 	// 保存到文件
 	fmt.Println("是否保存报告到文件？")
 	fmt.Println("  1. 是 - 保存到文件")
@@ -241,7 +252,7 @@ func (im *InteractiveMenu) selectOutputOptions() error {
 		return err
 	}
 	saveFile = strings.TrimSpace(saveFile)
-	
+
 	if saveFile == "1" {
 		fmt.Print("请输入文件名 (直接回车使用默认: report.txt): ")
 		filename, err := im.readLine()
@@ -258,7 +269,7 @@ func (im *InteractiveMenu) selectOutputOptions() error {
 		fmt.Println("✗ 报告仅显示在终端")
 	}
 	fmt.Println()
-	
+
 	// Web 报告
 	fmt.Println("是否启用 Web 报告服务器？")
 	fmt.Println("  1. 是 - 启动 Web 服务器查看报告")
@@ -269,7 +280,7 @@ func (im *InteractiveMenu) selectOutputOptions() error {
 		return err
 	}
 	webChoice = strings.TrimSpace(webChoice)
-	
+
 	if webChoice == "1" {
 		im.config.EnableWeb = true
 		fmt.Print("请输入端口号 (直接回车使用默认: 8080): ")
@@ -288,7 +299,7 @@ func (im *InteractiveMenu) selectOutputOptions() error {
 	} else {
 		fmt.Println("✗ 不启用 Web 报告")
 	}
-	
+
 	fmt.Println()
 	return nil
 }
@@ -303,6 +314,7 @@ func (im *InteractiveMenu) confirmConfiguration() bool {
 	fmt.Printf("  检测项目:     %s\n", strings.Join(im.config.Tests, ", "))
 	fmt.Printf("  路由追踪:     %s\n", im.boolToString(im.config.EnableRouteTrace))
 	fmt.Printf("  流媒体检测:   %s\n", im.boolToString(im.config.EnableStreaming))
+	fmt.Printf("  AI 服务检测:  %s\n", im.boolToString(im.config.EnableAIServices))
 	fmt.Printf("  详细输出:     %s\n", im.boolToString(im.config.Verbose))
 	if im.config.Output != "" {
 		fmt.Printf("  输出文件:     %s\n", im.config.Output)
@@ -315,12 +327,12 @@ func (im *InteractiveMenu) confirmConfiguration() bool {
 	fmt.Println("  1. 确认开始（默认）")
 	fmt.Println("  2. 取消")
 	fmt.Print("请选择 [1-2]: ")
-	
+
 	confirm, err := im.readLine()
 	if err != nil {
 		return false
 	}
-	
+
 	confirm = strings.TrimSpace(confirm)
 	return confirm == "" || confirm == "1"
 }

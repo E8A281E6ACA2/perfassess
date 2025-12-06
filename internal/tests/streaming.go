@@ -8,7 +8,7 @@ import (
 	"net/http"
 	"strings"
 	"time"
-	
+
 	"performance-assessment-system/internal/models"
 	"performance-assessment-system/pkg/logger"
 )
@@ -17,10 +17,10 @@ import (
 type StreamingPlatform struct {
 	// Name 平台名称
 	Name string
-	
+
 	// TestURL 测试URL
 	TestURL string
-	
+
 	// CheckFunc 检测函数，根据HTTP响应判断是否可访问
 	CheckFunc func(response *http.Response, body string) (bool, string, string)
 }
@@ -30,10 +30,10 @@ type StreamingPlatform struct {
 type StreamingDetector struct {
 	// logger 日志记录器
 	logger *logger.Logger
-	
+
 	// httpClient HTTP客户端
 	httpClient *http.Client
-	
+
 	// platforms 支持的平台配置
 	platforms map[string]StreamingPlatform
 }
@@ -54,10 +54,10 @@ func NewStreamingDetector(logger *logger.Logger) *StreamingDetector {
 		},
 		platforms: make(map[string]StreamingPlatform),
 	}
-	
+
 	// 初始化默认平台
 	detector.initDefaultPlatforms()
-	
+
 	return detector
 }
 
@@ -84,7 +84,7 @@ func (sd *StreamingDetector) initDefaultPlatforms() {
 			return false, "", fmt.Sprintf("HTTP %d", resp.StatusCode)
 		},
 	}
-	
+
 	// YouTube Premium
 	sd.platforms["YouTube"] = StreamingPlatform{
 		Name:    "YouTube",
@@ -96,7 +96,7 @@ func (sd *StreamingDetector) initDefaultPlatforms() {
 			return false, "", fmt.Sprintf("HTTP %d", resp.StatusCode)
 		},
 	}
-	
+
 	// Disney+
 	sd.platforms["Disney+"] = StreamingPlatform{
 		Name:    "Disney+",
@@ -111,7 +111,7 @@ func (sd *StreamingDetector) initDefaultPlatforms() {
 			return false, "", fmt.Sprintf("HTTP %d", resp.StatusCode)
 		},
 	}
-	
+
 	// HBO Max
 	sd.platforms["HBO Max"] = StreamingPlatform{
 		Name:    "HBO Max",
@@ -126,7 +126,7 @@ func (sd *StreamingDetector) initDefaultPlatforms() {
 			return false, "", fmt.Sprintf("HTTP %d", resp.StatusCode)
 		},
 	}
-	
+
 	// Amazon Prime Video
 	sd.platforms["Prime Video"] = StreamingPlatform{
 		Name:    "Prime Video",
@@ -138,11 +138,57 @@ func (sd *StreamingDetector) initDefaultPlatforms() {
 			return false, "", fmt.Sprintf("HTTP %d", resp.StatusCode)
 		},
 	}
+
+	// Hulu
+	sd.platforms["Hulu"] = StreamingPlatform{
+		Name:    "Hulu",
+		TestURL: "https://www.hulu.com/",
+		CheckFunc: func(resp *http.Response, body string) (bool, string, string) {
+			if resp.StatusCode == 200 {
+				if strings.Contains(body, "not available in your region") {
+					return false, "", "地区限制"
+				}
+				return true, "US", "可访问"
+			}
+			return false, "", fmt.Sprintf("HTTP %d", resp.StatusCode)
+		},
+	}
+
+	// Paramount+
+	sd.platforms["Paramount+"] = StreamingPlatform{
+		Name:    "Paramount+",
+		TestURL: "https://www.paramountplus.com/",
+		CheckFunc: func(resp *http.Response, body string) (bool, string, string) {
+			if resp.StatusCode == 200 {
+				if strings.Contains(body, "not yet available") {
+					return false, "", "地区限制"
+				}
+				return true, "Unknown", "可访问"
+			}
+			return false, "", fmt.Sprintf("HTTP %d", resp.StatusCode)
+		},
+	}
+
+	// BBC iPlayer
+	sd.platforms["BBC iPlayer"] = StreamingPlatform{
+		Name:    "BBC iPlayer",
+		TestURL: "https://www.bbc.co.uk/iplayer",
+		CheckFunc: func(resp *http.Response, body string) (bool, string, string) {
+			if resp.StatusCode == 200 {
+				if strings.Contains(body, "BBC iPlayer only works in the UK") {
+					return false, "", "地区限制"
+				}
+				return true, "UK", "可访问"
+			}
+			return false, "", fmt.Sprintf("HTTP %d", resp.StatusCode)
+		},
+	}
 }
 
 // CheckPlatform 检测单个平台
 // 参数:
 //   - platformName: 平台名称
+//
 // 返回:
 //   - *models.StreamingResult: 检测结果
 //   - error: 检测错误
@@ -151,13 +197,13 @@ func (sd *StreamingDetector) CheckPlatform(platformName string) (*models.Streami
 	if !exists {
 		return nil, fmt.Errorf("不支持的平台: %s", platformName)
 	}
-	
+
 	sd.logger.Info(fmt.Sprintf("检测流媒体平台: %s", platformName))
-	
+
 	// 创建请求
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	
+
 	req, err := http.NewRequestWithContext(ctx, "GET", platform.TestURL, nil)
 	if err != nil {
 		return &models.StreamingResult{
@@ -166,12 +212,12 @@ func (sd *StreamingDetector) CheckPlatform(platformName string) (*models.Streami
 			Message:   fmt.Sprintf("创建请求失败: %v", err),
 		}, err
 	}
-	
+
 	// 设置User-Agent模拟浏览器
 	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36")
 	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8")
 	req.Header.Set("Accept-Language", "en-US,en;q=0.5")
-	
+
 	// 发送请求
 	resp, err := sd.httpClient.Do(req)
 	if err != nil {
@@ -183,7 +229,7 @@ func (sd *StreamingDetector) CheckPlatform(platformName string) (*models.Streami
 		}, nil
 	}
 	defer resp.Body.Close()
-	
+
 	// 读取响应体
 	bodyBytes, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -194,19 +240,19 @@ func (sd *StreamingDetector) CheckPlatform(platformName string) (*models.Streami
 		}, nil
 	}
 	body := string(bodyBytes)
-	
+
 	// 使用平台特定的检测函数
 	available, region, message := platform.CheckFunc(resp, body)
-	
+
 	result := &models.StreamingResult{
 		Platform:  platformName,
 		Available: available,
 		Region:    region,
 		Message:   message,
 	}
-	
+
 	sd.logger.Info(fmt.Sprintf("检测 %s 完成: %s", platformName, message))
-	
+
 	return result, nil
 }
 
@@ -216,9 +262,9 @@ func (sd *StreamingDetector) CheckPlatform(platformName string) (*models.Streami
 //   - error: 检测错误
 func (sd *StreamingDetector) CheckAll() (map[string]*models.StreamingResult, error) {
 	sd.logger.Info(fmt.Sprintf("开始检测所有流媒体平台，共 %d 个", len(sd.platforms)))
-	
+
 	results := make(map[string]*models.StreamingResult)
-	
+
 	// 串行检测（避免并发请求被识别为攻击）
 	for platformName := range sd.platforms {
 		result, err := sd.CheckPlatform(platformName)
@@ -228,13 +274,13 @@ func (sd *StreamingDetector) CheckAll() (map[string]*models.StreamingResult, err
 			continue
 		}
 		results[platformName] = result
-		
+
 		// 短暂延迟，避免请求过快
 		time.Sleep(500 * time.Millisecond)
 	}
-	
+
 	sd.logger.Info(fmt.Sprintf("流媒体检测完成，成功: %d/%d", len(results), len(sd.platforms)))
-	
+
 	return results, nil
 }
 
@@ -263,17 +309,17 @@ func (sd *StreamingDetector) GetSupportedPlatforms() []string {
 func (sd *StreamingDetector) CheckConnectivity() bool {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	
+
 	req, err := http.NewRequestWithContext(ctx, "GET", "https://www.google.com", nil)
 	if err != nil {
 		return false
 	}
-	
+
 	resp, err := sd.httpClient.Do(req)
 	if err != nil {
 		return false
 	}
 	defer resp.Body.Close()
-	
+
 	return resp.StatusCode == 200
 }

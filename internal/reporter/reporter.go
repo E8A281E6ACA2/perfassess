@@ -358,6 +358,19 @@ func (rg *ReportGenerator) formatReport(report *models.Report, overallScore *mod
 			}
 			sb.WriteString("\n")
 		}
+
+		// AI 服务检测结果
+		if aiResults, ok := report.Summary["ai_results"].(map[string]*models.AIServiceResult); ok && len(aiResults) > 0 {
+			sb.WriteString("=== AI服务检测 ===\n\n")
+			for service, result := range aiResults {
+				status := "❌ 不可用"
+				if result.Available {
+					status = "✅ 可用"
+				}
+				sb.WriteString(fmt.Sprintf("%-15s  %s  - %s\n", service, status, result.Message))
+			}
+			sb.WriteString("\n")
+		}
 	}
 
 	sb.WriteString("════════════════════════════════════════════════════════════════\n")

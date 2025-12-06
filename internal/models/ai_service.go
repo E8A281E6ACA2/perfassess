@@ -1,0 +1,15 @@
+// Package models 定义 AI 服务检测相关的数据结构
+package models
+
+// AIServiceResult 表示单个 AI 服务的检测结果
+// 用于描述是否可访问以及附加信息
+type AIServiceResult struct {
+	// Service AI 服务名称，如 "ChatGPT", "Claude"
+	Service string `json:"service"`
+
+	// Available 是否可访问
+	Available bool `json:"available"`
+
+	// Message 附加信息（如区域限制、需要登录等）
+	Message string `json:"message"`
+}

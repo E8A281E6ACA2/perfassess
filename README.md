@@ -296,6 +296,7 @@ Flags:
       --log-level string     设置日志级别 (debug,info,warn,error) (default "info")
       --route-trace          启用路由追踪功能
       --streaming            启用流媒体解锁检测功能
+      --ai-services          启用 AI 服务检测功能
       --web                  启用 Web 报告服务器（新功能）
       --port int             Web 服务器端口 (default 8080)
   -h, --help                 显示帮助信息
@@ -324,7 +325,8 @@ Flags:
 #   5. 网络性能测试
 #   6. 路由追踪测试
 #   7. 流媒体解锁检测
-#   8. 自定义组合
+#   8. AI 服务检测
+#   9. 自定义组合
 #   ...
 ```
 
@@ -658,6 +660,7 @@ A: 使用 `--port` 参数指定其他端口：
 | 保存报告 | `./build/perfassess -b all -o report.txt` |
 | 路由追踪 | `./build/perfassess --route-trace` |
 | 流媒体检测 | `./build/perfassess --streaming` |
+| AI 服务检测 | `./build/perfassess --ai-services` |
 | 完整功能 | `./build/perfassess -b all --route-trace --streaming --web -o report.txt` |
 
 ### 参数速查表
@@ -672,6 +675,7 @@ A: 使用 `--port` 参数指定其他端口：
 | `--port` | - | Web 端口 | `--port 9090` |
 | `--route-trace` | - | 路由追踪 | `--route-trace` |
 | `--streaming` | - | 流媒体检测 | `--streaming` |
+| `--ai-services` | - | AI 服务检测 | `--ai-services` |
 
 ### 检测项目选项
 

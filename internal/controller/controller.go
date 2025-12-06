@@ -7,9 +7,9 @@ import (
 	"fmt"
 	"runtime"
 	"time"
-	
+
 	"go.uber.org/zap"
-	
+
 	"performance-assessment-system/internal/collector"
 	"performance-assessment-system/internal/config"
 	"performance-assessment-system/internal/models"
@@ -35,32 +35,32 @@ func NewAssessmentController(cfg *config.Config) (*AssessmentController, error) 
 	if cfg == nil {
 		return nil, fmt.Errorf("配置不能为空")
 	}
-	
+
 	// 验证配置
 	if err := cfg.Validate(); err != nil {
 		return nil, fmt.Errorf("配置验证失败: %w", err)
 	}
-	
+
 	// 创建日志管理器
 	log, err := logger.NewLogger("logs", cfg.LogLevel)
 	if err != nil {
 		return nil, fmt.Errorf("创建日志管理器失败: %w", err)
 	}
-	
+
 	// 检测平台
 	detector := platform.NewPlatformDetector()
 	if !detector.IsSupported() {
 		return nil, fmt.Errorf("不支持的操作系统平台: %s", detector.DetectPlatform())
 	}
-	
+
 	platformAdapter, err := detector.GetPlatformAdapter()
 	if err != nil {
 		return nil, fmt.Errorf("获取平台适配器失败: %w", err)
 	}
-	
+
 	// 创建错误处理器
 	errorHandler := utils.NewErrorHandler(log)
-	
+
 	return &AssessmentController{
 		config:          cfg,
 		logger:          log,
@@ -73,13 +73,13 @@ func NewAssessmentController(cfg *config.Config) (*AssessmentController, error) 
 func (ac *AssessmentController) StartSession() (*models.AssessmentSession, error) {
 	// 生成会话ID（使用时间戳）
 	sessionID := fmt.Sprintf("session_%d", time.Now().Unix())
-	
+
 	// 创建会话日志文件
 	logFile, err := ac.logger.CreateSessionLog()
 	if err != nil {
 		return nil, fmt.Errorf("创建会话日志失败: %w", err)
 	}
-	
+
 	// 创建会话对象
 	session := &models.AssessmentSession{
 		SessionID: sessionID,
@@ -87,14 +87,14 @@ func (ac *AssessmentController) StartSession() (*models.AssessmentSession, error
 		Config:    ac.config,
 		LogFile:   logFile,
 	}
-	
+
 	ac.session = session
-	
+
 	ac.logger.Info("评估会话已启动",
 		zap.String("session_id", sessionID),
 		zap.String("log_file", logFile),
 	)
-	
+
 	return session, nil
 }
 
@@ -103,9 +103,9 @@ func (ac *AssessmentController) RunAssessment(session *models.AssessmentSession)
 	if session == nil {
 		return nil, fmt.Errorf("会话不能为空")
 	}
-	
+
 	ac.logger.Info("开始性能评估")
-	
+
 	// 步骤1: 收集系统信息
 	ac.logger.Info("步骤 1/3: 收集系统信息")
 	systemInfo, err := ac.collectSystemInfo()
@@ -114,7 +114,7 @@ func (ac *AssessmentController) RunAssessment(session *models.AssessmentSession)
 		return nil, fmt.Errorf("收集系统信息失败: %w", err)
 	}
 	ac.logger.Info("系统信息收集完成")
-	
+
 	// 步骤2: 执行性能测试
 	ac.logger.Info("步骤 2/3: 执行性能测试")
 	testResults, err := ac.runPerformanceTests()
@@ -124,7 +124,7 @@ func (ac *AssessmentController) RunAssessment(session *models.AssessmentSession)
 		ac.logger.Warn("部分测试失败，继续生成报告")
 	}
 	ac.logger.Info("性能测试完成")
-	
+
 	// 可选步骤: 路由追踪
 	var routeTraceResults []*models.TraceResult
 	if ac.config.EnableRouteTrace {
@@ -136,9 +136,10 @@ func (ac *AssessmentController) RunAssessment(session *models.AssessmentSession)
 			ac.logger.Info("路由追踪完成")
 		}
 	}
-	
+
 	// 可选步骤: 流媒体检测
 	var streamingResults map[string]*models.StreamingResult
+	var aiResults map[string]*models.AIServiceResult
 	if ac.config.EnableStreaming {
 		ac.logger.Info("可选步骤: 执行流媒体检测")
 		streamingResults, err = ac.runStreamingDetection()
@@ -148,7 +149,17 @@ func (ac *AssessmentController) RunAssessment(session *models.AssessmentSession)
 			ac.logger.Info("流媒体检测完成")
 		}
 	}
-	
+
+	if ac.config.EnableAIServices {
+		ac.logger.Info("可选步骤: 执行AI服务检测")
+		aiResults, err = ac.runAIServiceDetection()
+		if err != nil {
+			ac.logger.Warn("AI服务检测失败", zap.Error(err))
+		} else {
+			ac.logger.Info("AI服务检测完成")
+		}
+	}
+
 	// 步骤3: 生成报告
 	ac.logger.Info("步骤 3/3: 生成评估报告")
 	report, err := ac.generateReport(session.SessionID, systemInfo, testResults)
@@ -156,7 +167,7 @@ func (ac *AssessmentController) RunAssessment(session *models.AssessmentSession)
 		ac.logger.Error("生成报告失败", err)
 		return nil, fmt.Errorf("生成报告失败: %w", err)
 	}
-	
+
 	// 添加可选功能结果到报告
 	if routeTraceResults != nil {
 		report.Summary["route_trace_results"] = routeTraceResults
@@ -164,15 +175,18 @@ func (ac *AssessmentController) RunAssessment(session *models.AssessmentSession)
 	if streamingResults != nil {
 		report.Summary["streaming_results"] = streamingResults
 	}
-	
+	if aiResults != nil {
+		report.Summary["ai_results"] = aiResults
+	}
+
 	ac.logger.Info("评估报告生成完成")
-	
+
 	// 输出报告
 	if err := ac.outputReport(report); err != nil {
 		ac.logger.Error("输出报告失败", err)
 		return nil, fmt.Errorf("输出报告失败: %w", err)
 	}
-	
+
 	// 如果启用了 Web 服务器，启动它
 	if ac.config.EnableWeb {
 		webServer := reporter.NewWebServer(ac.config.WebPort, ac.logger)
@@ -180,15 +194,15 @@ func (ac *AssessmentController) RunAssessment(session *models.AssessmentSession)
 			ac.logger.Error("Web 服务器启动失败", err)
 		}
 	}
-	
+
 	// 记录会话摘要
 	ac.logger.LogSessionSummary(report.Summary)
-	
+
 	ac.logger.Info("性能评估完成",
 		zap.String("session_id", session.SessionID),
 		zap.Duration("total_duration", time.Since(session.StartTime)),
 	)
-	
+
 	return report, nil
 }
 
@@ -196,22 +210,22 @@ func (ac *AssessmentController) RunAssessment(session *models.AssessmentSession)
 func (ac *AssessmentController) collectSystemInfo() (*models.SystemInfo, error) {
 	// 创建系统信息收集器
 	sysInfoCollector := collector.NewSystemInfoCollector(ac.platformAdapter)
-	
+
 	// 使用超时控制
 	timeout := 10 * time.Second
 	var systemInfo *models.SystemInfo
 	var err error
-	
+
 	ctx := context.Background()
 	err = utils.RunWithTimeout(ctx, timeout, func() error {
 		systemInfo, err = sysInfoCollector.CollectAll()
 		return err
 	})
-	
+
 	if err != nil {
 		return nil, err
 	}
-	
+
 	// 收集虚拟化信息
 	virtDetector := collector.NewVirtualizationDetector(ac.platformAdapter)
 	virtInfo, err := virtDetector.Detect()
@@ -220,7 +234,7 @@ func (ac *AssessmentController) collectSystemInfo() (*models.SystemInfo, error) 
 	} else {
 		systemInfo.Virtualization = virtInfo
 	}
-	
+
 	// 收集IP信息
 	ipCollector, err := collector.NewIPInfoCollector(ac.config.GeoIPDBPath)
 	if err != nil {
@@ -233,7 +247,7 @@ func (ac *AssessmentController) collectSystemInfo() (*models.SystemInfo, error) 
 			systemInfo.IPInfo = ipInfo
 		}
 	}
-	
+
 	return systemInfo, nil
 }
 
@@ -241,13 +255,13 @@ func (ac *AssessmentController) collectSystemInfo() (*models.SystemInfo, error) 
 func (ac *AssessmentController) runPerformanceTests() (*models.TestResults, error) {
 	// 创建测试运行器
 	testRunner := tests.NewTestRunner(ac.logger)
-	
+
 	// 确定要运行的测试类型
 	testTypes := ac.config.Tests
 	if len(testTypes) == 1 && testTypes[0] == "all" {
 		testTypes = []string{"cpu", "memory", "disk", "network"}
 	}
-	
+
 	// 创建测试实例列表
 	var testList []tests.PerformanceTest
 	for _, testType := range testTypes {
@@ -262,13 +276,13 @@ func (ac *AssessmentController) runPerformanceTests() (*models.TestResults, erro
 			testList = append(testList, tests.NewNetworkTest(ac.logger))
 		}
 	}
-	
+
 	// 运行测试
 	results, err := testRunner.RunTests(testList)
 	if err != nil {
 		return nil, err
 	}
-	
+
 	return results, nil
 }
 
@@ -276,20 +290,20 @@ func (ac *AssessmentController) runPerformanceTests() (*models.TestResults, erro
 func (ac *AssessmentController) runRouteTrace() ([]*models.TraceResult, error) {
 	// 创建路由追踪器
 	tracer := tests.NewRouteTracer(ac.logger)
-	
+
 	// 获取目标列表
 	targets := ac.config.RouteTraceTargets
 	if len(targets) == 0 {
 		// 使用默认目标
 		targets = []string{"8.8.8.8", "1.1.1.1", "cloudflare.com"}
 	}
-	
+
 	// 执行追踪
 	results, err := tracer.TraceMultiple(targets)
 	if err != nil {
 		return nil, err
 	}
-	
+
 	return results, nil
 }
 
@@ -297,18 +311,34 @@ func (ac *AssessmentController) runRouteTrace() ([]*models.TraceResult, error) {
 func (ac *AssessmentController) runStreamingDetection() (map[string]*models.StreamingResult, error) {
 	// 创建流媒体检测器
 	detector := tests.NewStreamingDetector(ac.logger)
-	
+
 	// 检查网络连接
 	if !detector.CheckConnectivity() {
 		return nil, fmt.Errorf("网络连接不可用")
 	}
-	
+
 	// 执行检测
 	results, err := detector.CheckAll()
 	if err != nil {
 		return nil, err
 	}
-	
+
+	return results, nil
+}
+
+// runAIServiceDetection 执行 AI 服务检测
+func (ac *AssessmentController) runAIServiceDetection() (map[string]*models.AIServiceResult, error) {
+	detector := tests.NewAIServiceDetector(ac.logger)
+
+	if !detector.CheckConnectivity() {
+		return nil, fmt.Errorf("网络连接不可用")
+	}
+
+	results, err := detector.CheckAll()
+	if err != nil {
+		return nil, err
+	}
+
 	return results, nil
 }
 
@@ -316,13 +346,13 @@ func (ac *AssessmentController) runStreamingDetection() (map[string]*models.Stre
 func (ac *AssessmentController) generateReport(sessionID string, systemInfo *models.SystemInfo, testResults *models.TestResults) (*models.Report, error) {
 	// 创建报告生成器
 	reportGenerator := reporter.NewReportGenerator()
-	
+
 	// 生成报告
 	report, err := reportGenerator.GenerateReport(sessionID, systemInfo, testResults)
 	if err != nil {
 		return nil, err
 	}
-	
+
 	return report, nil
 }
 
@@ -330,12 +360,12 @@ func (ac *AssessmentController) generateReport(sessionID string, systemInfo *mod
 func (ac *AssessmentController) outputReport(report *models.Report) error {
 	// 创建输出格式化器
 	formatter := reporter.NewOutputFormatter()
-	
+
 	// 输出到控制台
 	if err := formatter.OutputToConsole(report); err != nil {
 		return fmt.Errorf("输出到控制台失败: %w", err)
 	}
-	
+
 	// 如果指定了输出文件，保存到文件
 	if ac.config.Output != "" {
 		if err := formatter.OutputToFile(report, ac.config.Output); err != nil {
@@ -343,7 +373,7 @@ func (ac *AssessmentController) outputReport(report *models.Report) error {
 		}
 		ac.logger.Info("报告已保存到文件", zap.String("file", ac.config.Output))
 	}
-	
+
 	return nil
 }
 
@@ -355,15 +385,15 @@ func (ac *AssessmentController) HandleError(err error) utils.ErrorAction {
 // Cleanup 清理资源
 func (ac *AssessmentController) Cleanup() error {
 	ac.logger.Info("清理资源")
-	
+
 	// 同步日志
 	if err := ac.logger.Sync(); err != nil {
 		return fmt.Errorf("同步日志失败: %w", err)
 	}
-	
+
 	// 强制垃圾回收
 	runtime.GC()
-	
+
 	ac.logger.Info("资源清理完成")
 	return nil
 }

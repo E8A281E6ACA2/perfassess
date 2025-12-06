@@ -9,35 +9,38 @@ type Config struct {
 	// 可选值: "cpu", "memory", "disk", "network", "all"
 	// 多个测试类型用逗号分隔，如 "cpu,memory"
 	Tests []string `mapstructure:"tests"`
-	
+
 	// Output 输出文件路径
 	// 如果为空，则只输出到控制台
 	Output string `mapstructure:"output"`
-	
+
 	// Verbose 是否启用详细输出模式
 	// 启用后会显示更多调试信息
 	Verbose bool `mapstructure:"verbose"`
-	
+
 	// EnableRouteTrace 是否启用路由追踪功能
 	EnableRouteTrace bool `mapstructure:"enable_route_trace"`
-	
+
 	// EnableStreaming 是否启用流媒体检测功能
 	EnableStreaming bool `mapstructure:"enable_streaming"`
-	
+
+	// EnableAIServices 是否启用AI服务检测功能
+	EnableAIServices bool `mapstructure:"enable_ai_services"`
+
 	// RouteTraceTargets 路由追踪的目标地址列表
 	// 默认包含常用的公共服务器地址
 	RouteTraceTargets []string `mapstructure:"route_trace_targets"`
-	
+
 	// LogLevel 日志级别（debug/info/warn/error）
 	LogLevel string `mapstructure:"log_level"`
-	
+
 	// GeoIPDBPath GeoIP 数据库文件路径（可选）
 	// 用于IP地理位置查询
 	GeoIPDBPath string `mapstructure:"geoip_db_path"`
-	
+
 	// EnableWeb 是否启用 Web 报告服务器
 	EnableWeb bool `mapstructure:"enable_web"`
-	
+
 	// WebPort Web 服务器端口
 	WebPort int `mapstructure:"web_port"`
 }
@@ -51,6 +54,7 @@ func DefaultConfig() *Config {
 		Verbose:           false,
 		EnableRouteTrace:  false,
 		EnableStreaming:   false,
+		EnableAIServices:  false,
 		RouteTraceTargets: []string{"8.8.8.8", "1.1.1.1", "cloudflare.com"},
 		LogLevel:          "info",
 		GeoIPDBPath:       "",
@@ -70,7 +74,7 @@ func (c *Config) Validate() error {
 		"network": true,
 		"all":     true,
 	}
-	
+
 	for _, test := range c.Tests {
 		if !validTests[test] {
 			return &ConfigError{
@@ -79,7 +83,7 @@ func (c *Config) Validate() error {
 			}
 		}
 	}
-	
+
 	// 验证日志级别
 	validLogLevels := map[string]bool{
 		"debug": true,
@@ -87,14 +91,14 @@ func (c *Config) Validate() error {
 		"warn":  true,
 		"error": true,
 	}
-	
+
 	if !validLogLevels[c.LogLevel] {
 		return &ConfigError{
 			Field:   "log_level",
 			Message: "无效的日志级别: " + c.LogLevel,
 		}
 	}
-	
+
 	return nil
 }
 
@@ -102,7 +106,7 @@ func (c *Config) Validate() error {
 type ConfigError struct {
 	// Field 出错的配置字段名
 	Field string
-	
+
 	// Message 错误消息
 	Message string
 }
