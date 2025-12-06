@@ -6,10 +6,13 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
+
+	"performance-assessment-system/internal/models"
 )
 
 // Logger 日志管理器结构体
@@ -17,13 +20,13 @@ import (
 type Logger struct {
 	// zapLogger zap日志记录器实例
 	zapLogger *zap.Logger
-	
+
 	// logDir 日志文件存储目录
 	logDir string
-	
+
 	// sessionLogFile 当前会话的日志文件路径
 	sessionLogFile string
-	
+
 	// level 日志级别
 	level zapcore.Level
 }
@@ -32,6 +35,7 @@ type Logger struct {
 // 参数:
 //   - logDir: 日志文件存储目录路径
 //   - level: 日志级别（debug/info/warn/error）
+//
 // 返回:
 //   - *Logger: 日志管理器实例
 //   - error: 初始化错误
@@ -40,7 +44,7 @@ func NewLogger(logDir string, level string) (*Logger, error) {
 	if err := os.MkdirAll(logDir, 0755); err != nil {
 		return nil, fmt.Errorf("创建日志目录失败: %w", err)
 	}
-	
+
 	// 解析日志级别
 	var zapLevel zapcore.Level
 	switch level {
@@ -55,7 +59,7 @@ func NewLogger(logDir string, level string) (*Logger, error) {
 	default:
 		zapLevel = zapcore.InfoLevel
 	}
-	
+
 	// 配置编码器（日志格式）
 	encoderConfig := zapcore.EncoderConfig{
 		TimeKey:        "time",
@@ -70,17 +74,17 @@ func NewLogger(logDir string, level string) (*Logger, error) {
 		EncodeDuration: zapcore.StringDurationEncoder,
 		EncodeCaller:   zapcore.ShortCallerEncoder,
 	}
-	
+
 	// 创建核心配置
 	core := zapcore.NewCore(
 		zapcore.NewConsoleEncoder(encoderConfig),
 		zapcore.AddSync(os.Stdout),
 		zapLevel,
 	)
-	
+
 	// 创建 zap logger
 	zapLogger := zap.New(core, zap.AddCaller(), zap.AddCallerSkip(1))
-	
+
 	return &Logger{
 		zapLogger: zapLogger,
 		logDir:    logDir,
@@ -98,14 +102,14 @@ func (l *Logger) CreateSessionLog() (string, error) {
 	timestamp := time.Now().Format("20060102_150405")
 	logFileName := fmt.Sprintf("session_%s.log", timestamp)
 	logFilePath := filepath.Join(l.logDir, logFileName)
-	
+
 	// 创建日志文件
 	logFile, err := os.Create(logFilePath)
 	if err != nil {
 		return "", fmt.Errorf("创建会话日志文件失败: %w", err)
 	}
 	logFile.Close()
-	
+
 	// 更新 logger 配置，同时输出到控制台和文件
 	encoderConfig := zapcore.EncoderConfig{
 		TimeKey:        "time",
@@ -120,30 +124,30 @@ func (l *Logger) CreateSessionLog() (string, error) {
 		EncodeDuration: zapcore.StringDurationEncoder,
 		EncodeCaller:   zapcore.ShortCallerEncoder,
 	}
-	
+
 	// 重新打开文件用于写入
 	file, err := os.OpenFile(logFilePath, os.O_APPEND|os.O_WRONLY, 0644)
 	if err != nil {
 		return "", fmt.Errorf("打开会话日志文件失败: %w", err)
 	}
-	
+
 	// 创建多输出核心（控制台 + 文件）
 	consoleCore := zapcore.NewCore(
 		zapcore.NewConsoleEncoder(encoderConfig),
 		zapcore.AddSync(os.Stdout),
 		l.level,
 	)
-	
+
 	fileCore := zapcore.NewCore(
 		zapcore.NewConsoleEncoder(encoderConfig),
 		zapcore.AddSync(file),
 		l.level,
 	)
-	
+
 	core := zapcore.NewTee(consoleCore, fileCore)
 	l.zapLogger = zap.New(core, zap.AddCaller(), zap.AddCallerSkip(1))
 	l.sessionLogFile = logFilePath
-	
+
 	return logFilePath, nil
 }
 
@@ -207,11 +211,44 @@ func (l *Logger) LogTestEnd(testName string, status string, duration time.Durati
 // 参数:
 //   - summary: 摘要信息映射
 func (l *Logger) LogSessionSummary(summary map[string]interface{}) {
-	fields := make([]zap.Field, 0, len(summary))
-	for key, value := range summary {
-		fields = append(fields, zap.Any(key, value))
+	if summary == nil {
+		l.Info("评估会话摘要: 无可用数据")
+		return
 	}
-	l.Info("评估会话摘要", fields...)
+
+	var sb strings.Builder
+	sb.WriteString("\n╔══════════════════ 评估会话摘要 ═════════════════╗\n")
+
+	overall := extractOverallScore(summary["overall_score"])
+	if overall != nil {
+		sb.WriteString(fmt.Sprintf("总体评分 : %6.2f / 100\n", overall.TotalScore))
+		sb.WriteString(fmt.Sprintf("性能等级 : %s\n", overall.Grade))
+		sb.WriteString(fmt.Sprintf("CPU: %6.2f | 内存: %6.2f | 磁盘: %6.2f | 网络: %6.2f\n",
+			overall.CPUScore, overall.MemoryScore, overall.DiskScore, overall.NetworkScore))
+	} else {
+		total := getFloat(summary["total_score"])
+		cpu := getFloat(summary["cpu_score"])
+		mem := getFloat(summary["memory_score"])
+		disk := getFloat(summary["disk_score"])
+		net := getFloat(summary["network_score"])
+		grade, _ := summary["grade"].(string)
+
+		sb.WriteString(fmt.Sprintf("总体评分 : %6.2f / 100\n", total))
+		if grade != "" {
+			sb.WriteString(fmt.Sprintf("性能等级 : %s\n", grade))
+		}
+		sb.WriteString(fmt.Sprintf("CPU: %6.2f | 内存: %6.2f | 磁盘: %6.2f | 网络: %6.2f\n",
+			cpu, mem, disk, net))
+	}
+
+	success := getInt(summary["tests_success"])
+	failed := getInt(summary["tests_failed"])
+	skipped := getInt(summary["tests_skipped"])
+	sb.WriteString(fmt.Sprintf("成功/失败/跳过: %d / %d / %d\n", success, failed, skipped))
+
+	sb.WriteString("╚══════════════════════════════════════════════════╝")
+
+	l.Info(sb.String())
 }
 
 // Sync 同步日志缓冲区
@@ -227,7 +264,9 @@ func (l *Logger) Sync() error {
 		if errMsg == "sync /dev/stdout: inappropriate ioctl for device" ||
 			errMsg == "sync /dev/stderr: inappropriate ioctl for device" ||
 			errMsg == "sync /dev/stdout: bad file descriptor" ||
-			errMsg == "sync /dev/stderr: bad file descriptor" {
+			errMsg == "sync /dev/stderr: bad file descriptor" ||
+			errMsg == "sync /dev/stdout: invalid argument" ||
+			errMsg == "sync /dev/stderr: invalid argument" {
 			return nil
 		}
 		return err
@@ -240,4 +279,47 @@ func (l *Logger) Sync() error {
 //   - string: 日志文件路径
 func (l *Logger) GetSessionLogFile() string {
 	return l.sessionLogFile
+}
+
+func extractOverallScore(value interface{}) *models.OverallScore {
+	switch v := value.(type) {
+	case *models.OverallScore:
+		return v
+	case models.OverallScore:
+		return &v
+	default:
+		return nil
+	}
+}
+
+func getFloat(value interface{}) float64 {
+	switch v := value.(type) {
+	case float64:
+		return v
+	case float32:
+		return float64(v)
+	case int:
+		return float64(v)
+	case int64:
+		return float64(v)
+	case uint64:
+		return float64(v)
+	default:
+		return 0
+	}
+}
+
+func getInt(value interface{}) int {
+	switch v := value.(type) {
+	case int:
+		return v
+	case int64:
+		return int(v)
+	case uint64:
+		return int(v)
+	case float64:
+		return int(v)
+	default:
+		return 0
+	}
 }
