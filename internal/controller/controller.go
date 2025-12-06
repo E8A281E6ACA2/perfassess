@@ -141,6 +141,7 @@ func (ac *AssessmentController) RunAssessment(session *models.AssessmentSession)
 	var streamingResults map[string]*models.StreamingResult
 	var aiResults map[string]*models.AIServiceResult
 	var stressReport *models.StressTestReport
+	var securityReport *models.SecurityReport
 	if ac.config.EnableStreaming {
 		ac.logger.Info("可选步骤: 执行流媒体检测")
 		streamingResults, err = ac.runStreamingDetection()
@@ -171,6 +172,12 @@ func (ac *AssessmentController) RunAssessment(session *models.AssessmentSession)
 		}
 	}
 
+	if ac.config.EnableSecurityScan {
+		ac.logger.Info("可选步骤: 执行安全体检")
+		securityReport = ac.runSecurityScan(systemInfo)
+		ac.logger.Info("安全体检完成")
+	}
+
 	// 步骤3: 生成报告
 	ac.logger.Info("步骤 3/3: 生成评估报告")
 	report, err := ac.generateReport(session.SessionID, systemInfo, testResults)
@@ -192,6 +199,12 @@ func (ac *AssessmentController) RunAssessment(session *models.AssessmentSession)
 	if stressReport != nil {
 		report.Summary["stress_report"] = stressReport
 	}
+	if securityReport != nil {
+		report.Summary["security_report"] = securityReport
+	}
+
+	// 更新格式化报告以包含新增的摘要内容
+	report.FormattedContent = reporter.NewReportGenerator().FormatReport(report)
 
 	ac.logger.Info("评估报告生成完成")
 
@@ -363,6 +376,11 @@ func (ac *AssessmentController) runStressTest() (*models.StressTestReport, error
 	defer cancel()
 
 	return stressTester.Run(ctx)
+}
+
+func (ac *AssessmentController) runSecurityScan(systemInfo *models.SystemInfo) *models.SecurityReport {
+	scanner := tests.NewSecurityScanner(ac.logger, systemInfo)
+	return scanner.Run()
 }
 
 // generateReport 生成评估报告

@@ -45,7 +45,7 @@ func (rg *ReportGenerator) GenerateReport(sessionID string, systemInfo *models.S
 	rg.AddSummary(report, overallScore)
 
 	// 格式化报告内容
-	report.FormattedContent = rg.formatReport(report, overallScore)
+	report.FormattedContent = rg.FormatReport(report)
 
 	return report, nil
 }
@@ -281,7 +281,7 @@ func (rg *ReportGenerator) AddSummary(report *models.Report, overallScore *model
 }
 
 // formatReport 格式化完整报告
-func (rg *ReportGenerator) formatReport(report *models.Report, overallScore *models.OverallScore) string {
+func (rg *ReportGenerator) FormatReport(report *models.Report) string {
 	var sb strings.Builder
 
 	// 报告标题
@@ -303,14 +303,14 @@ func (rg *ReportGenerator) formatReport(report *models.Report, overallScore *mod
 
 	// 综合评分
 	sb.WriteString("=== 综合性能评分 ===\n\n")
-	if overallScore != nil {
-		sb.WriteString(fmt.Sprintf("CPU评分:        %.2f / 100\n", overallScore.CPUScore))
-		sb.WriteString(fmt.Sprintf("内存评分:       %.2f / 100\n", overallScore.MemoryScore))
-		sb.WriteString(fmt.Sprintf("磁盘评分:       %.2f / 100\n", overallScore.DiskScore))
-		sb.WriteString(fmt.Sprintf("网络评分:       %.2f / 100\n", overallScore.NetworkScore))
+	if overall, ok := report.Summary["overall_score"].(*models.OverallScore); ok && overall != nil {
+		sb.WriteString(fmt.Sprintf("CPU评分:        %.2f / 100\n", overall.CPUScore))
+		sb.WriteString(fmt.Sprintf("内存评分:       %.2f / 100\n", overall.MemoryScore))
+		sb.WriteString(fmt.Sprintf("磁盘评分:       %.2f / 100\n", overall.DiskScore))
+		sb.WriteString(fmt.Sprintf("网络评分:       %.2f / 100\n", overall.NetworkScore))
 		sb.WriteString("\n")
-		sb.WriteString(fmt.Sprintf("总体评分:       %.2f / 100\n", overallScore.TotalScore))
-		sb.WriteString(fmt.Sprintf("性能等级:       %s\n", overallScore.Grade))
+		sb.WriteString(fmt.Sprintf("总体评分:       %.2f / 100\n", overall.TotalScore))
+		sb.WriteString(fmt.Sprintf("性能等级:       %s\n", overall.Grade))
 	}
 
 	sb.WriteString("\n")
@@ -394,6 +394,24 @@ func (rg *ReportGenerator) formatReport(report *models.Report, overallScore *mod
 					sb.WriteString(fmt.Sprintf("  备注: %s\n", comp.Notes))
 				}
 				sb.WriteString("\n")
+			}
+		}
+
+		if securityReport, ok := report.Summary["security_report"].(*models.SecurityReport); ok && securityReport != nil {
+			sb.WriteString("=== 安全体检 ===\n\n")
+			if len(securityReport.Findings) == 0 {
+				sb.WriteString("未发现安全提示。\n\n")
+			} else {
+				for _, finding := range securityReport.Findings {
+					sb.WriteString(fmt.Sprintf("[%s][%s] %s\n", strings.ToUpper(finding.Category), strings.ToUpper(finding.Severity), finding.Title))
+					if finding.Detail != "" {
+						sb.WriteString(fmt.Sprintf("  详情: %s\n", finding.Detail))
+					}
+					if finding.Advice != "" {
+						sb.WriteString(fmt.Sprintf("  建议: %s\n", finding.Advice))
+					}
+					sb.WriteString("\n")
+				}
 			}
 		}
 	}

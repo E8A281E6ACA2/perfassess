@@ -298,6 +298,7 @@ Flags:
       --streaming            启用流媒体解锁检测功能
       --ai-services          启用 AI 服务检测功能
       --stress               启用长时间压力测试
+      --security             启用基础安全体检
       --web                  启用 Web 报告服务器（新功能）
       --port int             Web 服务器端口 (default 8080)
   -h, --help                 显示帮助信息
@@ -663,6 +664,7 @@ A: 使用 `--port` 参数指定其他端口：
 | 流媒体检测 | `./build/perfassess --streaming` |
 | AI 服务检测 | `./build/perfassess --ai-services` |
 | 压力测试 | `./build/perfassess --stress` |
+| 安全体检 | `./build/perfassess --security` |
 | 完整功能 | `./build/perfassess -b all --route-trace --streaming --web -o report.txt` |
 
 ### 参数速查表
@@ -679,6 +681,7 @@ A: 使用 `--port` 参数指定其他端口：
 | `--streaming` | - | 流媒体检测 | `--streaming` |
 | `--ai-services` | - | AI 服务检测 | `--ai-services` |
 | `--stress` | - | 长时间压力测试 | `--stress` |
+| `--security` | - | 安全体检 | `--security` |
 
 ### 检测项目选项
 

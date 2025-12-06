@@ -111,7 +111,7 @@ func (c *CLI) setupCommands() {
 		"启用路由追踪功能")
 
 	// --streaming 参数：启用流媒体检测
-	flags.Bool("streaming", false, 
+	flags.Bool("streaming", false,
 		"启用流媒体解锁检测功能")
 
 	// --ai-services 参数：启用 AI 服务检测
@@ -121,6 +121,10 @@ func (c *CLI) setupCommands() {
 	// --stress 参数：启用长时间压力测试
 	flags.Bool("stress", false,
 		"启用长时间压力测试（耗时较长）")
+
+	// --security 参数：启用安全体检
+	flags.Bool("security", false,
+		"启用安全/加固体检（端口扫描、SSH 配置等）")
 
 	// --web 参数：启用 Web 报告
 	flags.Bool("web", false,
@@ -183,6 +187,11 @@ func (c *CLI) bindFlags(cmd *cobra.Command) error {
 	// 绑定 stress 参数
 	if stress, err := flags.GetBool("stress"); err == nil {
 		c.config.EnableStressTest = stress
+	}
+
+	// 绑定 security 参数
+	if security, err := flags.GetBool("security"); err == nil {
+		c.config.EnableSecurityScan = security
 	}
 
 	// 绑定 log-level 参数
@@ -303,6 +312,9 @@ func (c *CLI) printWelcome() {
 		}
 		if c.config.EnableStressTest {
 			fmt.Println("压力测试: 已启用")
+		}
+		if c.config.EnableSecurityScan {
+			fmt.Println("安全体检: 已启用")
 		}
 		fmt.Println()
 	}

@@ -30,6 +30,9 @@ type Config struct {
 	// EnableStressTest 是否启用长时间压力测试
 	EnableStressTest bool `mapstructure:"enable_stress_test"`
 
+	// EnableSecurityScan 是否启用安全体检
+	EnableSecurityScan bool `mapstructure:"enable_security_scan"`
+
 	// RouteTraceTargets 路由追踪的目标地址列表
 	// 默认包含常用的公共服务器地址
 	RouteTraceTargets []string `mapstructure:"route_trace_targets"`
@@ -52,18 +55,19 @@ type Config struct {
 // 当配置文件不存在或某些参数未设置时使用
 func DefaultConfig() *Config {
 	return &Config{
-		Tests:             []string{"all"},
-		Output:            "",
-		Verbose:           false,
-		EnableRouteTrace:  false,
-		EnableStreaming:   false,
-		EnableAIServices:  false,
-		EnableStressTest:  false,
-		RouteTraceTargets: []string{"8.8.8.8", "1.1.1.1", "cloudflare.com"},
-		LogLevel:          "info",
-		GeoIPDBPath:       "",
-		EnableWeb:         false,
-		WebPort:           8080,
+		Tests:              []string{"all"},
+		Output:             "",
+		Verbose:            false,
+		EnableRouteTrace:   false,
+		EnableStreaming:    false,
+		EnableAIServices:   false,
+		EnableStressTest:   false,
+		EnableSecurityScan: false,
+		RouteTraceTargets:  []string{"8.8.8.8", "1.1.1.1", "cloudflare.com"},
+		LogLevel:           "info",
+		GeoIPDBPath:        "",
+		EnableWeb:          false,
+		WebPort:            8080,
 	}
 }
 
