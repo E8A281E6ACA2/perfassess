@@ -278,6 +278,19 @@ func (rg *ReportGenerator) AddSummary(report *models.Report, overallScore *model
 	report.Summary["tests_success"] = successCount
 	report.Summary["tests_failed"] = failedCount
 	report.Summary["tests_skipped"] = skippedCount
+
+	allCompleted := successCount == 4 && report.TestResults != nil &&
+		report.TestResults.CPUResult != nil && report.TestResults.CPUResult.Status == "success" &&
+		report.TestResults.MemoryResult != nil && report.TestResults.MemoryResult.Status == "success" &&
+		report.TestResults.DiskResult != nil && report.TestResults.DiskResult.Status == "success" &&
+		report.TestResults.NetworkResult != nil && report.TestResults.NetworkResult.Status == "success"
+
+	if !allCompleted {
+		note := "由于未执行所有性能测试，无法给出完整的性能结论。"
+		report.Summary["performance_note"] = note
+		report.Summary["grade"] = "未完成"
+		overallScore.Grade = "未完成"
+	}
 }
 
 // formatReport 格式化完整报告
@@ -311,6 +324,10 @@ func (rg *ReportGenerator) FormatReport(report *models.Report) string {
 		sb.WriteString("\n")
 		sb.WriteString(fmt.Sprintf("总体评分:       %.2f / 100\n", overall.TotalScore))
 		sb.WriteString(fmt.Sprintf("性能等级:       %s\n", overall.Grade))
+	}
+
+	if note, ok := report.Summary["performance_note"].(string); ok && note != "" {
+		sb.WriteString(fmt.Sprintf("说明:           %s\n", note))
 	}
 
 	sb.WriteString("\n")
