@@ -304,6 +304,8 @@ Flags:
   -h, --help                 显示帮助信息
 
 注：--tests 参数仍然支持，但推荐使用 --benchmarks
+
+提示：使用 `--route-trace` 时，请确保系统已安装 traceroute（Linux/macOS）或 tracert（Windows），否则将提示缺少依赖。
 ```
 
 ### 使用示例
@@ -660,7 +662,7 @@ A: 使用 `--port` 参数指定其他端口：
 | 完整测试 | `./build/perfassess -b all` |
 | Web 报告 | `./build/perfassess -b all --web` |
 | 保存报告 | `./build/perfassess -b all -o report.txt` |
-| 路由追踪 | `./build/perfassess --route-trace` |
+| 路由追踪 | `./build/perfassess --route-trace`（需预装 traceroute/tracert） |
 | 流媒体检测 | `./build/perfassess --streaming` |
 | AI 服务检测 | `./build/perfassess --ai-services` |
 | 压力测试 | `./build/perfassess --stress` |
