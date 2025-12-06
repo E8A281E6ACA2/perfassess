@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
-	
+
 	"performance-assessment-system/internal/models"
 )
 
@@ -58,9 +58,9 @@ func (rg *ReportGenerator) FormatSystemInfo(systemInfo *models.SystemInfo) strin
 	}
 
 	var sb strings.Builder
-	
+
 	sb.WriteString("=== 系统信息 ===\n\n")
-	
+
 	// CPU信息
 	if systemInfo.CPU != nil {
 		sb.WriteString(fmt.Sprintf("CPU型号:        %s\n", systemInfo.CPU.Model))
@@ -68,9 +68,9 @@ func (rg *ReportGenerator) FormatSystemInfo(systemInfo *models.SystemInfo) strin
 		sb.WriteString(fmt.Sprintf("CPU线程数:      %d 线程\n", systemInfo.CPU.Threads))
 		sb.WriteString(fmt.Sprintf("CPU频率:        %.2f MHz\n", systemInfo.CPU.FrequencyMHz))
 	}
-	
+
 	sb.WriteString("\n")
-	
+
 	// 内存信息
 	if systemInfo.Memory != nil {
 		sb.WriteString(fmt.Sprintf("内存总量:       %d MB\n", systemInfo.Memory.TotalMB))
@@ -79,9 +79,9 @@ func (rg *ReportGenerator) FormatSystemInfo(systemInfo *models.SystemInfo) strin
 			sb.WriteString(fmt.Sprintf("内存类型:       %s\n", systemInfo.Memory.MemoryType))
 		}
 	}
-	
+
 	sb.WriteString("\n")
-	
+
 	// 磁盘信息
 	if systemInfo.Disk != nil {
 		sb.WriteString(fmt.Sprintf("磁盘总量:       %.2f GB\n", systemInfo.Disk.TotalGB))
@@ -90,16 +90,16 @@ func (rg *ReportGenerator) FormatSystemInfo(systemInfo *models.SystemInfo) strin
 			sb.WriteString(fmt.Sprintf("磁盘类型:       %s\n", systemInfo.Disk.DiskType))
 		}
 	}
-	
+
 	sb.WriteString("\n")
-	
+
 	// 操作系统信息
 	if systemInfo.OS != nil {
 		sb.WriteString(fmt.Sprintf("操作系统:       %s\n", systemInfo.OS.Name))
 		sb.WriteString(fmt.Sprintf("系统版本:       %s\n", systemInfo.OS.Version))
 		sb.WriteString(fmt.Sprintf("系统架构:       %s\n", systemInfo.OS.Architecture))
 	}
-	
+
 	// 虚拟化信息
 	if systemInfo.Virtualization != nil {
 		sb.WriteString("\n")
@@ -112,21 +112,21 @@ func (rg *ReportGenerator) FormatSystemInfo(systemInfo *models.SystemInfo) strin
 			sb.WriteString("虚拟化类型:     物理机\n")
 		}
 	}
-	
+
 	// IP信息
 	if systemInfo.IPInfo != nil {
 		sb.WriteString("\n")
 		sb.WriteString(fmt.Sprintf("公网IP:         %s\n", systemInfo.IPInfo.PublicIP))
 		if systemInfo.IPInfo.GeoLocation != nil {
-			sb.WriteString(fmt.Sprintf("地理位置:       %s, %s\n", 
-				systemInfo.IPInfo.GeoLocation.Country, 
+			sb.WriteString(fmt.Sprintf("地理位置:       %s, %s\n",
+				systemInfo.IPInfo.GeoLocation.Country,
 				systemInfo.IPInfo.GeoLocation.City))
 		}
 		if systemInfo.IPInfo.ISP != "" {
 			sb.WriteString(fmt.Sprintf("ISP:            %s\n", systemInfo.IPInfo.ISP))
 		}
 	}
-	
+
 	return sb.String()
 }
 
@@ -138,41 +138,41 @@ func (rg *ReportGenerator) FormatTestResults(testResults *models.TestResults) st
 	}
 
 	var sb strings.Builder
-	
+
 	sb.WriteString("=== 性能测试结果 ===\n\n")
-	
+
 	// CPU测试结果
 	sb.WriteString(rg.formatSingleTestResult("CPU性能测试", testResults.CPUResult))
-	
+
 	// 内存测试结果
 	sb.WriteString(rg.formatSingleTestResult("内存性能测试", testResults.MemoryResult))
-	
+
 	// 磁盘测试结果
 	sb.WriteString(rg.formatSingleTestResult("磁盘性能测试", testResults.DiskResult))
-	
+
 	// 网络测试结果
 	sb.WriteString(rg.formatSingleTestResult("网络性能测试", testResults.NetworkResult))
-	
+
 	return sb.String()
 }
 
 // formatSingleTestResult 格式化单个测试结果
 func (rg *ReportGenerator) formatSingleTestResult(testName string, result *models.TestResult) string {
 	var sb strings.Builder
-	
+
 	sb.WriteString(fmt.Sprintf("--- %s ---\n", testName))
-	
+
 	if result == nil {
 		sb.WriteString("状态: 未执行\n\n")
 		return sb.String()
 	}
-	
+
 	sb.WriteString(fmt.Sprintf("状态:           %s\n", result.Status))
 	sb.WriteString(fmt.Sprintf("耗时:           %.2f 秒\n", result.DurationSeconds))
-	
+
 	if result.Status == "success" && result.Metrics != nil {
 		sb.WriteString("测试指标:\n")
-		
+
 		// 根据不同测试类型格式化指标
 		switch result.TestName {
 		case "cpu", "CPU性能测试":
@@ -188,28 +188,34 @@ func (rg *ReportGenerator) formatSingleTestResult(testName string, result *model
 			if cores, ok := result.Metrics["cpu_cores"].(int); ok {
 				sb.WriteString(fmt.Sprintf("  CPU核心数:    %d\n", cores))
 			}
-			
-		case "memory":
+
+		case "memory", "内存性能测试":
 			if speed, ok := result.Metrics["read_speed_mbps"].(float64); ok {
 				sb.WriteString(fmt.Sprintf("  读取速度:     %.2f MB/s\n", speed))
 			}
 			if speed, ok := result.Metrics["write_speed_mbps"].(float64); ok {
 				sb.WriteString(fmt.Sprintf("  写入速度:     %.2f MB/s\n", speed))
 			}
-			
-		case "disk":
+
+		case "disk", "磁盘性能测试":
 			if speed, ok := result.Metrics["sequential_read_mbps"].(float64); ok {
+				sb.WriteString(fmt.Sprintf("  顺序读取:     %.2f MB/s\n", speed))
+			} else if speed, ok := result.Metrics["read_speed_mbps"].(float64); ok {
 				sb.WriteString(fmt.Sprintf("  顺序读取:     %.2f MB/s\n", speed))
 			}
 			if speed, ok := result.Metrics["sequential_write_mbps"].(float64); ok {
+				sb.WriteString(fmt.Sprintf("  顺序写入:     %.2f MB/s\n", speed))
+			} else if speed, ok := result.Metrics["write_speed_mbps"].(float64); ok {
 				sb.WriteString(fmt.Sprintf("  顺序写入:     %.2f MB/s\n", speed))
 			}
 			if iops, ok := result.Metrics["random_iops"].(int); ok {
 				sb.WriteString(fmt.Sprintf("  随机IOPS:     %d\n", iops))
 			}
-			
-		case "network":
+
+		case "network", "网络性能测试":
 			if latency, ok := result.Metrics["average_latency_ms"].(float64); ok {
+				sb.WriteString(fmt.Sprintf("  平均延迟:     %.2f ms\n", latency))
+			} else if latency, ok := result.Metrics["latency_ms"].(float64); ok {
 				sb.WriteString(fmt.Sprintf("  平均延迟:     %.2f ms\n", latency))
 			}
 			if speed, ok := result.Metrics["download_speed_mbps"].(float64); ok {
@@ -224,7 +230,7 @@ func (rg *ReportGenerator) formatSingleTestResult(testName string, result *model
 	} else if result.Status == "skipped" && result.ErrorMessage != "" {
 		sb.WriteString(fmt.Sprintf("跳过原因:       %s\n", result.ErrorMessage))
 	}
-	
+
 	sb.WriteString("\n")
 	return sb.String()
 }
@@ -235,7 +241,7 @@ func (rg *ReportGenerator) AddSummary(report *models.Report, overallScore *model
 	if report == nil || overallScore == nil {
 		return
 	}
-	
+
 	report.Summary["overall_score"] = overallScore
 	report.Summary["total_score"] = overallScore.TotalScore
 	report.Summary["grade"] = overallScore.Grade
@@ -243,12 +249,12 @@ func (rg *ReportGenerator) AddSummary(report *models.Report, overallScore *model
 	report.Summary["memory_score"] = overallScore.MemoryScore
 	report.Summary["disk_score"] = overallScore.DiskScore
 	report.Summary["network_score"] = overallScore.NetworkScore
-	
+
 	// 统计测试执行情况
 	successCount := 0
 	failedCount := 0
 	skippedCount := 0
-	
+
 	if report.TestResults != nil {
 		for _, result := range []*models.TestResult{
 			report.TestResults.CPUResult,
@@ -268,7 +274,7 @@ func (rg *ReportGenerator) AddSummary(report *models.Report, overallScore *model
 			}
 		}
 	}
-	
+
 	report.Summary["tests_success"] = successCount
 	report.Summary["tests_failed"] = failedCount
 	report.Summary["tests_skipped"] = skippedCount
@@ -277,24 +283,24 @@ func (rg *ReportGenerator) AddSummary(report *models.Report, overallScore *model
 // formatReport 格式化完整报告
 func (rg *ReportGenerator) formatReport(report *models.Report, overallScore *models.OverallScore) string {
 	var sb strings.Builder
-	
+
 	// 报告标题
 	sb.WriteString("╔════════════════════════════════════════════════════════════════╗\n")
 	sb.WriteString("║          高性能多终端自动化性能评估系统 - 评估报告            ║\n")
 	sb.WriteString("╚════════════════════════════════════════════════════════════════╝\n\n")
-	
+
 	// 会话信息
 	sb.WriteString(fmt.Sprintf("会话ID:         %s\n", report.SessionID))
 	sb.WriteString(fmt.Sprintf("报告时间:       %s\n\n", report.Timestamp.Format("2006-01-02 15:04:05")))
-	
+
 	// 系统信息
 	sb.WriteString(rg.FormatSystemInfo(report.SystemInfo))
 	sb.WriteString("\n")
-	
+
 	// 测试结果
 	sb.WriteString(rg.FormatTestResults(report.TestResults))
 	sb.WriteString("\n")
-	
+
 	// 综合评分
 	sb.WriteString("=== 综合性能评分 ===\n\n")
 	if overallScore != nil {
@@ -306,16 +312,16 @@ func (rg *ReportGenerator) formatReport(report *models.Report, overallScore *mod
 		sb.WriteString(fmt.Sprintf("总体评分:       %.2f / 100\n", overallScore.TotalScore))
 		sb.WriteString(fmt.Sprintf("性能等级:       %s\n", overallScore.Grade))
 	}
-	
+
 	sb.WriteString("\n")
-	
+
 	// 测试统计
 	if report.Summary != nil {
 		sb.WriteString("=== 测试统计 ===\n\n")
 		sb.WriteString(fmt.Sprintf("成功测试:       %d\n", report.Summary["tests_success"]))
 		sb.WriteString(fmt.Sprintf("失败测试:       %d\n", report.Summary["tests_failed"]))
 		sb.WriteString(fmt.Sprintf("跳过测试:       %d\n", report.Summary["tests_skipped"]))
-		
+
 		// 路由追踪结果
 		if routeResults, ok := report.Summary["route_trace_results"].([]*models.TraceResult); ok && len(routeResults) > 0 {
 			sb.WriteString("\n=== 路由追踪结果 ===\n\n")
@@ -336,7 +342,7 @@ func (rg *ReportGenerator) formatReport(report *models.Report, overallScore *mod
 				sb.WriteString("\n")
 			}
 		}
-		
+
 		// 流媒体检测结果
 		if streamingResults, ok := report.Summary["streaming_results"].(map[string]*models.StreamingResult); ok && len(streamingResults) > 0 {
 			sb.WriteString("=== 流媒体解锁检测 ===\n\n")
@@ -353,10 +359,10 @@ func (rg *ReportGenerator) formatReport(report *models.Report, overallScore *mod
 			sb.WriteString("\n")
 		}
 	}
-	
+
 	sb.WriteString("════════════════════════════════════════════════════════════════\n")
 	sb.WriteString("                         报告结束\n")
 	sb.WriteString("════════════════════════════════════════════════════════════════\n")
-	
+
 	return sb.String()
 }
