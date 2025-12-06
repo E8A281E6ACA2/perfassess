@@ -6,7 +6,6 @@ import (
 	"io"
 	"net"
 	"net/http"
-	"strings"
 	"time"
 
 	"performance-assessment-system/internal/models"
@@ -18,9 +17,8 @@ import (
 // 测试网络延迟、下载和上传速度
 type NetworkTest struct {
 	*BaseTest
-	httpClient          *http.Client
-	testHosts           []string // 测试主机列表
-	selectedDownloadURL string
+	httpClient *http.Client
+	testHosts  []string // 测试主机列表
 }
 
 // NewNetworkTest 创建网络性能测试
@@ -40,7 +38,6 @@ func NewNetworkTest(logger *logger.Logger) *NetworkTest {
 			"1.1.1.1:53",         // Cloudflare DNS
 			"114.114.114.114:53", // 114 DNS
 		},
-		selectedDownloadURL: "",
 	}
 }
 
@@ -58,9 +55,6 @@ func (nt *NetworkTest) Setup() error {
 	}
 
 	nt.GetLogger().Info("网络连接正常")
-
-	nt.selectedDownloadURL = nt.selectDownloadServer()
-	nt.GetLogger().Info(fmt.Sprintf("选择下载节点: %s", nt.selectedDownloadURL))
 	return nil
 }
 
@@ -196,10 +190,7 @@ func (nt *NetworkTest) pingHost(host string) (time.Duration, error) {
 //   - float64: 下载速度（Mbps）
 //   - error: 测试错误
 func (nt *NetworkTest) TestDownloadSpeed() (float64, error) {
-	testURL := nt.selectedDownloadURL
-	if testURL == "" {
-		testURL = defaultDownloadURL()
-	}
+	testURL := "http://speedtest.tele2.net/1GB.zip"
 
 	startTime := time.Now()
 
@@ -292,79 +283,4 @@ func (nt *NetworkTest) calculateScore(latency, downloadSpeed, uploadSpeed float6
 	totalScore := latencyScore*0.4 + downloadScore*0.4 + uploadScore*0.2
 
 	return totalScore
-}
-
-// selectDownloadServer 根据地理位置选择下载节点
-func (nt *NetworkTest) selectDownloadServer() string {
-	countryCode, err := nt.detectCountryCode()
-	if err != nil || countryCode == "" {
-		if err != nil {
-			nt.GetLogger().Warn(fmt.Sprintf("获取国家代码失败: %v，将使用默认下载节点", err))
-		}
-		return defaultDownloadURL()
-	}
-
-	region := getRegionForCountry(countryCode)
-	if url, ok := regionDownloadServers[region]; ok {
-		return url
-	}
-	return defaultDownloadURL()
-}
-
-// detectCountryCode 调用公共接口获取国家代码
-func (nt *NetworkTest) detectCountryCode() (string, error) {
-	req, err := http.NewRequest("GET", "https://ipapi.co/country/", nil)
-	if err != nil {
-		return "", err
-	}
-	req.Header.Set("User-Agent", "performance-assessment-system")
-
-	resp, err := nt.httpClient.Do(req)
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("获取国家代码失败，状态码: %d", resp.StatusCode)
-	}
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", err
-	}
-
-	return strings.TrimSpace(string(body)), nil
-}
-
-func defaultDownloadURL() string {
-	return regionDownloadServers["global"]
-}
-
-func getRegionForCountry(country string) string {
-	country = strings.ToUpper(country)
-	if region, ok := countryRegionMap[country]; ok {
-		return region
-	}
-	return "global"
-}
-
-var regionDownloadServers = map[string]string{
-	"global": "http://speedtest.tele2.net/1GB.zip",
-	"eu":     "http://speedtest.tele2.net/1GB.zip",
-	"na":     "http://speedtest.nyc1.linode.com/1000MB-nyc1.bin",
-	"sa":     "http://speedtest.sao1.linode.com/1000MB-sao1.bin",
-	"as":     "http://speedtest.tokyo.linode.com/1000MB-tokyo.bin",
-	"oc":     "http://speedtest.syd1.linode.com/1000MB-syd1.bin",
-}
-
-var countryRegionMap = map[string]string{
-	"US": "na", "CA": "na", "MX": "na",
-	"BR": "sa", "AR": "sa", "CL": "sa", "PE": "sa", "CO": "sa",
-	"GB": "eu", "DE": "eu", "FR": "eu", "NL": "eu", "SE": "eu", "NO": "eu", "FI": "eu",
-	"ES": "eu", "PT": "eu", "IT": "eu", "PL": "eu", "CZ": "eu", "AT": "eu", "CH": "eu",
-	"BE": "eu", "DK": "eu", "IE": "eu", "HU": "eu", "RO": "eu", "BG": "eu",
-	"JP": "as", "CN": "as", "HK": "as", "MO": "as", "TW": "as", "KR": "as",
-	"SG": "as", "MY": "as", "TH": "as", "VN": "as", "PH": "as", "ID": "as", "IN": "as",
-	"AU": "oc", "NZ": "oc",
 }
