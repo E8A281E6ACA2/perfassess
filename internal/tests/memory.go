@@ -3,6 +3,9 @@ package tests
 
 import (
 	"fmt"
+	"os"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/shirou/gopsutil/v3/mem"
@@ -22,6 +25,7 @@ type MemoryTest struct {
 // NewMemoryTest 创建内存性能测试
 // 参数:
 //   - logger: 日志记录器
+//
 // 返回:
 //   - *MemoryTest: 内存测试实例
 func NewMemoryTest(logger *logger.Logger) *MemoryTest {
@@ -41,10 +45,10 @@ func (mt *MemoryTest) Setup() error {
 	if err != nil {
 		return err
 	}
-	
+
 	mt.testSize = testSize
 	mt.GetLogger().Info(fmt.Sprintf("内存测试大小: %d MB", testSize))
-	
+
 	return nil
 }
 
@@ -57,9 +61,9 @@ func (mt *MemoryTest) Execute() (*models.TestResult, error) {
 	defer func() {
 		mt.MarkEnd("success")
 	}()
-	
+
 	metrics := make(map[string]interface{})
-	
+
 	// 测试顺序读取速度
 	mt.GetLogger().Info("开始内存顺序读取测试...")
 	readSpeed, err := mt.TestSequentialRead(mt.testSize)
@@ -68,7 +72,7 @@ func (mt *MemoryTest) Execute() (*models.TestResult, error) {
 	}
 	metrics["read_speed_mbps"] = readSpeed
 	mt.GetLogger().Info(fmt.Sprintf("读取速度: %.2f MB/s", readSpeed))
-	
+
 	// 测试顺序写入速度
 	mt.GetLogger().Info("开始内存顺序写入测试...")
 	writeSpeed, err := mt.TestSequentialWrite(mt.testSize)
@@ -77,19 +81,19 @@ func (mt *MemoryTest) Execute() (*models.TestResult, error) {
 	}
 	metrics["write_speed_mbps"] = writeSpeed
 	mt.GetLogger().Info(fmt.Sprintf("写入速度: %.2f MB/s", writeSpeed))
-	
+
 	// 计算总体评分
 	score := mt.calculateScore(readSpeed, writeSpeed)
 	metrics["score"] = score
 	metrics["test_size_mb"] = mt.testSize
-	
+
 	mt.GetLogger().Info(fmt.Sprintf("内存测试完成，评分: %.2f", score))
-	
+
 	return mt.CreateResult("success", metrics, ""), nil
 }
 
 // GetSafeTestSize 获取安全的测试大小
-// 限制为可用内存的80%，最小512MB
+// 限制为可用内存的保守比例（默认40%，上限1GB），最小512MB
 // 返回:
 //   - int: 测试大小（MB）
 //   - error: 获取错误
@@ -99,10 +103,15 @@ func (mt *MemoryTest) GetSafeTestSize() (int, error) {
 	if err != nil {
 		return 0, fmt.Errorf("获取内存信息失败: %w", err)
 	}
-	
+
 	// 转换为MB
 	availableMB := int(vmStat.Available / 1024 / 1024)
-	
+
+	// 如果处于容器环境，使用容器限制来估算可用内存
+	if limitMB := getContainerMemoryLimitMB(); limitMB > 0 && limitMB < availableMB {
+		availableMB = limitMB
+	}
+
 	// 检查最小内存要求（512MB）
 	if availableMB < 512 {
 		return 0, utils.WrapError(
@@ -110,24 +119,40 @@ func (mt *MemoryTest) GetSafeTestSize() (int, error) {
 			fmt.Sprintf("可用内存不足: %d MB < 512 MB", availableMB),
 		)
 	}
-	
-	// 使用可用内存的80%，但不超过2GB
-	testSize := int(float64(availableMB) * 0.8)
-	if testSize > 2048 {
-		testSize = 2048
+
+	// 为系统其他进程和 Go runtime 保留一定的缓冲区
+	reserveMB := int(float64(availableMB) * 0.2)
+	if reserveMB < 256 {
+		reserveMB = 256
 	}
-	
+	if availableMB-reserveMB < 256 {
+		return 0, utils.WrapError(
+			utils.ErrInsufficientMemory,
+			fmt.Sprintf("当前可用于测试的内存不足: 仅 %d MB", availableMB-reserveMB),
+		)
+	}
+
+	// 使用更保守的比例避免 OOM，并设置绝对上线
+	testSize := int(float64(availableMB) * 0.4)
+	if testSize > 1024 {
+		testSize = 1024
+	}
+	if maxUsable := availableMB - reserveMB; testSize > maxUsable {
+		testSize = maxUsable
+	}
+
 	// 至少使用256MB进行测试
 	if testSize < 256 {
 		testSize = 256
 	}
-	
+
 	return testSize, nil
 }
 
 // TestSequentialRead 测试顺序读取速度
 // 参数:
 //   - sizeMB: 测试数据大小（MB）
+//
 // 返回:
 //   - float64: 读取速度（MB/s）
 //   - error: 测试错误
@@ -135,37 +160,38 @@ func (mt *MemoryTest) TestSequentialRead(sizeMB int) (float64, error) {
 	// 分配内存
 	size := sizeMB * 1024 * 1024 // 转换为字节
 	data := make([]byte, size)
-	
+
 	// 先写入数据
 	for i := 0; i < size; i++ {
 		data[i] = byte(i % 256)
 	}
-	
+
 	// 测试读取速度
 	startTime := time.Now()
 	var sum int64
-	
+
 	// 顺序读取
 	for i := 0; i < size; i++ {
 		sum += int64(data[i])
 	}
-	
+
 	duration := time.Since(startTime)
-	
+
 	// 计算速度（MB/s）
 	speed := float64(sizeMB) / duration.Seconds()
-	
+
 	// 防止编译器优化掉sum变量
 	if sum < 0 {
 		return 0, fmt.Errorf("读取测试异常")
 	}
-	
+
 	return speed, nil
 }
 
 // TestSequentialWrite 测试顺序写入速度
 // 参数:
 //   - sizeMB: 测试数据大小（MB）
+//
 // 返回:
 //   - float64: 写入速度（MB/s）
 //   - error: 测试错误
@@ -173,20 +199,20 @@ func (mt *MemoryTest) TestSequentialWrite(sizeMB int) (float64, error) {
 	// 分配内存
 	size := sizeMB * 1024 * 1024 // 转换为字节
 	data := make([]byte, size)
-	
+
 	// 测试写入速度
 	startTime := time.Now()
-	
+
 	// 顺序写入
 	for i := 0; i < size; i++ {
 		data[i] = byte(i % 256)
 	}
-	
+
 	duration := time.Since(startTime)
-	
+
 	// 计算速度（MB/s）
 	speed := float64(sizeMB) / duration.Seconds()
-	
+
 	return speed, nil
 }
 
@@ -194,6 +220,7 @@ func (mt *MemoryTest) TestSequentialWrite(sizeMB int) (float64, error) {
 // 参数:
 //   - readSpeed: 读取速度（MB/s）
 //   - writeSpeed: 写入速度（MB/s）
+//
 // 返回:
 //   - float64: 评分（0-100）
 func (mt *MemoryTest) calculateScore(readSpeed, writeSpeed float64) float64 {
@@ -202,11 +229,11 @@ func (mt *MemoryTest) calculateScore(readSpeed, writeSpeed float64) float64 {
 	// 但实际测试中由于各种开销，通常在5000-15000 MB/s
 	const baseReadSpeed = 10000.0
 	const baseWriteSpeed = 8000.0
-	
+
 	// 计算读写评分
 	readScore := (readSpeed / baseReadSpeed) * 100
 	writeScore := (writeSpeed / baseWriteSpeed) * 100
-	
+
 	// 限制评分范围
 	if readScore > 100 {
 		readScore = 100
@@ -214,9 +241,41 @@ func (mt *MemoryTest) calculateScore(readSpeed, writeSpeed float64) float64 {
 	if writeScore > 100 {
 		writeScore = 100
 	}
-	
+
 	// 读写各占50%
 	totalScore := (readScore + writeScore) / 2
-	
+
 	return totalScore
+}
+
+// getContainerMemoryLimitMB 读取容器内存限制（如果存在）
+func getContainerMemoryLimitMB() int {
+	cgroupPaths := []string{
+		"/sys/fs/cgroup/memory.max",                   // cgroup v2
+		"/sys/fs/cgroup/memory/memory.limit_in_bytes", // cgroup v1
+	}
+
+	for _, path := range cgroupPaths {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			continue
+		}
+
+		value := strings.TrimSpace(string(data))
+		if value == "" || value == "max" {
+			continue
+		}
+
+		limitBytes, err := strconv.ParseUint(value, 10, 64)
+		if err != nil || limitBytes == 0 {
+			continue
+		}
+
+		limitMB := int(limitBytes / 1024 / 1024)
+		if limitMB > 0 {
+			return limitMB
+		}
+	}
+
+	return 0
 }
