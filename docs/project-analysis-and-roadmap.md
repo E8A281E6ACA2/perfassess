@@ -217,6 +217,22 @@
 4. 重构 CPU、内存、磁盘基准逻辑
 5. 为评分和报告增加测试覆盖
 
+当前正在推进的下一阶段方向：
+
+- 将 network 结果从通用 `Metrics map` 逐步收敛到 typed model
+- 保留对现有报告层的兼容映射，先完成“结构化上游，兼容下游”
+- 后续为接入 `iperf3` 等主流网络基准预留统一入口
+
+当前已落地的网络后端边界：
+
+- `NetworkMetrics` 已作为网络测试的 typed model
+- `NetworkBenchmarkBackend` 已作为网络评测后端接口
+- `BuiltinNetworkBackend` 继续承载当前内置测试逻辑
+- `Iperf3NetworkBackend` 已具备最小命令执行与 JSON 结果解析骨架
+- 配置层已预留 `network_backend` 与 `iperf3_server`
+- CLI 已预留 `--network-backend` 与 `--iperf3-server`
+- 后续真正启用 `iperf3` 前，需要补充环境探测、真实服务端验证、错误提示和报告展示
+
 ## 文档维护约定
 
 后续如有以下变化，应同步更新本文档：
