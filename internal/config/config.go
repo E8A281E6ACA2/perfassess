@@ -43,6 +43,9 @@ type Config struct {
 	// Iperf3Server iperf3 服务端地址，仅在 network_backend=iperf3 时使用
 	Iperf3Server string `mapstructure:"iperf3_server"`
 
+	// DiskBackend 磁盘测试后端，可选值: builtin, fio
+	DiskBackend string `mapstructure:"disk_backend"`
+
 	// LogLevel 日志级别（debug/info/warn/error）
 	LogLevel string `mapstructure:"log_level"`
 
@@ -72,6 +75,7 @@ func DefaultConfig() *Config {
 		RouteTraceTargets:  []string{"8.8.8.8", "1.1.1.1", "cloudflare.com"},
 		NetworkBackend:     "builtin",
 		Iperf3Server:       "",
+		DiskBackend:        "builtin",
 		LogLevel:           "info",
 		GeoIPDBPath:        "",
 		EnableWeb:          false,
@@ -123,6 +127,17 @@ func (c *Config) Validate() error {
 		return &ConfigError{
 			Field:   "network_backend",
 			Message: "无效的网络测试后端: " + c.NetworkBackend,
+		}
+	}
+
+	validDiskBackends := map[string]bool{
+		"builtin": true,
+		"fio":     true,
+	}
+	if !validDiskBackends[c.DiskBackend] {
+		return &ConfigError{
+			Field:   "disk_backend",
+			Message: "无效的磁盘测试后端: " + c.DiskBackend,
 		}
 	}
 

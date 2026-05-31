@@ -136,6 +136,10 @@ func (c *CLI) setupCommands() {
 	flags.String("iperf3-server", "",
 		"iperf3 服务端地址（仅 network-backend=iperf3 时使用）")
 
+	// --disk-backend 参数：选择磁盘测试后端
+	flags.String("disk-backend", "builtin",
+		"磁盘测试后端 (builtin,fio)")
+
 	// --web 参数：启用 Web 报告
 	flags.Bool("web", false,
 		"启用 Web 报告服务器")
@@ -244,6 +248,11 @@ func (c *CLI) bindFlags(cmd *cobra.Command) error {
 		c.config.Iperf3Server = iperf3Server
 	}
 
+	// 绑定 disk-backend 参数
+	if diskBackend, err := flags.GetString("disk-backend"); err == nil {
+		c.config.DiskBackend = diskBackend
+	}
+
 	// 绑定 log-level 参数
 	if logLevel, err := flags.GetString("log-level"); err == nil {
 		c.config.LogLevel = logLevel
@@ -335,6 +344,22 @@ func (c *CLI) validateFlags() error {
 		return fmt.Errorf("无效的日志级别: %s\n有效的日志级别: debug, info, warn, error", c.config.LogLevel)
 	}
 
+	validDiskBackends := map[string]bool{
+		"builtin": true,
+		"fio":     true,
+	}
+	if !validDiskBackends[c.config.DiskBackend] {
+		return fmt.Errorf("无效的磁盘测试后端: %s\n有效的磁盘测试后端: builtin, fio", c.config.DiskBackend)
+	}
+
+	validNetworkBackends := map[string]bool{
+		"builtin": true,
+		"iperf3":  true,
+	}
+	if !validNetworkBackends[c.config.NetworkBackend] {
+		return fmt.Errorf("无效的网络测试后端: %s\n有效的网络测试后端: builtin, iperf3", c.config.NetworkBackend)
+	}
+
 	return nil
 }
 
@@ -351,6 +376,8 @@ func (c *CLI) printWelcome() {
 		if c.config.Output != "" {
 			fmt.Printf("输出文件: %s\n", c.config.Output)
 		}
+		fmt.Printf("磁盘测试后端: %s\n", c.config.DiskBackend)
+		fmt.Printf("网络测试后端: %s\n", c.config.NetworkBackend)
 		if c.config.EnableRouteTrace {
 			fmt.Println("路由追踪: 已启用")
 		}

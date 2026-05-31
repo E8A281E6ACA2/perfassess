@@ -17,6 +17,7 @@ type DependencyStatus struct {
 func CheckDependencies() []DependencyStatus {
 	deps := []DependencyStatus{
 		checkDependency("iperf3", "iperf3 网络吞吐测试", iperf3InstallHint()),
+		checkDependency("fio", "fio 磁盘基准测试", fioInstallHint()),
 	}
 
 	routeBin := "traceroute"
@@ -59,6 +60,19 @@ func iperf3InstallHint() string {
 		return "Windows: 请通过 winget/choco 或 iperf.fr 安装 iperf3，并确认 PATH 可访问"
 	default:
 		return "请安装 iperf3，并确认 PATH 可访问"
+	}
+}
+
+func fioInstallHint() string {
+	switch runtime.GOOS {
+	case "linux":
+		return "Ubuntu/Debian: sudo apt install fio；RHEL/CentOS: sudo yum install fio"
+	case "darwin":
+		return "macOS: brew install fio"
+	case "windows":
+		return "Windows: 请通过 winget/choco 或 fio 官方发行包安装 fio，并确认 PATH 可访问"
+	default:
+		return "请安装 fio，并确认 PATH 可访问"
 	}
 }
 

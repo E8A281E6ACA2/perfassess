@@ -159,6 +159,13 @@ func getDiskRandomIOPS(result *models.TestResult) (int, bool) {
 	return metricInt(result.Metrics, "random_iops")
 }
 
+func getDiskBackend(result *models.TestResult) string {
+	if backend, ok := metricString(result.Metrics, "backend"); ok {
+		return backend
+	}
+	return ""
+}
+
 func getNetworkLatency(result *models.TestResult) (float64, bool) {
 	if latency, ok := metricFloat64(result.Metrics, "average_latency_ms"); ok {
 		return latency, true

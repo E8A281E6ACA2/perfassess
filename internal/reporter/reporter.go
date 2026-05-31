@@ -201,6 +201,9 @@ func (rg *ReportGenerator) formatSingleTestResult(testName string, result *model
 			}
 
 		case "disk", "磁盘性能测试":
+			if backend := getDiskBackend(result); backend != "" {
+				sb.WriteString(fmt.Sprintf("  测试后端:     %s\n", backend))
+			}
 			if speed, ok := getDiskReadSpeed(result); ok {
 				sb.WriteString(fmt.Sprintf("  顺序读取:     %.2f MB/s\n", speed))
 			}

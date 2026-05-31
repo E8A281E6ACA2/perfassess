@@ -298,7 +298,7 @@ func (ac *AssessmentController) runPerformanceTests() (*models.TestResults, erro
 		case "memory":
 			testList = append(testList, tests.NewMemoryTest(ac.logger))
 		case "disk":
-			testList = append(testList, tests.NewDiskTest(ac.logger))
+			testList = append(testList, ac.newDiskTest())
 		case "network":
 			testList = append(testList, ac.newNetworkTest())
 		}
@@ -311,6 +311,14 @@ func (ac *AssessmentController) runPerformanceTests() (*models.TestResults, erro
 	}
 
 	return results, nil
+}
+
+func (ac *AssessmentController) newDiskTest() tests.PerformanceTest {
+	if ac.config.DiskBackend == models.DiskBackendFio {
+		return tests.NewDiskTestWithBackend(ac.logger, tests.NewFioDiskBackend(tests.FioConfig{}))
+	}
+
+	return tests.NewDiskTest(ac.logger)
 }
 
 func (ac *AssessmentController) newNetworkTest() tests.PerformanceTest {

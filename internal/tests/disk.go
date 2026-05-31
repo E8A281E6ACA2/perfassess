@@ -22,6 +22,54 @@ type DiskTest struct {
 	*BaseTest
 	testFilePath string // 测试文件路径
 	testDir      string // 测试目录
+	backend      DiskBenchmarkBackend
+}
+
+type DiskBenchmarkBackend interface {
+	Name() string
+	SequentialReadSource() string
+	SequentialWriteSource() string
+	RandomIOPSSource() string
+	MeasureSequentialWrite(fileSizeMB int) (float64, error)
+	MeasureSequentialRead(fileSizeMB int) (float64, error)
+	MeasureRandomIOPS(durationSec int) (int, error)
+	Cleanup() error
+}
+
+type BuiltinDiskBackend struct {
+	test *DiskTest
+}
+
+func (b *BuiltinDiskBackend) Name() string {
+	return models.DiskBackendBuiltin
+}
+
+func (b *BuiltinDiskBackend) SequentialReadSource() string {
+	return models.DiskSourceBuiltinSequential
+}
+
+func (b *BuiltinDiskBackend) SequentialWriteSource() string {
+	return models.DiskSourceBuiltinSequential
+}
+
+func (b *BuiltinDiskBackend) RandomIOPSSource() string {
+	return models.DiskSourceBuiltinRandom
+}
+
+func (b *BuiltinDiskBackend) MeasureSequentialWrite(fileSizeMB int) (float64, error) {
+	return b.test.TestSequentialWrite(fileSizeMB)
+}
+
+func (b *BuiltinDiskBackend) MeasureSequentialRead(fileSizeMB int) (float64, error) {
+	return b.test.TestSequentialRead(fileSizeMB)
+}
+
+func (b *BuiltinDiskBackend) MeasureRandomIOPS(durationSec int) (int, error) {
+	return b.test.TestRandomIOPS(durationSec)
+}
+
+func (b *BuiltinDiskBackend) Cleanup() error {
+	return b.test.CleanupTestFiles()
 }
 
 // NewDiskTest 创建磁盘性能测试
@@ -31,17 +79,28 @@ type DiskTest struct {
 // 返回:
 //   - *DiskTest: 磁盘测试实例
 func NewDiskTest(logger *logger.Logger) *DiskTest {
+	return NewDiskTestWithBackend(logger, nil)
+}
+
+func NewDiskTestWithBackend(logger *logger.Logger, backend DiskBenchmarkBackend) *DiskTest {
 	// 根据操作系统选择测试目录
 	testDir := "/tmp"
 	if runtime.GOOS == "windows" {
 		testDir = os.TempDir()
 	}
 
-	return &DiskTest{
+	test := &DiskTest{
 		BaseTest:     NewBaseTest("磁盘性能测试", 60*time.Second, logger),
 		testDir:      testDir,
 		testFilePath: filepath.Join(testDir, "perf_test_disk.dat"),
 	}
+	if backend != nil {
+		test.backend = backend
+	} else {
+		test.backend = &BuiltinDiskBackend{test: test}
+	}
+
+	return test
 }
 
 // Setup 测试前的准备工作
@@ -82,34 +141,38 @@ func (dt *DiskTest) Execute() (*models.TestResult, error) {
 	}()
 
 	metrics := make(map[string]interface{})
+	metrics["backend"] = dt.backend.Name()
 
 	// 测试顺序写入速度
 	dt.GetLogger().Info("开始磁盘顺序写入测试...")
-	writeSpeed, err := dt.TestSequentialWrite(100) // 100MB
+	writeSpeed, err := dt.backend.MeasureSequentialWrite(100) // 100MB
 	if err != nil {
 		return dt.CreateResult("failed", nil, fmt.Sprintf("写入测试失败: %v", err)), err
 	}
 	metrics["write_speed_mbps"] = writeSpeed
 	metrics["sequential_write_mbps"] = writeSpeed
+	metrics["sequential_write_source"] = dt.backend.SequentialWriteSource()
 	dt.GetLogger().Info(fmt.Sprintf("写入速度: %.2f MB/s", writeSpeed))
 
 	// 测试顺序读取速度
 	dt.GetLogger().Info("开始磁盘顺序读取测试...")
-	readSpeed, err := dt.TestSequentialRead(100) // 100MB
+	readSpeed, err := dt.backend.MeasureSequentialRead(100) // 100MB
 	if err != nil {
 		return dt.CreateResult("failed", nil, fmt.Sprintf("读取测试失败: %v", err)), err
 	}
 	metrics["read_speed_mbps"] = readSpeed
 	metrics["sequential_read_mbps"] = readSpeed
+	metrics["sequential_read_source"] = dt.backend.SequentialReadSource()
 	dt.GetLogger().Info(fmt.Sprintf("读取速度: %.2f MB/s", readSpeed))
 
 	// 测试随机IOPS
 	dt.GetLogger().Info("开始磁盘随机IOPS测试...")
-	iops, err := dt.TestRandomIOPS(5) // 5秒测试
+	iops, err := dt.backend.MeasureRandomIOPS(5) // 5秒测试
 	if err != nil {
 		return dt.CreateResult("failed", nil, fmt.Sprintf("IOPS测试失败: %v", err)), err
 	}
 	metrics["random_iops"] = iops
+	metrics["random_iops_source"] = dt.backend.RandomIOPSSource()
 	dt.GetLogger().Info(fmt.Sprintf("随机IOPS: %d", iops))
 
 	// 计算总体评分
@@ -126,6 +189,9 @@ func (dt *DiskTest) Execute() (*models.TestResult, error) {
 // 返回:
 //   - error: 清理错误
 func (dt *DiskTest) Teardown() error {
+	if dt.backend != nil {
+		return dt.backend.Cleanup()
+	}
 	return dt.CleanupTestFiles()
 }
 

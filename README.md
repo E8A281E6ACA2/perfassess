@@ -202,7 +202,7 @@ sudo rm /usr/local/bin/perfassess
 ./build/perfassess
 ```
 
-默认会执行 CPU、内存、磁盘、网络基础性能测试。外部依赖不会自动安装；如需使用 `iperf3` 或路由追踪，请先运行 `check-deps` 查看提示。
+默认会执行 CPU、内存、磁盘、网络基础性能测试。外部依赖不会自动安装；如需使用 `fio`、`iperf3` 或路由追踪，请先运行 `check-deps` 查看提示。
 
 ### 🧭 交互式模式（可选）
 
@@ -228,7 +228,7 @@ sudo rm /usr/local/bin/perfassess
 #### 基础用法
 
 ```bash
-# 检查外部依赖（iperf3、traceroute/tracert）
+# 检查外部依赖（fio、iperf3、traceroute/tracert）
 ./build/perfassess check-deps
 
 # 运行所有检测
@@ -251,6 +251,9 @@ make run
 
 # 只测试磁盘
 ./build/perfassess -b disk
+
+# 使用 fio 后端测试磁盘（需要预装 fio）
+./build/perfassess -b disk --disk-backend fio
 
 # 只测试网络
 ./build/perfassess -b network
@@ -344,6 +347,7 @@ Flags:
       --network-backend string
                               网络测试后端 (builtin,iperf3) (default "builtin")
       --iperf3-server string  iperf3 服务端地址（仅 network-backend=iperf3 时使用）
+      --disk-backend string   磁盘测试后端 (builtin,fio) (default "builtin")
       --web                  启用 Web 报告服务器（新功能）
       --port int             Web 服务器端口 (default 8080)
   -h, --help                 显示帮助信息
@@ -351,6 +355,7 @@ Flags:
 注：--tests 参数仍然支持，但推荐使用 --benchmarks
 
 提示：使用 `--route-trace` 时，请确保系统已安装 traceroute（Linux/macOS）或 tracert（Windows），否则将提示缺少依赖。
+提示：使用 `--disk-backend fio` 时，请提前安装 fio。程序只检测并提示，不会自动安装依赖。
 提示：使用 `--network-backend iperf3` 时，请提前安装 iperf3，并提供可访问的 `--iperf3-server`。程序只检测并提示，不会自动安装依赖。
 ```
 
@@ -726,6 +731,8 @@ A: 使用 `--port` 参数指定其他端口：
 | `--verbose` | `-v` | 详细输出 | `-v` |
 | `--web` | - | Web 报告 | `--web` |
 | `--port` | - | Web 端口 | `--port 9090` |
+| `--disk-backend` | - | 磁盘测试后端 | `--disk-backend fio` |
+| `--network-backend` | - | 网络测试后端 | `--network-backend iperf3` |
 | `--route-trace` | - | 路由追踪 | `--route-trace` |
 | `--streaming` | - | 流媒体检测 | `--streaming` |
 | `--ai-services` | - | AI 服务检测 | `--ai-services` |

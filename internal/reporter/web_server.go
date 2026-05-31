@@ -183,6 +183,9 @@ func (ws *WebServer) getKeyMetrics(result *models.TestResult) string {
 		}
 	case "disk", "磁盘性能测试":
 		if speed, ok := getDiskReadSpeed(result); ok {
+			if backend := getDiskBackend(result); backend != "" {
+				return fmt.Sprintf("%s | 顺序读: %.2f MB/s", backend, speed)
+			}
 			return fmt.Sprintf("顺序读: %.2f MB/s", speed)
 		}
 	case "network", "网络性能测试":

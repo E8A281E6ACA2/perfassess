@@ -127,11 +127,15 @@
   - `score`
   - `test_size_mb`
 - Disk:
+  - `backend`
   - `read_speed_mbps`
   - `write_speed_mbps`
   - `sequential_read_mbps`
+  - `sequential_read_source`
   - `sequential_write_mbps`
+  - `sequential_write_source`
   - `random_iops`
+  - `random_iops_source`
   - `score`
 - Network:
   - `latency_ms`
@@ -246,6 +250,24 @@
 - 网络报告会展示 `backend`，并在 `iperf3` 场景展示服务端地址
 - 网络测速来源字段会跟随 backend，例如 `iperf3_download` 与 `iperf3_upload`
 - 后续真正启用 `iperf3` 前，需要补充真实服务端验证和报告展示
+
+当前已落地的磁盘后端边界：
+
+- `DiskBenchmarkBackend` 已作为磁盘评测后端接口
+- `BuiltinDiskBackend` 继续承载当前内置文件读写与随机 IOPS 测试逻辑
+- `FioDiskBackend` 已具备最小命令执行与 JSON 结果解析骨架
+- 配置层已预留 `disk_backend`
+- CLI 已预留 `--disk-backend builtin|fio`
+- `fio` 后端会检测本机是否安装 `fio`，缺失时返回安装提示，不自动安装
+- 磁盘报告会展示 `backend`，并继续输出顺序读写和随机 IOPS
+- 磁盘测速来源字段会跟随 backend，例如 `fio`
+
+`fio` 使用约定：
+
+- 用户需要显式选择 `--disk-backend fio`
+- 被测机器需要预先安装 `fio`
+- 程序只负责检测并提示安装方式，不静默修改系统环境
+- 默认仍使用内置 `builtin` 后端，避免无依赖场景下破坏一把梭执行
 
 `iperf3` 使用约定：
 

@@ -8,6 +8,9 @@ func TestDefaultConfigUsesBuiltinNetworkBackend(t *testing.T) {
 	if cfg.NetworkBackend != "builtin" {
 		t.Fatalf("expected default network backend builtin, got %q", cfg.NetworkBackend)
 	}
+	if cfg.DiskBackend != "builtin" {
+		t.Fatalf("expected default disk backend builtin, got %q", cfg.DiskBackend)
+	}
 	if err := cfg.Validate(); err != nil {
 		t.Fatalf("expected default config to validate, got %v", err)
 	}
@@ -28,5 +31,23 @@ func TestValidateRejectsUnknownNetworkBackend(t *testing.T) {
 	}
 	if configErr.Field != "network_backend" {
 		t.Fatalf("expected field network_backend, got %q", configErr.Field)
+	}
+}
+
+func TestValidateRejectsUnknownDiskBackend(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.DiskBackend = "unknown"
+
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("expected invalid disk backend to fail validation")
+	}
+
+	configErr, ok := err.(*ConfigError)
+	if !ok {
+		t.Fatalf("expected ConfigError, got %T", err)
+	}
+	if configErr.Field != "disk_backend" {
+		t.Fatalf("expected field disk_backend, got %q", configErr.Field)
 	}
 }
