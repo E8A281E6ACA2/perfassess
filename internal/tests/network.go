@@ -13,12 +13,43 @@ import (
 	"performance-assessment-system/pkg/utils"
 )
 
+// NetworkBenchmarkBackend 定义网络评测后端接口
+// 当前默认使用内置实现，后续可扩展到 iperf3 等主流工具。
+type NetworkBenchmarkBackend interface {
+	Name() string
+	MeasureLatency(hosts []string) (float64, error)
+	MeasureDownload() (float64, error)
+	MeasureUpload(downloadSpeed float64) (float64, bool, error)
+}
+
+// BuiltinNetworkBackend 使用当前项目内置的网络测试逻辑
+type BuiltinNetworkBackend struct {
+	test *NetworkTest
+}
+
+func (b *BuiltinNetworkBackend) Name() string {
+	return models.NetworkBackendBuiltin
+}
+
+func (b *BuiltinNetworkBackend) MeasureLatency(hosts []string) (float64, error) {
+	return b.test.TestLatency(hosts)
+}
+
+func (b *BuiltinNetworkBackend) MeasureDownload() (float64, error) {
+	return b.test.TestDownloadSpeed()
+}
+
+func (b *BuiltinNetworkBackend) MeasureUpload(downloadSpeed float64) (float64, bool, error) {
+	return b.test.TestUploadSpeed(downloadSpeed)
+}
+
 // NetworkTest 网络性能测试
 // 测试网络延迟、下载和上传速度
 type NetworkTest struct {
 	*BaseTest
 	httpClient *http.Client
 	testHosts  []string // 测试主机列表
+	backend    NetworkBenchmarkBackend
 	latencyFn  func([]string) (float64, error)
 	downloadFn func() (float64, error)
 	uploadFn   func(float64) (float64, bool, error)
@@ -31,7 +62,11 @@ type NetworkTest struct {
 // 返回:
 //   - *NetworkTest: 网络测试实例
 func NewNetworkTest(logger *logger.Logger) *NetworkTest {
-	return &NetworkTest{
+	return NewNetworkTestWithBackend(logger, nil)
+}
+
+func NewNetworkTestWithBackend(logger *logger.Logger, backend NetworkBenchmarkBackend) *NetworkTest {
+	test := &NetworkTest{
 		BaseTest: NewBaseTest("网络性能测试", 60*time.Second, logger),
 		httpClient: &http.Client{
 			Timeout: 10 * time.Second,
@@ -42,11 +77,20 @@ func NewNetworkTest(logger *logger.Logger) *NetworkTest {
 			"114.114.114.114:53", // 114 DNS
 		},
 	}
+	if backend != nil {
+		test.backend = backend
+	} else {
+		test.backend = &BuiltinNetworkBackend{test: test}
+	}
+	return test
 }
 
 func (nt *NetworkTest) resolveLatencyFunc() func([]string) (float64, error) {
 	if nt.latencyFn != nil {
 		return nt.latencyFn
+	}
+	if nt.backend != nil {
+		return nt.backend.MeasureLatency
 	}
 	return nt.TestLatency
 }
@@ -55,12 +99,18 @@ func (nt *NetworkTest) resolveDownloadFunc() func() (float64, error) {
 	if nt.downloadFn != nil {
 		return nt.downloadFn
 	}
+	if nt.backend != nil {
+		return nt.backend.MeasureDownload
+	}
 	return nt.TestDownloadSpeed
 }
 
 func (nt *NetworkTest) resolveUploadFunc() func(float64) (float64, bool, error) {
 	if nt.uploadFn != nil {
 		return nt.uploadFn
+	}
+	if nt.backend != nil {
+		return nt.backend.MeasureUpload
 	}
 	return nt.TestUploadSpeed
 }
@@ -92,7 +142,21 @@ func (nt *NetworkTest) Execute() (*models.TestResult, error) {
 		nt.MarkEnd("success")
 	}()
 
-	metrics := make(map[string]interface{})
+	metrics := &models.NetworkMetrics{
+		Backend:           models.NetworkBackendBuiltin,
+		LatencyMs:         -1.0,
+		AverageLatencyMs:  -1.0,
+		LatencySource:     models.NetworkLatencySourceTCPConnect,
+		DownloadSpeedMbps: -1.0,
+		DownloadSource:    models.NetworkDownloadSourceHTTPFailed,
+		UploadSpeedMbps:   -1.0,
+		UploadSource:      models.NetworkUploadSourceUnavailable,
+		UploadEstimated:   false,
+		Score:             0.0,
+	}
+	if nt.backend != nil {
+		metrics.Backend = nt.backend.Name()
+	}
 	avgLatency := -1.0
 	downloadSpeed := -1.0
 	uploadSpeed := -1.0
@@ -104,13 +168,9 @@ func (nt *NetworkTest) Execute() (*models.TestResult, error) {
 	avgLatency, err = nt.resolveLatencyFunc()(nt.testHosts)
 	if err != nil {
 		nt.GetLogger().Warn(fmt.Sprintf("延迟测试失败: %v", err))
-		metrics["latency_ms"] = -1.0
-		metrics["average_latency_ms"] = -1.0
-		metrics["latency_source"] = "tcp_connect"
 	} else {
-		metrics["latency_ms"] = avgLatency
-		metrics["average_latency_ms"] = avgLatency
-		metrics["latency_source"] = "tcp_connect"
+		metrics.LatencyMs = avgLatency
+		metrics.AverageLatencyMs = avgLatency
 		nt.GetLogger().Info(fmt.Sprintf("平均延迟: %.2f ms", avgLatency))
 	}
 
@@ -119,11 +179,9 @@ func (nt *NetworkTest) Execute() (*models.TestResult, error) {
 	downloadSpeed, err = nt.resolveDownloadFunc()()
 	if err != nil {
 		nt.GetLogger().Warn(fmt.Sprintf("下载速度测试失败: %v", err))
-		metrics["download_speed_mbps"] = -1.0
-		metrics["download_speed_source"] = "http_download_failed"
 	} else {
-		metrics["download_speed_mbps"] = downloadSpeed
-		metrics["download_speed_source"] = "http_download"
+		metrics.DownloadSpeedMbps = downloadSpeed
+		metrics.DownloadSource = models.NetworkDownloadSourceHTTP
 		nt.GetLogger().Info(fmt.Sprintf("下载速度: %.2f Mbps", downloadSpeed))
 	}
 
@@ -132,29 +190,26 @@ func (nt *NetworkTest) Execute() (*models.TestResult, error) {
 	uploadSpeed, uploadEstimated, err = nt.resolveUploadFunc()(downloadSpeed)
 	if err != nil {
 		nt.GetLogger().Warn(fmt.Sprintf("上传速度测试失败: %v", err))
-		metrics["upload_speed_mbps"] = -1.0
-		metrics["upload_speed_source"] = "unavailable"
-		metrics["upload_speed_estimated"] = false
 	} else {
-		metrics["upload_speed_mbps"] = uploadSpeed
+		metrics.UploadSpeedMbps = uploadSpeed
 		if uploadEstimated {
-			metrics["upload_speed_source"] = "estimated_from_download"
-			metrics["upload_speed_estimated"] = true
+			metrics.UploadSource = models.NetworkUploadSourceEstimated
+			metrics.UploadEstimated = true
 			nt.GetLogger().Warn(fmt.Sprintf("上传速度为估算值: %.2f Mbps", uploadSpeed))
 		} else {
-			metrics["upload_speed_source"] = "http_upload"
-			metrics["upload_speed_estimated"] = false
+			metrics.UploadSource = models.NetworkUploadSourceHTTP
+			metrics.UploadEstimated = false
 			nt.GetLogger().Info(fmt.Sprintf("上传速度: %.2f Mbps", uploadSpeed))
 		}
 	}
 
 	// 计算总体评分
 	score := nt.calculateScore(avgLatency, downloadSpeed, uploadSpeed, uploadEstimated)
-	metrics["score"] = score
+	metrics.Score = score
 
 	nt.GetLogger().Info(fmt.Sprintf("网络测试完成，评分: %.2f", score))
 
-	return nt.CreateResult("success", metrics, ""), nil
+	return nt.CreateResult("success", metrics.ToMetricsMap(), ""), nil
 }
 
 // CheckConnectivity 检查网络连接

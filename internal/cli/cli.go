@@ -126,6 +126,14 @@ func (c *CLI) setupCommands() {
 	flags.Bool("security", false,
 		"启用安全/加固体检（端口扫描、SSH 配置等）")
 
+	// --network-backend 参数：选择网络测试后端
+	flags.String("network-backend", "builtin",
+		"网络测试后端 (builtin,iperf3)")
+
+	// --iperf3-server 参数：iperf3 服务端地址
+	flags.String("iperf3-server", "",
+		"iperf3 服务端地址（仅 network-backend=iperf3 时使用）")
+
 	// --web 参数：启用 Web 报告
 	flags.Bool("web", false,
 		"启用 Web 报告服务器")
@@ -192,6 +200,16 @@ func (c *CLI) bindFlags(cmd *cobra.Command) error {
 	// 绑定 security 参数
 	if security, err := flags.GetBool("security"); err == nil {
 		c.config.EnableSecurityScan = security
+	}
+
+	// 绑定 network-backend 参数
+	if networkBackend, err := flags.GetString("network-backend"); err == nil {
+		c.config.NetworkBackend = networkBackend
+	}
+
+	// 绑定 iperf3-server 参数
+	if iperf3Server, err := flags.GetString("iperf3-server"); err == nil {
+		c.config.Iperf3Server = iperf3Server
 	}
 
 	// 绑定 log-level 参数

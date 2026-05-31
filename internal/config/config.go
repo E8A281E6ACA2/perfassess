@@ -37,6 +37,12 @@ type Config struct {
 	// 默认包含常用的公共服务器地址
 	RouteTraceTargets []string `mapstructure:"route_trace_targets"`
 
+	// NetworkBackend 网络测试后端，可选值: builtin, iperf3
+	NetworkBackend string `mapstructure:"network_backend"`
+
+	// Iperf3Server iperf3 服务端地址，仅在 network_backend=iperf3 时使用
+	Iperf3Server string `mapstructure:"iperf3_server"`
+
 	// LogLevel 日志级别（debug/info/warn/error）
 	LogLevel string `mapstructure:"log_level"`
 
@@ -64,6 +70,8 @@ func DefaultConfig() *Config {
 		EnableStressTest:   false,
 		EnableSecurityScan: false,
 		RouteTraceTargets:  []string{"8.8.8.8", "1.1.1.1", "cloudflare.com"},
+		NetworkBackend:     "builtin",
+		Iperf3Server:       "",
 		LogLevel:           "info",
 		GeoIPDBPath:        "",
 		EnableWeb:          false,
@@ -104,6 +112,17 @@ func (c *Config) Validate() error {
 		return &ConfigError{
 			Field:   "log_level",
 			Message: "无效的日志级别: " + c.LogLevel,
+		}
+	}
+
+	validNetworkBackends := map[string]bool{
+		"builtin": true,
+		"iperf3":  true,
+	}
+	if !validNetworkBackends[c.NetworkBackend] {
+		return &ConfigError{
+			Field:   "network_backend",
+			Message: "无效的网络测试后端: " + c.NetworkBackend,
 		}
 	}
 

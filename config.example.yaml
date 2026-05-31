@@ -13,3 +13,10 @@ collection_interval: 60
 # GeoIP 数据库文件路径（可选）
 # 如果不需要地理位置识别功能，可以留空
 geoip_db_path: ""
+
+# 网络测试后端：builtin, iperf3
+# builtin 为当前内置 HTTP/TCP 测试；iperf3 后端目前为预留入口
+network_backend: builtin
+
+# iperf3 服务端地址，仅在 network_backend=iperf3 时使用
+iperf3_server: ""

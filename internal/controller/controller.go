@@ -300,7 +300,7 @@ func (ac *AssessmentController) runPerformanceTests() (*models.TestResults, erro
 		case "disk":
 			testList = append(testList, tests.NewDiskTest(ac.logger))
 		case "network":
-			testList = append(testList, tests.NewNetworkTest(ac.logger))
+			testList = append(testList, ac.newNetworkTest())
 		}
 	}
 
@@ -311,6 +311,17 @@ func (ac *AssessmentController) runPerformanceTests() (*models.TestResults, erro
 	}
 
 	return results, nil
+}
+
+func (ac *AssessmentController) newNetworkTest() tests.PerformanceTest {
+	if ac.config.NetworkBackend == models.NetworkBackendIperf3 {
+		backend := tests.NewIperf3NetworkBackend(tests.Iperf3Config{
+			Server: ac.config.Iperf3Server,
+		})
+		return tests.NewNetworkTestWithBackend(ac.logger, backend)
+	}
+
+	return tests.NewNetworkTest(ac.logger)
 }
 
 // runRouteTrace 执行路由追踪
