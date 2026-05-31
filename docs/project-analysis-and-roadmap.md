@@ -231,7 +231,15 @@
 - `Iperf3NetworkBackend` 已具备最小命令执行与 JSON 结果解析骨架
 - 配置层已预留 `network_backend` 与 `iperf3_server`
 - CLI 已预留 `--network-backend` 与 `--iperf3-server`
-- 后续真正启用 `iperf3` 前，需要补充环境探测、真实服务端验证、错误提示和报告展示
+- `iperf3` 后端会检测本机是否安装 `iperf3`，缺失时返回安装提示，不自动安装
+- 后续真正启用 `iperf3` 前，需要补充真实服务端验证和报告展示
+
+`iperf3` 使用约定：
+
+- 用户需要显式选择 `--network-backend iperf3`
+- 用户需要提供 `--iperf3-server <host:port>`
+- 被测机器需要预先安装 `iperf3`
+- 程序只负责检测并提示安装方式，不静默修改系统环境
 
 ## 文档维护约定
 

@@ -12,6 +12,7 @@ import (
 
 type commandRunner interface {
 	Run(ctx context.Context, name string, args ...string) ([]byte, error)
+	LookPath(name string) (string, error)
 }
 
 type execCommandRunner struct{}
@@ -19,6 +20,10 @@ type execCommandRunner struct{}
 func (r *execCommandRunner) Run(ctx context.Context, name string, args ...string) ([]byte, error) {
 	cmd := exec.CommandContext(ctx, name, args...)
 	return cmd.CombinedOutput()
+}
+
+func (r *execCommandRunner) LookPath(name string) (string, error) {
+	return exec.LookPath(name)
 }
 
 type Iperf3NetworkBackend struct {
@@ -59,8 +64,8 @@ func (b *Iperf3NetworkBackend) MeasureLatency(hosts []string) (float64, error) {
 }
 
 func (b *Iperf3NetworkBackend) MeasureDownload() (float64, error) {
-	if b.server == "" {
-		return 0, fmt.Errorf("iperf3 server is required")
+	if err := b.validateReady(); err != nil {
+		return 0, err
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), b.timeout)
@@ -79,8 +84,8 @@ func (b *Iperf3NetworkBackend) MeasureDownload() (float64, error) {
 }
 
 func (b *Iperf3NetworkBackend) MeasureUpload(downloadSpeed float64) (float64, bool, error) {
-	if b.server == "" {
-		return 0, false, fmt.Errorf("iperf3 server is required")
+	if err := b.validateReady(); err != nil {
+		return 0, false, err
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), b.timeout)
@@ -96,6 +101,16 @@ func (b *Iperf3NetworkBackend) MeasureUpload(downloadSpeed float64) (float64, bo
 		return 0, false, fmt.Errorf("parse iperf3 upload result: %w", err)
 	}
 	return speed, false, nil
+}
+
+func (b *Iperf3NetworkBackend) validateReady() error {
+	if b.server == "" {
+		return fmt.Errorf("iperf3 server is required; example: --network-backend iperf3 --iperf3-server 1.2.3.4:5201")
+	}
+	if _, err := b.runner.LookPath("iperf3"); err != nil {
+		return fmt.Errorf("iperf3 is not installed; install it manually before using --network-backend iperf3. Ubuntu/Debian: sudo apt install iperf3; RHEL/CentOS: sudo yum install iperf3; macOS: brew install iperf3")
+	}
+	return nil
 }
 
 type iperf3JSONResult struct {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"strings"
 	"testing"
 
 	"performance-assessment-system/internal/models"
@@ -182,9 +183,28 @@ func TestIperf3NetworkBackendRequiresServer(t *testing.T) {
 	}
 }
 
+func TestIperf3NetworkBackendReportsMissingBinary(t *testing.T) {
+	runner := &fakeCommandRunner{
+		lookPathErr: fmt.Errorf("not found"),
+	}
+	backend := NewIperf3NetworkBackend(Iperf3Config{
+		Server: "127.0.0.1:5201",
+		Runner: runner,
+	})
+
+	_, err := backend.MeasureDownload()
+	if err == nil {
+		t.Fatal("expected missing iperf3 binary to fail")
+	}
+	if !strings.Contains(err.Error(), "sudo apt install iperf3") {
+		t.Fatalf("expected install hint in error, got %v", err)
+	}
+}
+
 func TestIperf3NetworkBackendParsesDownloadMbps(t *testing.T) {
 	runner := &fakeCommandRunner{
-		output: []byte(`{"end":{"sum_received":{"bits_per_second":125000000}}}`),
+		output:     []byte(`{"end":{"sum_received":{"bits_per_second":125000000}}}`),
+		lookPathOK: true,
 	}
 	backend := NewIperf3NetworkBackend(Iperf3Config{
 		Server: "127.0.0.1:5201",
@@ -206,7 +226,8 @@ func TestIperf3NetworkBackendParsesDownloadMbps(t *testing.T) {
 
 func TestIperf3NetworkBackendParsesUploadMbps(t *testing.T) {
 	runner := &fakeCommandRunner{
-		output: []byte(`{"end":{"sum_sent":{"bits_per_second":42000000}}}`),
+		output:     []byte(`{"end":{"sum_sent":{"bits_per_second":42000000}}}`),
+		lookPathOK: true,
 	}
 	backend := NewIperf3NetworkBackend(Iperf3Config{
 		Server: "iperf.example:5201",
@@ -300,16 +321,28 @@ func assertMetricBool(t *testing.T, metrics map[string]interface{}, key string, 
 }
 
 type fakeCommandRunner struct {
-	output []byte
-	err    error
-	name   string
-	args   []string
+	output      []byte
+	err         error
+	lookPathOK  bool
+	lookPathErr error
+	name        string
+	args        []string
 }
 
 func (r *fakeCommandRunner) Run(ctx context.Context, name string, args ...string) ([]byte, error) {
 	r.name = name
 	r.args = append([]string(nil), args...)
 	return r.output, r.err
+}
+
+func (r *fakeCommandRunner) LookPath(name string) (string, error) {
+	if r.lookPathErr != nil {
+		return "", r.lookPathErr
+	}
+	if r.lookPathOK {
+		return "/usr/bin/" + name, nil
+	}
+	return "", fmt.Errorf("not found")
 }
 
 func assertStringSlice(t *testing.T, actual, expected []string) {
