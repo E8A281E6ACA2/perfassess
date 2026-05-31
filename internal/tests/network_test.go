@@ -132,6 +132,7 @@ func TestExecuteMarksFailedDownloadAndUnavailableUpload(t *testing.T) {
 	assertMetricString(t, result.Metrics, "backend", models.NetworkBackendBuiltin)
 	assertMetricString(t, result.Metrics, "download_speed_source", models.NetworkDownloadSourceHTTPFailed)
 	assertMetricString(t, result.Metrics, "upload_speed_source", models.NetworkUploadSourceUnavailable)
+	assertMetricString(t, result.Metrics, "network_error", "延迟测试失败: latency unavailable; 下载速度测试失败: download unavailable; 上传速度测试失败: upload unavailable")
 	assertMetricBool(t, result.Metrics, "upload_speed_estimated", false)
 
 	score, ok := result.Metrics["score"].(float64)
@@ -154,6 +155,7 @@ func TestNetworkMetricsToMetricsMap(t *testing.T) {
 		UploadSpeedMbps:   210.35,
 		UploadSource:      models.NetworkUploadSourceEstimated,
 		UploadEstimated:   true,
+		ErrorMessage:      "iperf3 is not installed",
 		Score:             95.0,
 	}).ToMetricsMap()
 
@@ -166,6 +168,7 @@ func TestNetworkMetricsToMetricsMap(t *testing.T) {
 	assertMetricString(t, metrics, "latency_source", models.NetworkLatencySourceTCPConnect)
 	assertMetricString(t, metrics, "download_speed_source", models.NetworkDownloadSourceHTTP)
 	assertMetricString(t, metrics, "upload_speed_source", models.NetworkUploadSourceEstimated)
+	assertMetricString(t, metrics, "network_error", "iperf3 is not installed")
 	assertMetricBool(t, metrics, "upload_speed_estimated", true)
 }
 

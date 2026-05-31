@@ -215,6 +215,9 @@ func (rg *ReportGenerator) formatSingleTestResult(testName string, result *model
 			}
 
 		case "network", "网络性能测试":
+			if message := getNetworkError(result); message != "" {
+				sb.WriteString(fmt.Sprintf("  网络说明:     %s\n", message))
+			}
 			if latency, ok := getNetworkLatency(result); ok {
 				source := getNetworkLatencySource(result)
 				if source != "" {

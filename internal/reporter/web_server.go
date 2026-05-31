@@ -186,6 +186,9 @@ func (ws *WebServer) getKeyMetrics(result *models.TestResult) string {
 			return fmt.Sprintf("顺序读: %.2f MB/s", speed)
 		}
 	case "network", "网络性能测试":
+		if message := getNetworkError(result); message != "" {
+			return message
+		}
 		if latency, ok := getNetworkLatency(result); ok {
 			if isNetworkUploadEstimated(result) {
 				return fmt.Sprintf("延迟: %.2f ms | 上传: 估算值", latency)

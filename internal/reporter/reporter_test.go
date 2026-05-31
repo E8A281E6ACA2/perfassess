@@ -82,6 +82,27 @@ func TestFormatSingleTestResultMarksEstimatedUpload(t *testing.T) {
 	}
 }
 
+func TestFormatSingleTestResultShowsNetworkError(t *testing.T) {
+	generator := NewReportGenerator()
+	result := &models.TestResult{
+		TestName:        "网络性能测试",
+		Status:          "success",
+		DurationSeconds: 1.4,
+		Metrics: map[string]interface{}{
+			"average_latency_ms":  -1.0,
+			"download_speed_mbps": -1.0,
+			"upload_speed_mbps":   -1.0,
+			"network_error":       "iperf3 is not installed",
+			"score":               0.0,
+		},
+	}
+
+	formatted := generator.formatSingleTestResult("网络性能测试", result)
+	if !strings.Contains(formatted, "网络说明:     iperf3 is not installed") {
+		t.Fatalf("expected formatted report to include network error, got:\n%s", formatted)
+	}
+}
+
 func TestWebServerKeyMetricsMarksEstimatedUpload(t *testing.T) {
 	server := &WebServer{}
 	result := &models.TestResult{
@@ -96,6 +117,22 @@ func TestWebServerKeyMetricsMarksEstimatedUpload(t *testing.T) {
 	metrics := server.getKeyMetrics(result)
 	if !strings.Contains(metrics, "上传: 估算值") {
 		t.Fatalf("expected web key metrics to mark estimated upload, got %q", metrics)
+	}
+}
+
+func TestWebServerKeyMetricsShowsNetworkError(t *testing.T) {
+	server := &WebServer{}
+	result := &models.TestResult{
+		TestName: "网络性能测试",
+		Status:   "success",
+		Metrics: map[string]interface{}{
+			"network_error": "iperf3 server is required",
+		},
+	}
+
+	metrics := server.getKeyMetrics(result)
+	if metrics != "iperf3 server is required" {
+		t.Fatalf("expected web key metrics to show network error, got %q", metrics)
 	}
 }
 

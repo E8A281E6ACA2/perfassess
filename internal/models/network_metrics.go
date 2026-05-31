@@ -1,5 +1,7 @@
 package models
 
+import "strings"
+
 const (
 	NetworkBackendBuiltin = "builtin"
 	NetworkBackendIperf3  = "iperf3"
@@ -34,7 +36,20 @@ type NetworkMetrics struct {
 	UploadSpeedMbps   float64 `json:"upload_speed_mbps"`
 	UploadSource      string  `json:"upload_speed_source,omitempty"`
 	UploadEstimated   bool    `json:"upload_speed_estimated"`
+	ErrorMessage      string  `json:"network_error,omitempty"`
 	Score             float64 `json:"score"`
+}
+
+// AppendError adds a user-facing network error while preserving prior failures.
+func (nm *NetworkMetrics) AppendError(message string) {
+	if nm == nil || message == "" {
+		return
+	}
+	if nm.ErrorMessage == "" {
+		nm.ErrorMessage = message
+		return
+	}
+	nm.ErrorMessage = strings.Join([]string{nm.ErrorMessage, message}, "; ")
 }
 
 // ToMetricsMap 将结构化网络结果转换为当前报告层使用的 Metrics map
@@ -53,6 +68,7 @@ func (nm *NetworkMetrics) ToMetricsMap() map[string]interface{} {
 		"upload_speed_mbps":      nm.UploadSpeedMbps,
 		"upload_speed_source":    nm.UploadSource,
 		"upload_speed_estimated": nm.UploadEstimated,
+		"network_error":          nm.ErrorMessage,
 		"score":                  nm.Score,
 	}
 }

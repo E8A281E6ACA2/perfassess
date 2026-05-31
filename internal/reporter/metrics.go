@@ -195,6 +195,13 @@ func getNetworkUploadSource(result *models.TestResult) string {
 	return ""
 }
 
+func getNetworkError(result *models.TestResult) string {
+	if message, ok := metricString(result.Metrics, "network_error"); ok {
+		return message
+	}
+	return ""
+}
+
 func isNetworkUploadEstimated(result *models.TestResult) bool {
 	if estimated, ok := metricBool(result.Metrics, "upload_speed_estimated"); ok {
 		return estimated

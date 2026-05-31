@@ -168,6 +168,7 @@ func (nt *NetworkTest) Execute() (*models.TestResult, error) {
 	avgLatency, err = nt.resolveLatencyFunc()(nt.testHosts)
 	if err != nil {
 		nt.GetLogger().Warn(fmt.Sprintf("延迟测试失败: %v", err))
+		metrics.AppendError("延迟测试失败: " + err.Error())
 	} else {
 		metrics.LatencyMs = avgLatency
 		metrics.AverageLatencyMs = avgLatency
@@ -179,6 +180,7 @@ func (nt *NetworkTest) Execute() (*models.TestResult, error) {
 	downloadSpeed, err = nt.resolveDownloadFunc()()
 	if err != nil {
 		nt.GetLogger().Warn(fmt.Sprintf("下载速度测试失败: %v", err))
+		metrics.AppendError("下载速度测试失败: " + err.Error())
 	} else {
 		metrics.DownloadSpeedMbps = downloadSpeed
 		metrics.DownloadSource = models.NetworkDownloadSourceHTTP
@@ -190,6 +192,7 @@ func (nt *NetworkTest) Execute() (*models.TestResult, error) {
 	uploadSpeed, uploadEstimated, err = nt.resolveUploadFunc()(downloadSpeed)
 	if err != nil {
 		nt.GetLogger().Warn(fmt.Sprintf("上传速度测试失败: %v", err))
+		metrics.AppendError("上传速度测试失败: " + err.Error())
 	} else {
 		metrics.UploadSpeedMbps = uploadSpeed
 		if uploadEstimated {
