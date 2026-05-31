@@ -41,18 +41,18 @@ func (sc *ScoreCalculator) CalculateCPUScore(result *models.TestResult) float64 
 	}
 
 	// 优先使用测试已经计算好的总评分
-	if totalScore, ok := result.Metrics["total_score"].(float64); ok {
+	if totalScore, ok := getCPUScore(result); ok {
 		return totalScore
 	}
-	
+
 	// 备用方案：从单核和多核评分计算
 	singleCoreScore, ok1 := result.Metrics["single_core_score"].(float64)
 	multiCoreScore, ok2 := result.Metrics["multi_core_score"].(float64)
-	
+
 	if ok1 && ok2 {
 		// 单核占30%，多核占70%
 		score := singleCoreScore*0.3 + multiCoreScore*0.7
-		
+
 		// 限制在0-100范围内
 		if score > 100.0 {
 			score = 100.0
@@ -60,7 +60,7 @@ func (sc *ScoreCalculator) CalculateCPUScore(result *models.TestResult) float64 
 		if score < 0.0 {
 			score = 0.0
 		}
-		
+
 		return score
 	}
 
@@ -75,9 +75,9 @@ func (sc *ScoreCalculator) CalculateMemoryScore(result *models.TestResult) float
 	}
 
 	// 从Metrics中提取内存测试结果（MB/s）
-	readSpeed, ok1 := result.Metrics["read_speed_mbps"].(float64)
-	writeSpeed, ok2 := result.Metrics["write_speed_mbps"].(float64)
-	
+	readSpeed, ok1 := getMemoryReadSpeed(result)
+	writeSpeed, ok2 := getMemoryWriteSpeed(result)
+
 	if !ok1 || !ok2 {
 		return 0.0
 	}
@@ -85,12 +85,12 @@ func (sc *ScoreCalculator) CalculateMemoryScore(result *models.TestResult) float
 	// 基准值：读取5000 MB/s，写入3000 MB/s为60分
 	readBase := 5000.0
 	writeBase := 3000.0
-	
+
 	readScore := (readSpeed / readBase) * 50.0
 	writeScore := (writeSpeed / writeBase) * 50.0
-	
+
 	score := readScore + writeScore
-	
+
 	// 限制在0-100范围内
 	if score > 100.0 {
 		score = 100.0
@@ -98,7 +98,7 @@ func (sc *ScoreCalculator) CalculateMemoryScore(result *models.TestResult) float
 	if score < 0.0 {
 		score = 0.0
 	}
-	
+
 	return score
 }
 
@@ -110,10 +110,10 @@ func (sc *ScoreCalculator) CalculateDiskScore(result *models.TestResult) float64
 	}
 
 	// 从Metrics中提取磁盘测试结果
-	seqRead, ok1 := result.Metrics["sequential_read_mbps"].(float64)
-	seqWrite, ok2 := result.Metrics["sequential_write_mbps"].(float64)
-	randomIOPS, ok3 := result.Metrics["random_iops"].(int)
-	
+	seqRead, ok1 := getDiskReadSpeed(result)
+	seqWrite, ok2 := getDiskWriteSpeed(result)
+	randomIOPS, ok3 := getDiskRandomIOPS(result)
+
 	if !ok1 || !ok2 || !ok3 {
 		return 0.0
 	}
@@ -122,13 +122,13 @@ func (sc *ScoreCalculator) CalculateDiskScore(result *models.TestResult) float64
 	seqReadBase := 500.0
 	seqWriteBase := 300.0
 	iopsBase := 5000.0
-	
+
 	seqReadScore := (seqRead / seqReadBase) * 35.0
 	seqWriteScore := (seqWrite / seqWriteBase) * 35.0
 	iopsScore := (float64(randomIOPS) / iopsBase) * 30.0
-	
+
 	score := seqReadScore + seqWriteScore + iopsScore
-	
+
 	// 限制在0-100范围内
 	if score > 100.0 {
 		score = 100.0
@@ -136,7 +136,7 @@ func (sc *ScoreCalculator) CalculateDiskScore(result *models.TestResult) float64
 	if score < 0.0 {
 		score = 0.0
 	}
-	
+
 	return score
 }
 
@@ -148,11 +148,15 @@ func (sc *ScoreCalculator) CalculateNetworkScore(result *models.TestResult) floa
 	}
 
 	// 从Metrics中提取网络测试结果
-	avgLatency, ok1 := result.Metrics["average_latency_ms"].(float64)
-	downloadSpeed, ok2 := result.Metrics["download_speed_mbps"].(float64)
-	uploadSpeed, ok3 := result.Metrics["upload_speed_mbps"].(float64)
-	
-	if !ok1 || !ok2 || !ok3 {
+	avgLatency, ok1 := getNetworkLatency(result)
+	downloadSpeed, ok2 := getNetworkDownloadSpeed(result)
+	uploadSpeed, ok3 := getNetworkUploadSpeed(result)
+	uploadEstimated := isNetworkUploadEstimated(result)
+
+	if !ok1 || !ok2 {
+		return 0.0
+	}
+	if avgLatency <= 0 || downloadSpeed < 0 {
 		return 0.0
 	}
 
@@ -162,17 +166,24 @@ func (sc *ScoreCalculator) CalculateNetworkScore(result *models.TestResult) floa
 	if latencyScore > 30.0 {
 		latencyScore = 30.0
 	}
-	
+
 	// 下载速度评分：100 Mbps为60分
 	downloadBase := 100.0
 	downloadScore := (downloadSpeed / downloadBase) * 40.0
-	
-	// 上传速度评分：50 Mbps为60分
-	uploadBase := 50.0
-	uploadScore := (uploadSpeed / uploadBase) * 30.0
-	
-	score := latencyScore + downloadScore + uploadScore
-	
+
+	score := latencyScore + downloadScore
+	maxScore := 70.0
+	if ok3 && uploadSpeed >= 0 && !uploadEstimated {
+		uploadBase := 50.0
+		uploadScore := (uploadSpeed / uploadBase) * 30.0
+		score += uploadScore
+		maxScore = 100.0
+	}
+
+	if maxScore > 0 {
+		score = score / maxScore * 100.0
+	}
+
 	// 限制在0-100范围内
 	if score > 100.0 {
 		score = 100.0
@@ -180,7 +191,7 @@ func (sc *ScoreCalculator) CalculateNetworkScore(result *models.TestResult) floa
 	if score < 0.0 {
 		score = 0.0
 	}
-	
+
 	return score
 }
 

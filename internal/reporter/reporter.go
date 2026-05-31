@@ -176,53 +176,74 @@ func (rg *ReportGenerator) formatSingleTestResult(testName string, result *model
 		// 根据不同测试类型格式化指标
 		switch result.TestName {
 		case "cpu", "CPU性能测试":
-			if score, ok := result.Metrics["single_core_score"].(float64); ok {
+			if score, ok := metricFloat64(result.Metrics, "single_core_score"); ok {
 				sb.WriteString(fmt.Sprintf("  单核评分:     %.2f\n", score))
 			}
-			if score, ok := result.Metrics["multi_core_score"].(float64); ok {
+			if score, ok := metricFloat64(result.Metrics, "multi_core_score"); ok {
 				sb.WriteString(fmt.Sprintf("  多核评分:     %.2f\n", score))
 			}
-			if score, ok := result.Metrics["total_score"].(float64); ok {
+			if score, ok := getCPUScore(result); ok {
 				sb.WriteString(fmt.Sprintf("  总体评分:     %.2f\n", score))
 			}
-			if cores, ok := result.Metrics["cpu_cores"].(int); ok {
+			if cores, ok := metricInt(result.Metrics, "cpu_cores"); ok {
 				sb.WriteString(fmt.Sprintf("  CPU核心数:    %d\n", cores))
 			}
 
 		case "memory", "内存性能测试":
-			if speed, ok := result.Metrics["read_speed_mbps"].(float64); ok {
+			if speed, ok := getMemoryReadSpeed(result); ok {
 				sb.WriteString(fmt.Sprintf("  读取速度:     %.2f MB/s\n", speed))
 			}
-			if speed, ok := result.Metrics["write_speed_mbps"].(float64); ok {
+			if speed, ok := getMemoryWriteSpeed(result); ok {
 				sb.WriteString(fmt.Sprintf("  写入速度:     %.2f MB/s\n", speed))
+			}
+			if score, ok := metricFloat64(result.Metrics, "score"); ok {
+				sb.WriteString(fmt.Sprintf("  测试评分:     %.2f\n", score))
 			}
 
 		case "disk", "磁盘性能测试":
-			if speed, ok := result.Metrics["sequential_read_mbps"].(float64); ok {
-				sb.WriteString(fmt.Sprintf("  顺序读取:     %.2f MB/s\n", speed))
-			} else if speed, ok := result.Metrics["read_speed_mbps"].(float64); ok {
+			if speed, ok := getDiskReadSpeed(result); ok {
 				sb.WriteString(fmt.Sprintf("  顺序读取:     %.2f MB/s\n", speed))
 			}
-			if speed, ok := result.Metrics["sequential_write_mbps"].(float64); ok {
-				sb.WriteString(fmt.Sprintf("  顺序写入:     %.2f MB/s\n", speed))
-			} else if speed, ok := result.Metrics["write_speed_mbps"].(float64); ok {
+			if speed, ok := getDiskWriteSpeed(result); ok {
 				sb.WriteString(fmt.Sprintf("  顺序写入:     %.2f MB/s\n", speed))
 			}
-			if iops, ok := result.Metrics["random_iops"].(int); ok {
+			if iops, ok := getDiskRandomIOPS(result); ok {
 				sb.WriteString(fmt.Sprintf("  随机IOPS:     %d\n", iops))
+			}
+			if score, ok := metricFloat64(result.Metrics, "score"); ok {
+				sb.WriteString(fmt.Sprintf("  测试评分:     %.2f\n", score))
 			}
 
 		case "network", "网络性能测试":
-			if latency, ok := result.Metrics["average_latency_ms"].(float64); ok {
-				sb.WriteString(fmt.Sprintf("  平均延迟:     %.2f ms\n", latency))
-			} else if latency, ok := result.Metrics["latency_ms"].(float64); ok {
-				sb.WriteString(fmt.Sprintf("  平均延迟:     %.2f ms\n", latency))
+			if latency, ok := getNetworkLatency(result); ok {
+				source := getNetworkLatencySource(result)
+				if source != "" {
+					sb.WriteString(fmt.Sprintf("  平均延迟:     %.2f ms (%s)\n", latency, source))
+				} else {
+					sb.WriteString(fmt.Sprintf("  平均延迟:     %.2f ms\n", latency))
+				}
 			}
-			if speed, ok := result.Metrics["download_speed_mbps"].(float64); ok {
-				sb.WriteString(fmt.Sprintf("  下载速度:     %.2f Mbps\n", speed))
+			if speed, ok := getNetworkDownloadSpeed(result); ok {
+				source := getNetworkDownloadSource(result)
+				if source != "" {
+					sb.WriteString(fmt.Sprintf("  下载速度:     %.2f Mbps (%s)\n", speed, source))
+				} else {
+					sb.WriteString(fmt.Sprintf("  下载速度:     %.2f Mbps\n", speed))
+				}
 			}
-			if speed, ok := result.Metrics["upload_speed_mbps"].(float64); ok {
-				sb.WriteString(fmt.Sprintf("  上传速度:     %.2f Mbps\n", speed))
+			if speed, ok := getNetworkUploadSpeed(result); ok {
+				source := getNetworkUploadSource(result)
+				if source != "" {
+					sb.WriteString(fmt.Sprintf("  上传速度:     %.2f Mbps (%s)\n", speed, source))
+				} else {
+					sb.WriteString(fmt.Sprintf("  上传速度:     %.2f Mbps\n", speed))
+				}
+				if isNetworkUploadEstimated(result) {
+					sb.WriteString("  上传说明:     当前结果为估算值，不参与真实上传评分\n")
+				}
+			}
+			if score, ok := metricFloat64(result.Metrics, "score"); ok {
+				sb.WriteString(fmt.Sprintf("  测试评分:     %.2f\n", score))
 			}
 		}
 	} else if result.Status == "failed" && result.ErrorMessage != "" {

@@ -169,23 +169,27 @@ func (ws *WebServer) getKeyMetrics(result *models.TestResult) string {
 
 	switch result.TestName {
 	case "cpu", "CPU性能测试":
-		if ops, ok := result.Metrics["single_core_operations"].(int64); ok {
-			return fmt.Sprintf("单核: %d 次操作", ops)
+		if score, ok := getCPUScore(result); ok {
+			return fmt.Sprintf("总分: %.2f", score)
 		}
 	case "memory", "内存性能测试":
-		if speed, ok := result.Metrics["read_speed_mbps"].(float64); ok {
-			return fmt.Sprintf("读取: %.2f MB/s", speed)
+		readSpeed, readOK := getMemoryReadSpeed(result)
+		writeSpeed, writeOK := getMemoryWriteSpeed(result)
+		if readOK && writeOK {
+			return fmt.Sprintf("读/写: %.2f / %.2f MB/s", readSpeed, writeSpeed)
+		}
+		if readOK {
+			return fmt.Sprintf("读取: %.2f MB/s", readSpeed)
 		}
 	case "disk", "磁盘性能测试":
-		if speed, ok := result.Metrics["sequential_read_mbps"].(float64); ok {
-			return fmt.Sprintf("顺序读: %.2f MB/s", speed)
-		} else if speed, ok := result.Metrics["read_speed_mbps"].(float64); ok {
+		if speed, ok := getDiskReadSpeed(result); ok {
 			return fmt.Sprintf("顺序读: %.2f MB/s", speed)
 		}
 	case "network", "网络性能测试":
-		if latency, ok := result.Metrics["average_latency_ms"].(float64); ok {
-			return fmt.Sprintf("延迟: %.2f ms", latency)
-		} else if latency, ok := result.Metrics["latency_ms"].(float64); ok {
+		if latency, ok := getNetworkLatency(result); ok {
+			if isNetworkUploadEstimated(result) {
+				return fmt.Sprintf("延迟: %.2f ms | 上传: 估算值", latency)
+			}
 			return fmt.Sprintf("延迟: %.2f ms", latency)
 		}
 	}
