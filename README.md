@@ -211,6 +211,9 @@ sudo rm /usr/local/bin/perfassess
 #### 基础用法
 
 ```bash
+# 检查外部依赖（iperf3、traceroute/tracert）
+./build/perfassess check-deps
+
 # 运行所有检测
 ./build/perfassess --benchmarks all
 # 或使用简写
@@ -234,6 +237,9 @@ make run
 
 # 只测试网络
 ./build/perfassess -b network
+
+# 使用 iperf3 后端测试网络吞吐（需要预装 iperf3，并准备服务端）
+./build/perfassess -b network --network-backend iperf3 --iperf3-server 1.2.3.4:5201
 ```
 
 #### 组合测试
@@ -302,7 +308,10 @@ make run
 ### 命令行参数
 
 ```bash
-perfassess [flags]
+perfassess [command] [flags]
+
+Commands:
+  check-deps               检查外部测试工具依赖
 
 Flags:
   -i, --interactive          启用交互式菜单模式（推荐新手使用）
@@ -315,6 +324,9 @@ Flags:
       --ai-services          启用 AI 服务检测功能
       --stress               启用长时间压力测试
       --security             启用基础安全体检
+      --network-backend string
+                              网络测试后端 (builtin,iperf3) (default "builtin")
+      --iperf3-server string  iperf3 服务端地址（仅 network-backend=iperf3 时使用）
       --web                  启用 Web 报告服务器（新功能）
       --port int             Web 服务器端口 (default 8080)
   -h, --help                 显示帮助信息
@@ -322,6 +334,7 @@ Flags:
 注：--tests 参数仍然支持，但推荐使用 --benchmarks
 
 提示：使用 `--route-trace` 时，请确保系统已安装 traceroute（Linux/macOS）或 tracert（Windows），否则将提示缺少依赖。
+提示：使用 `--network-backend iperf3` 时，请提前安装 iperf3，并提供可访问的 `--iperf3-server`。程序只检测并提示，不会自动安装依赖。
 ```
 
 ### 使用示例

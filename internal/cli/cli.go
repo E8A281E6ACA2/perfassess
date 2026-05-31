@@ -11,6 +11,7 @@ import (
 
 	"performance-assessment-system/internal/config"
 	"performance-assessment-system/internal/controller"
+	"performance-assessment-system/internal/doctor"
 )
 
 // CLI 命令行界面结构体
@@ -82,6 +83,7 @@ func (c *CLI) setupCommands() {
 支持 Linux、Windows、macOS 多平台。`,
 		RunE: c.run,
 	}
+	c.rootCmd.AddCommand(c.newCheckDepsCommand())
 
 	// 添加命令行参数
 	flags := c.rootCmd.Flags()
@@ -149,6 +151,36 @@ func (c *CLI) setupCommands() {
 	// 绑定参数到配置
 	c.rootCmd.PreRunE = func(cmd *cobra.Command, args []string) error {
 		return c.bindFlags(cmd)
+	}
+}
+
+func (c *CLI) newCheckDepsCommand() *cobra.Command {
+	return &cobra.Command{
+		Use:   "check-deps",
+		Short: "检查外部测试工具依赖",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			statuses := doctor.CheckDependencies()
+			fmt.Println("外部依赖检查:")
+			fmt.Println()
+
+			missing := 0
+			for _, status := range statuses {
+				if status.Found {
+					fmt.Printf("[OK] %s - %s (%s)\n", status.Name, status.Purpose, status.Path)
+					continue
+				}
+
+				missing++
+				fmt.Printf("[缺失] %s - %s\n", status.Name, status.Purpose)
+				fmt.Printf("       %s\n", status.Hint)
+			}
+
+			if missing > 0 {
+				fmt.Println()
+				fmt.Printf("发现 %d 个缺失依赖。程序不会自动安装，请按提示手动安装后重试。\n", missing)
+			}
+			return nil
+		},
 	}
 }
 
