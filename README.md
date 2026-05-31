@@ -20,21 +20,22 @@
 
 ## 快速开始
 
-### 方式一：交互式菜单（推荐新手）
+### 方式一：一把梭完整检测（默认）
 
 ```bash
 # 1. 构建程序
 make build
 
-# 2. 运行（自动进入交互式菜单）
+# 2. 运行默认完整检测（等价于 -b all）
 ./build/perfassess
 
-# 3. 按照菜单提示选择测试项目，开始评估！
+# 3. 如需保存报告
+./build/perfassess -o report.txt
 ```
 
-就这么简单！程序会引导您完成所有配置。
+默认无参数会直接执行 CPU、内存、磁盘、网络基础检测，适合脚本化和快速评估。
 
-### 方式二：命令行模式（推荐高级用户）
+### 方式二：命令行指定检测项
 
 ```bash
 # 快速 CPU 测试
@@ -47,12 +48,18 @@ make build
 ./build/perfassess -b all --route-trace --streaming --web -o report.txt
 ```
 
+### 方式三：交互式菜单（可选）
+
+```bash
+./build/perfassess -i
+```
+
 ## ✨ 功能亮点
 
 ### 🎯 三种使用方式，满足不同需求
 
-1. **交互式菜单** - 中文界面，纯数字选择，新手友好
-2. **命令行模式** - 快速执行，适合自动化脚本
+1. **命令行模式** - 默认一把梭执行，适合自动化脚本
+2. **交互式菜单** - 中文界面，纯数字选择，作为可选模式保留
 3. **Web 报告** - 美观的 HTML 界面，可视化展示（新功能）
 
 ### 🚀 核心功能
@@ -186,17 +193,27 @@ sudo rm /usr/local/bin/perfassess
 
 ## 使用方法
 
-### 🎯 交互式模式（推荐新手）
+### 🎯 默认一把梭模式
 
-直接运行程序，无需任何参数，即可进入友好的交互式菜单：
+直接运行程序，无需任何参数，会使用默认配置执行完整基础检测：
+
+```bash
+# 默认完整检测，等价于 -b all
+./build/perfassess
+```
+
+默认会执行 CPU、内存、磁盘、网络基础性能测试。外部依赖不会自动安装；如需使用 `iperf3` 或路由追踪，请先运行 `check-deps` 查看提示。
+
+### 🧭 交互式模式（可选）
+
+如需菜单引导，可以显式启用交互式模式：
 
 ```bash
 # 进入交互式菜单
-./build/perfassess
+./build/perfassess -i
 
 # 或明确指定交互式模式
 ./build/perfassess --interactive
-./build/perfassess -i
 ```
 
 交互式菜单将引导您：
@@ -314,7 +331,7 @@ Commands:
   check-deps               检查外部测试工具依赖
 
 Flags:
-  -i, --interactive          启用交互式菜单模式（推荐新手使用）
+  -i, --interactive          启用交互式菜单模式
   -b, --benchmarks strings   指定要运行的检测项目 (cpu,memory,disk,network,all) (default [all])
   -o, --output string        指定输出文件路径（不指定则只输出到控制台）
   -v, --verbose              启用详细输出模式
@@ -342,8 +359,8 @@ Flags:
 #### 交互式模式示例
 
 ```bash
-# 最简单的方式 - 直接运行
-./build/perfassess
+# 显式进入交互式菜单
+./build/perfassess -i
 
 # 程序会显示友好的菜单：
 # ╔════════════════════════════════════════════════════════════════╗
@@ -686,7 +703,8 @@ A: 使用 `--port` 参数指定其他端口：
 
 | 需求 | 命令 |
 |------|------|
-| 交互式菜单 | `./build/perfassess` |
+| 默认完整测试 | `./build/perfassess` |
+| 交互式菜单 | `./build/perfassess -i` |
 | 快速 CPU 测试 | `./build/perfassess -b cpu` |
 | 完整测试 | `./build/perfassess -b all` |
 | Web 报告 | `./build/perfassess -b all --web` |

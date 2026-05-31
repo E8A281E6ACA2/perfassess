@@ -90,7 +90,7 @@ func (c *CLI) setupCommands() {
 
 	// --interactive 参数：启用交互式模式
 	flags.BoolP("interactive", "i", false,
-		"启用交互式菜单模式（推荐新手使用）")
+		"启用交互式菜单模式")
 
 	// --benchmarks 参数：指定要运行的检测项目
 	flags.StringSliceP("benchmarks", "b", []string{"all"},

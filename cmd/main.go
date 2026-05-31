@@ -5,7 +5,7 @@ package main
 import (
 	"fmt"
 	"os"
-	
+
 	"performance-assessment-system/internal/cli"
 )
 
@@ -17,22 +17,13 @@ const Version = "1.0.0"
 func main() {
 	// 创建CLI实例
 	cliApp := cli.NewCLI()
-	
-	// 如果没有任何参数，自动进入交互式模式
-	if len(os.Args) == 1 {
-		if err := cliApp.RunInteractive(); err != nil {
-			fmt.Fprintf(os.Stderr, "错误: %v\n", err)
-			os.Exit(1)
-		}
-		os.Exit(0)
-	}
-	
+
 	// 执行CLI
 	if err := cliApp.Execute(); err != nil {
 		fmt.Fprintf(os.Stderr, "错误: %v\n", err)
 		os.Exit(1)
 	}
-	
+
 	// 正常退出
 	os.Exit(0)
 }
