@@ -185,6 +185,9 @@ func (rg *ReportGenerator) formatSingleTestResult(testName string, result *model
 			if score, ok := getCPUScore(result); ok {
 				sb.WriteString(fmt.Sprintf("  总体评分:     %.2f\n", score))
 			}
+			if stddev, ok := getCPUScoreStdDev(result); ok {
+				sb.WriteString(fmt.Sprintf("  评分波动:     %.2f stddev\n", stddev))
+			}
 			if cores, ok := metricInt(result.Metrics, "cpu_cores"); ok {
 				sb.WriteString(fmt.Sprintf("  CPU核心数:    %d\n", cores))
 			}
@@ -193,8 +196,14 @@ func (rg *ReportGenerator) formatSingleTestResult(testName string, result *model
 			if speed, ok := getMemoryReadSpeed(result); ok {
 				sb.WriteString(fmt.Sprintf("  读取速度:     %.2f MB/s\n", speed))
 			}
+			if stddev, ok := getMemoryReadStdDev(result); ok {
+				sb.WriteString(fmt.Sprintf("  读取波动:     %.2f MB/s stddev\n", stddev))
+			}
 			if speed, ok := getMemoryWriteSpeed(result); ok {
 				sb.WriteString(fmt.Sprintf("  写入速度:     %.2f MB/s\n", speed))
+			}
+			if stddev, ok := getMemoryWriteStdDev(result); ok {
+				sb.WriteString(fmt.Sprintf("  写入波动:     %.2f MB/s stddev\n", stddev))
 			}
 			if score, ok := metricFloat64(result.Metrics, "score"); ok {
 				sb.WriteString(fmt.Sprintf("  测试评分:     %.2f\n", score))

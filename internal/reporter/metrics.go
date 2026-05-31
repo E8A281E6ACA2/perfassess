@@ -133,12 +133,29 @@ func getCPUScore(result *models.TestResult) (float64, bool) {
 	return metricFloat64(result.Metrics, "total_score")
 }
 
+func getCPUScoreStdDev(result *models.TestResult) (float64, bool) {
+	singleStdDev, singleOK := metricFloat64(result.Metrics, "single_core_score_stddev")
+	multiStdDev, multiOK := metricFloat64(result.Metrics, "multi_core_score_stddev")
+	if !singleOK || !multiOK {
+		return 0, false
+	}
+	return singleStdDev*0.4 + multiStdDev*0.6, true
+}
+
 func getMemoryReadSpeed(result *models.TestResult) (float64, bool) {
 	return metricFloat64(result.Metrics, "read_speed_mbps")
 }
 
 func getMemoryWriteSpeed(result *models.TestResult) (float64, bool) {
 	return metricFloat64(result.Metrics, "write_speed_mbps")
+}
+
+func getMemoryReadStdDev(result *models.TestResult) (float64, bool) {
+	return metricFloat64(result.Metrics, "read_speed_mbps_stddev")
+}
+
+func getMemoryWriteStdDev(result *models.TestResult) (float64, bool) {
+	return metricFloat64(result.Metrics, "write_speed_mbps_stddev")
 }
 
 func getDiskReadSpeed(result *models.TestResult) (float64, bool) {

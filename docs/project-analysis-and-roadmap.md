@@ -118,12 +118,32 @@
 
 - CPU:
   - `single_core_score`
+  - `single_core_score_samples`
+  - `single_core_score_min`
+  - `single_core_score_median`
+  - `single_core_score_max`
+  - `single_core_score_stddev`
   - `multi_core_score`
+  - `multi_core_score_samples`
+  - `multi_core_score_min`
+  - `multi_core_score_median`
+  - `multi_core_score_max`
+  - `multi_core_score_stddev`
   - `total_score`
   - `cpu_cores`
 - Memory:
   - `read_speed_mbps`
+  - `read_speed_mbps_samples`
+  - `read_speed_mbps_min`
+  - `read_speed_mbps_median`
+  - `read_speed_mbps_max`
+  - `read_speed_mbps_stddev`
   - `write_speed_mbps`
+  - `write_speed_mbps_samples`
+  - `write_speed_mbps_min`
+  - `write_speed_mbps_median`
+  - `write_speed_mbps_max`
+  - `write_speed_mbps_stddev`
   - `score`
   - `test_size_mb`
 - Disk:
@@ -152,6 +172,7 @@
 
 - 报告层和评分层应优先读取统一字段，不再各自散落解析 `Metrics`
 - 如存在兼容字段，应只作为过渡读取逻辑，而不应继续扩散
+- CPU 和内存当前使用 3 轮采样，中位数作为兼容主指标，`stddev` 用于解释结果波动
 - 当前网络测试中：
   - 延迟为 TCP connect 近似值，使用 `latency_source=tcp_connect` 标记
   - 下载为 HTTP 下载测速，使用 `download_speed_source=http_download` 标记

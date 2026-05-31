@@ -13,6 +13,8 @@ import (
 	"performance-assessment-system/pkg/logger"
 )
 
+const cpuSampleRuns = 3
+
 // CPUTest CPU性能测试
 // 测试单核和多核CPU的计算性能
 type CPUTest struct {
@@ -22,6 +24,7 @@ type CPUTest struct {
 // NewCPUTest 创建CPU性能测试
 // 参数:
 //   - logger: 日志记录器
+//
 // 返回:
 //   - *CPUTest: CPU测试实例
 func NewCPUTest(logger *logger.Logger) *CPUTest {
@@ -39,35 +42,53 @@ func (ct *CPUTest) Execute() (*models.TestResult, error) {
 	defer func() {
 		ct.MarkEnd("success")
 	}()
-	
+
 	metrics := make(map[string]interface{})
-	
+
 	// 测试单核性能
 	ct.GetLogger().Info("开始单核CPU测试...")
-	singleCoreScore, err := ct.TestSingleCore()
+	singleCoreSamples, err := ct.collectSamples(cpuSampleRuns, ct.TestSingleCore)
 	if err != nil {
 		return ct.CreateResult("failed", nil, fmt.Sprintf("单核测试失败: %v", err)), err
 	}
+	singleCoreStats := calculateSampleStats(singleCoreSamples)
+	singleCoreScore := singleCoreStats.Median
 	metrics["single_core_score"] = singleCoreScore
+	addSampleStatsMetrics(metrics, "single_core_score", singleCoreStats)
 	ct.GetLogger().Info(fmt.Sprintf("单核测试完成，评分: %.2f", singleCoreScore))
-	
+
 	// 测试多核性能
 	ct.GetLogger().Info("开始多核CPU测试...")
-	multiCoreScore, err := ct.TestMultiCore()
+	multiCoreSamples, err := ct.collectSamples(cpuSampleRuns, ct.TestMultiCore)
 	if err != nil {
 		return ct.CreateResult("failed", nil, fmt.Sprintf("多核测试失败: %v", err)), err
 	}
+	multiCoreStats := calculateSampleStats(multiCoreSamples)
+	multiCoreScore := multiCoreStats.Median
 	metrics["multi_core_score"] = multiCoreScore
+	addSampleStatsMetrics(metrics, "multi_core_score", multiCoreStats)
 	ct.GetLogger().Info(fmt.Sprintf("多核测试完成，评分: %.2f", multiCoreScore))
-	
+
 	// 计算总体评分
 	totalScore := ct.CalculateScore(singleCoreScore, multiCoreScore)
 	metrics["total_score"] = totalScore
 	metrics["cpu_cores"] = runtime.NumCPU()
-	
+
 	ct.GetLogger().Info(fmt.Sprintf("CPU测试完成，总评分: %.2f", totalScore))
-	
+
 	return ct.CreateResult("success", metrics, ""), nil
+}
+
+func (ct *CPUTest) collectSamples(runs int, measure func() (float64, error)) ([]float64, error) {
+	samples := make([]float64, 0, runs)
+	for i := 0; i < runs; i++ {
+		score, err := measure()
+		if err != nil {
+			return nil, err
+		}
+		samples = append(samples, score)
+	}
+	return samples, nil
 }
 
 // TestSingleCore 测试单核性能
@@ -77,18 +98,18 @@ func (ct *CPUTest) Execute() (*models.TestResult, error) {
 //   - error: 测试错误
 func (ct *CPUTest) TestSingleCore() (float64, error) {
 	startTime := time.Now()
-	
+
 	// 计算一定范围内的质数
 	const maxNumber = 100000
 	primeCount := ct.countPrimes(maxNumber)
-	
+
 	duration := time.Since(startTime)
-	
+
 	// 基准：在1秒内计算完成得100分
 	// 实际评分 = (1秒 / 实际用时) * 100
 	baseTime := 1.0 // 秒
 	score := (baseTime / duration.Seconds()) * 100
-	
+
 	// 限制评分范围在0-100之间
 	if score > 100 {
 		score = 100
@@ -96,9 +117,9 @@ func (ct *CPUTest) TestSingleCore() (float64, error) {
 	if score < 0 {
 		score = 0
 	}
-	
+
 	ct.GetLogger().Debug(fmt.Sprintf("单核测试: 计算了 %d 个质数，用时 %.3f 秒", primeCount, duration.Seconds()))
-	
+
 	return score, nil
 }
 
@@ -110,30 +131,30 @@ func (ct *CPUTest) TestSingleCore() (float64, error) {
 func (ct *CPUTest) TestMultiCore() (float64, error) {
 	numCPU := runtime.NumCPU()
 	startTime := time.Now()
-	
+
 	// 使用所有CPU核心并行计算
 	var wg sync.WaitGroup
 	var totalOps int64
-	
+
 	// 每个核心执行相同的计算任务
 	for i := 0; i < numCPU; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			
+
 			// 执行密集计算（矩阵运算）
 			ops := ct.performMatrixOperations(1000)
 			atomic.AddInt64(&totalOps, ops)
 		}()
 	}
-	
+
 	wg.Wait()
 	duration := time.Since(startTime)
-	
+
 	// 基准：在2秒内完成得100分
 	baseTime := 2.0 // 秒
 	score := (baseTime / duration.Seconds()) * 100
-	
+
 	// 限制评分范围
 	if score > 100 {
 		score = 100
@@ -141,16 +162,17 @@ func (ct *CPUTest) TestMultiCore() (float64, error) {
 	if score < 0 {
 		score = 0
 	}
-	
-	ct.GetLogger().Debug(fmt.Sprintf("多核测试: %d 个核心，完成 %d 次操作，用时 %.3f 秒", 
+
+	ct.GetLogger().Debug(fmt.Sprintf("多核测试: %d 个核心，完成 %d 次操作，用时 %.3f 秒",
 		numCPU, totalOps, duration.Seconds()))
-	
+
 	return score, nil
 }
 
 // countPrimes 计算指定范围内的质数个数
 // 参数:
 //   - max: 最大数值
+//
 // 返回:
 //   - int: 质数个数
 func (ct *CPUTest) countPrimes(max int) int {
@@ -166,6 +188,7 @@ func (ct *CPUTest) countPrimes(max int) int {
 // isPrime 判断一个数是否为质数
 // 参数:
 //   - n: 待判断的数
+//
 // 返回:
 //   - bool: 是否为质数
 func (ct *CPUTest) isPrime(n int) bool {
@@ -178,7 +201,7 @@ func (ct *CPUTest) isPrime(n int) bool {
 	if n%2 == 0 {
 		return false
 	}
-	
+
 	sqrtN := int(math.Sqrt(float64(n)))
 	for i := 3; i <= sqrtN; i += 2 {
 		if n%i == 0 {
@@ -191,28 +214,29 @@ func (ct *CPUTest) isPrime(n int) bool {
 // performMatrixOperations 执行矩阵运算
 // 参数:
 //   - iterations: 迭代次数
+//
 // 返回:
 //   - int64: 完成的操作数
 func (ct *CPUTest) performMatrixOperations(iterations int) int64 {
 	const size = 50
 	var ops int64
-	
+
 	// 创建两个矩阵
 	a := make([][]float64, size)
 	b := make([][]float64, size)
 	c := make([][]float64, size)
-	
+
 	for i := 0; i < size; i++ {
 		a[i] = make([]float64, size)
 		b[i] = make([]float64, size)
 		c[i] = make([]float64, size)
-		
+
 		for j := 0; j < size; j++ {
 			a[i][j] = float64(i + j)
 			b[i][j] = float64(i - j)
 		}
 	}
-	
+
 	// 执行矩阵乘法
 	for iter := 0; iter < iterations; iter++ {
 		for i := 0; i < size; i++ {
@@ -226,7 +250,7 @@ func (ct *CPUTest) performMatrixOperations(iterations int) int64 {
 			}
 		}
 	}
-	
+
 	return ops
 }
 
@@ -234,6 +258,7 @@ func (ct *CPUTest) performMatrixOperations(iterations int) int64 {
 // 参数:
 //   - singleCoreScore: 单核评分
 //   - multiCoreScore: 多核评分
+//
 // 返回:
 //   - float64: 总体评分
 func (ct *CPUTest) CalculateScore(singleCoreScore, multiCoreScore float64) float64 {

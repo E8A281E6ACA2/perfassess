@@ -4,6 +4,7 @@ package tests
 import (
 	"fmt"
 	"os"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -14,6 +15,8 @@ import (
 	"performance-assessment-system/pkg/logger"
 	"performance-assessment-system/pkg/utils"
 )
+
+const memorySampleRuns = 3
 
 // MemoryTest 内存性能测试
 // 测试内存的读写速度
@@ -66,20 +69,32 @@ func (mt *MemoryTest) Execute() (*models.TestResult, error) {
 
 	// 测试顺序读取速度
 	mt.GetLogger().Info("开始内存顺序读取测试...")
-	readSpeed, err := mt.TestSequentialRead(mt.testSize)
+	readSamples, err := mt.collectSamples(memorySampleRuns, func() (float64, error) {
+		return mt.TestSequentialRead(mt.testSize)
+	})
 	if err != nil {
 		return mt.CreateResult("failed", nil, fmt.Sprintf("读取测试失败: %v", err)), err
 	}
+	readStats := calculateSampleStats(readSamples)
+	readSpeed := readStats.Median
 	metrics["read_speed_mbps"] = readSpeed
+	addSampleStatsMetrics(metrics, "read_speed_mbps", readStats)
 	mt.GetLogger().Info(fmt.Sprintf("读取速度: %.2f MB/s", readSpeed))
+
+	runtime.GC()
 
 	// 测试顺序写入速度
 	mt.GetLogger().Info("开始内存顺序写入测试...")
-	writeSpeed, err := mt.TestSequentialWrite(mt.testSize)
+	writeSamples, err := mt.collectSamples(memorySampleRuns, func() (float64, error) {
+		return mt.TestSequentialWrite(mt.testSize)
+	})
 	if err != nil {
 		return mt.CreateResult("failed", nil, fmt.Sprintf("写入测试失败: %v", err)), err
 	}
+	writeStats := calculateSampleStats(writeSamples)
+	writeSpeed := writeStats.Median
 	metrics["write_speed_mbps"] = writeSpeed
+	addSampleStatsMetrics(metrics, "write_speed_mbps", writeStats)
 	mt.GetLogger().Info(fmt.Sprintf("写入速度: %.2f MB/s", writeSpeed))
 
 	// 计算总体评分
@@ -90,6 +105,18 @@ func (mt *MemoryTest) Execute() (*models.TestResult, error) {
 	mt.GetLogger().Info(fmt.Sprintf("内存测试完成，评分: %.2f", score))
 
 	return mt.CreateResult("success", metrics, ""), nil
+}
+
+func (mt *MemoryTest) collectSamples(runs int, measure func() (float64, error)) ([]float64, error) {
+	samples := make([]float64, 0, runs)
+	for i := 0; i < runs; i++ {
+		speed, err := measure()
+		if err != nil {
+			return nil, err
+		}
+		samples = append(samples, speed)
+	}
+	return samples, nil
 }
 
 // GetSafeTestSize 获取安全的测试大小

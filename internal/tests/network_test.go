@@ -348,6 +348,18 @@ func assertMetricBool(t *testing.T, metrics map[string]interface{}, key string, 
 	}
 }
 
+func assertMetricInt(t *testing.T, metrics map[string]interface{}, key string, expected int) {
+	t.Helper()
+
+	value, ok := metrics[key].(int)
+	if !ok {
+		t.Fatalf("expected metric %s to be int, got %T", key, metrics[key])
+	}
+	if value != expected {
+		t.Fatalf("expected metric %s to be %d, got %d", key, expected, value)
+	}
+}
+
 type fakeCommandRunner struct {
 	output      []byte
 	err         error

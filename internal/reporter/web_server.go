@@ -170,12 +170,20 @@ func (ws *WebServer) getKeyMetrics(result *models.TestResult) string {
 	switch result.TestName {
 	case "cpu", "CPU性能测试":
 		if score, ok := getCPUScore(result); ok {
+			if stddev, ok := getCPUScoreStdDev(result); ok {
+				return fmt.Sprintf("总分: %.2f (stddev %.2f)", score, stddev)
+			}
 			return fmt.Sprintf("总分: %.2f", score)
 		}
 	case "memory", "内存性能测试":
 		readSpeed, readOK := getMemoryReadSpeed(result)
 		writeSpeed, writeOK := getMemoryWriteSpeed(result)
 		if readOK && writeOK {
+			readStdDev, readStdOK := getMemoryReadStdDev(result)
+			writeStdDev, writeStdOK := getMemoryWriteStdDev(result)
+			if readStdOK && writeStdOK {
+				return fmt.Sprintf("读/写: %.2f / %.2f MB/s (stddev %.2f / %.2f)", readSpeed, writeSpeed, readStdDev, writeStdDev)
+			}
 			return fmt.Sprintf("读/写: %.2f / %.2f MB/s", readSpeed, writeSpeed)
 		}
 		if readOK {
