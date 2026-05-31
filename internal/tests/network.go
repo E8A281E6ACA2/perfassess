@@ -17,6 +17,7 @@ import (
 // 当前默认使用内置实现，后续可扩展到 iperf3 等主流工具。
 type NetworkBenchmarkBackend interface {
 	Name() string
+	Server() string
 	MeasureLatency(hosts []string) (float64, error)
 	MeasureDownload() (float64, error)
 	MeasureUpload(downloadSpeed float64) (float64, bool, error)
@@ -29,6 +30,10 @@ type BuiltinNetworkBackend struct {
 
 func (b *BuiltinNetworkBackend) Name() string {
 	return models.NetworkBackendBuiltin
+}
+
+func (b *BuiltinNetworkBackend) Server() string {
+	return ""
 }
 
 func (b *BuiltinNetworkBackend) MeasureLatency(hosts []string) (float64, error) {
@@ -156,6 +161,7 @@ func (nt *NetworkTest) Execute() (*models.TestResult, error) {
 	}
 	if nt.backend != nil {
 		metrics.Backend = nt.backend.Name()
+		metrics.BackendServer = nt.backend.Server()
 	}
 	avgLatency := -1.0
 	downloadSpeed := -1.0

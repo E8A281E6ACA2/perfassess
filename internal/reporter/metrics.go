@@ -166,6 +166,20 @@ func getNetworkLatency(result *models.TestResult) (float64, bool) {
 	return metricFloat64(result.Metrics, "latency_ms")
 }
 
+func getNetworkBackend(result *models.TestResult) string {
+	if backend, ok := metricString(result.Metrics, "backend"); ok {
+		return backend
+	}
+	return ""
+}
+
+func getNetworkBackendServer(result *models.TestResult) string {
+	if server, ok := metricString(result.Metrics, "backend_server"); ok {
+		return server
+	}
+	return ""
+}
+
 func getNetworkDownloadSpeed(result *models.TestResult) (float64, bool) {
 	return metricFloat64(result.Metrics, "download_speed_mbps")
 }

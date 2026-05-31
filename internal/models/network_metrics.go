@@ -28,6 +28,7 @@ const (
 // 作为弱类型 Metrics map 的上游数据结构，便于后续接入 iperf3 等后端。
 type NetworkMetrics struct {
 	Backend           string  `json:"backend,omitempty"`
+	BackendServer     string  `json:"backend_server,omitempty"`
 	LatencyMs         float64 `json:"latency_ms"`
 	AverageLatencyMs  float64 `json:"average_latency_ms"`
 	LatencySource     string  `json:"latency_source,omitempty"`
@@ -60,6 +61,7 @@ func (nm *NetworkMetrics) ToMetricsMap() map[string]interface{} {
 
 	return map[string]interface{}{
 		"backend":                nm.Backend,
+		"backend_server":         nm.BackendServer,
 		"latency_ms":             nm.LatencyMs,
 		"average_latency_ms":     nm.AverageLatencyMs,
 		"latency_source":         nm.LatencySource,

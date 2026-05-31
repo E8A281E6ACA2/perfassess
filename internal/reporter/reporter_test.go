@@ -55,6 +55,8 @@ func TestFormatSingleTestResultMarksEstimatedUpload(t *testing.T) {
 		Status:          "success",
 		DurationSeconds: 3.2,
 		Metrics: map[string]interface{}{
+			"backend":                "iperf3",
+			"backend_server":         "127.0.0.1:5201",
 			"average_latency_ms":     12.34,
 			"latency_source":         "tcp_connect",
 			"download_speed_mbps":    321.0,
@@ -69,6 +71,8 @@ func TestFormatSingleTestResultMarksEstimatedUpload(t *testing.T) {
 	formatted := generator.formatSingleTestResult("网络性能测试", result)
 
 	expectedSnippets := []string{
+		"测试后端:     iperf3",
+		"后端服务端:   127.0.0.1:5201",
 		"平均延迟:     12.34 ms (tcp_connect)",
 		"下载速度:     321.00 Mbps (http_download)",
 		"上传速度:     200.00 Mbps (estimated_from_download)",
@@ -109,13 +113,14 @@ func TestWebServerKeyMetricsMarksEstimatedUpload(t *testing.T) {
 		TestName: "网络性能测试",
 		Status:   "success",
 		Metrics: map[string]interface{}{
+			"backend":                "builtin",
 			"average_latency_ms":     8.5,
 			"upload_speed_estimated": true,
 		},
 	}
 
 	metrics := server.getKeyMetrics(result)
-	if !strings.Contains(metrics, "上传: 估算值") {
+	if !strings.Contains(metrics, "builtin | 延迟: 8.50 ms | 上传: 估算值") {
 		t.Fatalf("expected web key metrics to mark estimated upload, got %q", metrics)
 	}
 }

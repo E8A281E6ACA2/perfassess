@@ -215,6 +215,12 @@ func (rg *ReportGenerator) formatSingleTestResult(testName string, result *model
 			}
 
 		case "network", "网络性能测试":
+			if backend := getNetworkBackend(result); backend != "" {
+				sb.WriteString(fmt.Sprintf("  测试后端:     %s\n", backend))
+			}
+			if server := getNetworkBackendServer(result); server != "" {
+				sb.WriteString(fmt.Sprintf("  后端服务端:   %s\n", server))
+			}
 			if message := getNetworkError(result); message != "" {
 				sb.WriteString(fmt.Sprintf("  网络说明:     %s\n", message))
 			}

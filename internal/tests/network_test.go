@@ -147,6 +147,7 @@ func TestExecuteMarksFailedDownloadAndUnavailableUpload(t *testing.T) {
 func TestNetworkMetricsToMetricsMap(t *testing.T) {
 	metrics := (&models.NetworkMetrics{
 		Backend:           models.NetworkBackendBuiltin,
+		BackendServer:     "127.0.0.1:5201",
 		LatencyMs:         11.2,
 		AverageLatencyMs:  11.2,
 		LatencySource:     models.NetworkLatencySourceTCPConnect,
@@ -160,6 +161,7 @@ func TestNetworkMetricsToMetricsMap(t *testing.T) {
 	}).ToMetricsMap()
 
 	assertMetricString(t, metrics, "backend", models.NetworkBackendBuiltin)
+	assertMetricString(t, metrics, "backend_server", "127.0.0.1:5201")
 	assertMetricFloat(t, metrics, "latency_ms", 11.2)
 	assertMetricFloat(t, metrics, "average_latency_ms", 11.2)
 	assertMetricFloat(t, metrics, "download_speed_mbps", 300.5)
@@ -274,6 +276,7 @@ func TestExecuteUsesConfiguredBackendName(t *testing.T) {
 	}
 
 	assertMetricString(t, result.Metrics, "backend", models.NetworkBackendIperf3)
+	assertMetricString(t, result.Metrics, "backend_server", "127.0.0.1:5201")
 }
 
 func newTestLogger(t *testing.T) *logger.Logger {

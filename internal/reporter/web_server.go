@@ -189,11 +189,20 @@ func (ws *WebServer) getKeyMetrics(result *models.TestResult) string {
 		if message := getNetworkError(result); message != "" {
 			return message
 		}
+		backend := getNetworkBackend(result)
+		server := getNetworkBackendServer(result)
 		if latency, ok := getNetworkLatency(result); ok {
-			if isNetworkUploadEstimated(result) {
-				return fmt.Sprintf("延迟: %.2f ms | 上传: 估算值", latency)
+			prefix := ""
+			if backend != "" {
+				prefix = backend + " | "
 			}
-			return fmt.Sprintf("延迟: %.2f ms", latency)
+			if server != "" {
+				prefix = prefix + server + " | "
+			}
+			if isNetworkUploadEstimated(result) {
+				return fmt.Sprintf("%s延迟: %.2f ms | 上传: 估算值", prefix, latency)
+			}
+			return fmt.Sprintf("%s延迟: %.2f ms", prefix, latency)
 		}
 	}
 

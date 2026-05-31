@@ -59,6 +59,10 @@ func (b *Iperf3NetworkBackend) Name() string {
 	return models.NetworkBackendIperf3
 }
 
+func (b *Iperf3NetworkBackend) Server() string {
+	return b.server
+}
+
 func (b *Iperf3NetworkBackend) MeasureLatency(hosts []string) (float64, error) {
 	return 0, fmt.Errorf("iperf3 latency measurement is not implemented")
 }
