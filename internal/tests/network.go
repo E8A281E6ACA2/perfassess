@@ -18,6 +18,8 @@ import (
 type NetworkBenchmarkBackend interface {
 	Name() string
 	Server() string
+	DownloadSource() string
+	UploadSource(estimated bool) string
 	MeasureLatency(hosts []string) (float64, error)
 	MeasureDownload() (float64, error)
 	MeasureUpload(downloadSpeed float64) (float64, bool, error)
@@ -34,6 +36,17 @@ func (b *BuiltinNetworkBackend) Name() string {
 
 func (b *BuiltinNetworkBackend) Server() string {
 	return ""
+}
+
+func (b *BuiltinNetworkBackend) DownloadSource() string {
+	return models.NetworkDownloadSourceHTTP
+}
+
+func (b *BuiltinNetworkBackend) UploadSource(estimated bool) string {
+	if estimated {
+		return models.NetworkUploadSourceEstimated
+	}
+	return models.NetworkUploadSourceHTTP
 }
 
 func (b *BuiltinNetworkBackend) MeasureLatency(hosts []string) (float64, error) {
@@ -189,7 +202,7 @@ func (nt *NetworkTest) Execute() (*models.TestResult, error) {
 		metrics.AppendError("下载速度测试失败: " + err.Error())
 	} else {
 		metrics.DownloadSpeedMbps = downloadSpeed
-		metrics.DownloadSource = models.NetworkDownloadSourceHTTP
+		metrics.DownloadSource = nt.resolveDownloadSource()
 		nt.GetLogger().Info(fmt.Sprintf("下载速度: %.2f Mbps", downloadSpeed))
 	}
 
@@ -202,11 +215,11 @@ func (nt *NetworkTest) Execute() (*models.TestResult, error) {
 	} else {
 		metrics.UploadSpeedMbps = uploadSpeed
 		if uploadEstimated {
-			metrics.UploadSource = models.NetworkUploadSourceEstimated
+			metrics.UploadSource = nt.resolveUploadSource(uploadEstimated)
 			metrics.UploadEstimated = true
 			nt.GetLogger().Warn(fmt.Sprintf("上传速度为估算值: %.2f Mbps", uploadSpeed))
 		} else {
-			metrics.UploadSource = models.NetworkUploadSourceHTTP
+			metrics.UploadSource = nt.resolveUploadSource(uploadEstimated)
 			metrics.UploadEstimated = false
 			nt.GetLogger().Info(fmt.Sprintf("上传速度: %.2f Mbps", uploadSpeed))
 		}
@@ -219,6 +232,23 @@ func (nt *NetworkTest) Execute() (*models.TestResult, error) {
 	nt.GetLogger().Info(fmt.Sprintf("网络测试完成，评分: %.2f", score))
 
 	return nt.CreateResult("success", metrics.ToMetricsMap(), ""), nil
+}
+
+func (nt *NetworkTest) resolveDownloadSource() string {
+	if nt.backend != nil {
+		return nt.backend.DownloadSource()
+	}
+	return models.NetworkDownloadSourceHTTP
+}
+
+func (nt *NetworkTest) resolveUploadSource(estimated bool) string {
+	if nt.backend != nil {
+		return nt.backend.UploadSource(estimated)
+	}
+	if estimated {
+		return models.NetworkUploadSourceEstimated
+	}
+	return models.NetworkUploadSourceHTTP
 }
 
 // CheckConnectivity 检查网络连接

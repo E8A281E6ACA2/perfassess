@@ -234,6 +234,7 @@
 - `iperf3` 后端会检测本机是否安装 `iperf3`，缺失时返回安装提示，不自动安装
 - 网络测试失败原因会写入 `network_error` 并展示在终端/Web 报告中
 - 网络报告会展示 `backend`，并在 `iperf3` 场景展示服务端地址
+- 网络测速来源字段会跟随 backend，例如 `iperf3_download` 与 `iperf3_upload`
 - 后续真正启用 `iperf3` 前，需要补充真实服务端验证和报告展示
 
 `iperf3` 使用约定：

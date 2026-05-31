@@ -279,6 +279,28 @@ func TestExecuteUsesConfiguredBackendName(t *testing.T) {
 	assertMetricString(t, result.Metrics, "backend_server", "127.0.0.1:5201")
 }
 
+func TestExecuteUsesBackendSpecificSources(t *testing.T) {
+	networkTest := NewNetworkTestWithBackend(newTestLogger(t), NewIperf3NetworkBackend(Iperf3Config{Server: "127.0.0.1:5201"}))
+	networkTest.latencyFn = func(_ []string) (float64, error) {
+		return 10.0, nil
+	}
+	networkTest.downloadFn = func() (float64, error) {
+		return 100.0, nil
+	}
+	networkTest.uploadFn = func(downloadSpeed float64) (float64, bool, error) {
+		return 80.0, false, nil
+	}
+
+	result, err := networkTest.Execute()
+	if err != nil {
+		t.Fatalf("expected execute to succeed, got error: %v", err)
+	}
+
+	assertMetricString(t, result.Metrics, "download_speed_source", models.NetworkDownloadSourceIperf3)
+	assertMetricString(t, result.Metrics, "upload_speed_source", models.NetworkUploadSourceIperf3)
+	assertMetricBool(t, result.Metrics, "upload_speed_estimated", false)
+}
+
 func newTestLogger(t *testing.T) *logger.Logger {
 	t.Helper()
 
