@@ -19,6 +19,9 @@ type NetworkTest struct {
 	*BaseTest
 	httpClient *http.Client
 	testHosts  []string // 测试主机列表
+	latencyFn  func([]string) (float64, error)
+	downloadFn func() (float64, error)
+	uploadFn   func(float64) (float64, bool, error)
 }
 
 // NewNetworkTest 创建网络性能测试
@@ -39,6 +42,27 @@ func NewNetworkTest(logger *logger.Logger) *NetworkTest {
 			"114.114.114.114:53", // 114 DNS
 		},
 	}
+}
+
+func (nt *NetworkTest) resolveLatencyFunc() func([]string) (float64, error) {
+	if nt.latencyFn != nil {
+		return nt.latencyFn
+	}
+	return nt.TestLatency
+}
+
+func (nt *NetworkTest) resolveDownloadFunc() func() (float64, error) {
+	if nt.downloadFn != nil {
+		return nt.downloadFn
+	}
+	return nt.TestDownloadSpeed
+}
+
+func (nt *NetworkTest) resolveUploadFunc() func(float64) (float64, bool, error) {
+	if nt.uploadFn != nil {
+		return nt.uploadFn
+	}
+	return nt.TestUploadSpeed
 }
 
 // Setup 测试前的准备工作
@@ -69,44 +93,63 @@ func (nt *NetworkTest) Execute() (*models.TestResult, error) {
 	}()
 
 	metrics := make(map[string]interface{})
+	avgLatency := -1.0
+	downloadSpeed := -1.0
+	uploadSpeed := -1.0
+	uploadEstimated := false
 
 	// 测试网络延迟
 	nt.GetLogger().Info("开始网络延迟测试...")
-	avgLatency, err := nt.TestLatency(nt.testHosts)
+	var err error
+	avgLatency, err = nt.resolveLatencyFunc()(nt.testHosts)
 	if err != nil {
 		nt.GetLogger().Warn(fmt.Sprintf("延迟测试失败: %v", err))
-		metrics["latency_ms"] = -1
-		metrics["average_latency_ms"] = -1
+		metrics["latency_ms"] = -1.0
+		metrics["average_latency_ms"] = -1.0
+		metrics["latency_source"] = "tcp_connect"
 	} else {
 		metrics["latency_ms"] = avgLatency
 		metrics["average_latency_ms"] = avgLatency
+		metrics["latency_source"] = "tcp_connect"
 		nt.GetLogger().Info(fmt.Sprintf("平均延迟: %.2f ms", avgLatency))
 	}
 
 	// 测试下载速度
 	nt.GetLogger().Info("开始下载速度测试...")
-	downloadSpeed, err := nt.TestDownloadSpeed()
+	downloadSpeed, err = nt.resolveDownloadFunc()()
 	if err != nil {
 		nt.GetLogger().Warn(fmt.Sprintf("下载速度测试失败: %v", err))
-		metrics["download_speed_mbps"] = -1
+		metrics["download_speed_mbps"] = -1.0
+		metrics["download_speed_source"] = "http_download_failed"
 	} else {
 		metrics["download_speed_mbps"] = downloadSpeed
+		metrics["download_speed_source"] = "http_download"
 		nt.GetLogger().Info(fmt.Sprintf("下载速度: %.2f Mbps", downloadSpeed))
 	}
 
-	// 测试上传速度（简化版本，使用HTTP POST）
+	// 测试上传速度（当前为降级估算模式）
 	nt.GetLogger().Info("开始上传速度测试...")
-	uploadSpeed, err := nt.TestUploadSpeed()
+	uploadSpeed, uploadEstimated, err = nt.resolveUploadFunc()(downloadSpeed)
 	if err != nil {
 		nt.GetLogger().Warn(fmt.Sprintf("上传速度测试失败: %v", err))
-		metrics["upload_speed_mbps"] = -1
+		metrics["upload_speed_mbps"] = -1.0
+		metrics["upload_speed_source"] = "unavailable"
+		metrics["upload_speed_estimated"] = false
 	} else {
 		metrics["upload_speed_mbps"] = uploadSpeed
-		nt.GetLogger().Info(fmt.Sprintf("上传速度: %.2f Mbps", uploadSpeed))
+		if uploadEstimated {
+			metrics["upload_speed_source"] = "estimated_from_download"
+			metrics["upload_speed_estimated"] = true
+			nt.GetLogger().Warn(fmt.Sprintf("上传速度为估算值: %.2f Mbps", uploadSpeed))
+		} else {
+			metrics["upload_speed_source"] = "http_upload"
+			metrics["upload_speed_estimated"] = false
+			nt.GetLogger().Info(fmt.Sprintf("上传速度: %.2f Mbps", uploadSpeed))
+		}
 	}
 
 	// 计算总体评分
-	score := nt.calculateScore(avgLatency, downloadSpeed, uploadSpeed)
+	score := nt.calculateScore(avgLatency, downloadSpeed, uploadSpeed, uploadEstimated)
 	metrics["score"] = score
 
 	nt.GetLogger().Info(fmt.Sprintf("网络测试完成，评分: %.2f", score))
@@ -220,22 +263,24 @@ func (nt *NetworkTest) TestDownloadSpeed() (float64, error) {
 }
 
 // TestUploadSpeed 测试上传速度
-// 使用HTTP POST模拟上传
+// 当前实现会在缺乏可靠公共上传端点时回退到估算模式
 // 返回:
 //   - float64: 上传速度（Mbps）
+//   - bool: 是否为估算值
 //   - error: 测试错误
-func (nt *NetworkTest) TestUploadSpeed() (float64, error) {
-	// 注意：这是一个简化的实现
-	// 实际使用时应该使用专门的速度测试服务器
+func (nt *NetworkTest) TestUploadSpeed(downloadSpeed float64) (float64, bool, error) {
+	if downloadSpeed <= 0 {
+		return 0, false, fmt.Errorf("缺少可用的下载测速结果，无法估算上传速度")
+	}
 
-	// 由于没有可靠的公共上传测试服务器
-	// 这里返回一个估算值（基于下载速度的70%）
-	// 在实际项目中应该实现真实的上传测试
+	nt.GetLogger().Debug("上传速度测试当前使用估算值")
 
-	nt.GetLogger().Debug("上传速度测试使用估算值")
+	estimatedUpload := downloadSpeed * 0.7
+	if estimatedUpload <= 0 {
+		return 0, false, fmt.Errorf("上传速度估算失败")
+	}
 
-	// 返回一个合理的估算值
-	return 50.0, nil
+	return estimatedUpload, true, nil
 }
 
 // calculateScore 计算网络性能评分
@@ -246,14 +291,14 @@ func (nt *NetworkTest) TestUploadSpeed() (float64, error) {
 //
 // 返回:
 //   - float64: 评分（0-100）
-func (nt *NetworkTest) calculateScore(latency, downloadSpeed, uploadSpeed float64) float64 {
+func (nt *NetworkTest) calculateScore(latency, downloadSpeed, uploadSpeed float64, uploadEstimated bool) float64 {
 	// 基准值
 	const baseLatency = 50.0        // ms（越低越好）
 	const baseDownloadSpeed = 100.0 // Mbps
 	const baseUploadSpeed = 50.0    // Mbps
 
 	// 计算延迟评分（延迟越低分数越高）
-	latencyScore := 100.0
+	latencyScore := 0.0
 	if latency > 0 {
 		latencyScore = (baseLatency / latency) * 100
 		if latencyScore > 100 {
@@ -279,8 +324,20 @@ func (nt *NetworkTest) calculateScore(latency, downloadSpeed, uploadSpeed float6
 		}
 	}
 
-	// 延迟40%，下载40%，上传20%
-	totalScore := latencyScore*0.4 + downloadScore*0.4 + uploadScore*0.2
+	latencyWeight := 0.4
+	downloadWeight := 0.4
+	uploadWeight := 0.2
+	if uploadEstimated {
+		uploadWeight = 0.0
+	}
 
-	return totalScore
+	totalWeight := latencyWeight + downloadWeight + uploadWeight
+	if totalWeight == 0 {
+		return 0
+	}
+
+	totalScore := latencyScore*latencyWeight + downloadScore*downloadWeight + uploadScore*uploadWeight
+
+	return totalScore / totalWeight
+
 }
