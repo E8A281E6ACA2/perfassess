@@ -96,7 +96,7 @@ func scoreProfileByName(name string) ScoreProfile {
 // CalculateCPUScore 计算CPU性能评分
 // 基于单核和多核测试结果计算评分（0-100）
 func (sc *ScoreCalculator) CalculateCPUScore(result *models.TestResult) float64 {
-	if result == nil || result.Status != "success" {
+	if result == nil || result.Status != models.TestStatusSuccess {
 		return 0.0
 	}
 
@@ -130,7 +130,7 @@ func (sc *ScoreCalculator) CalculateCPUScore(result *models.TestResult) float64 
 // CalculateMemoryScore 计算内存性能评分
 // 基于读写速度计算评分（0-100）
 func (sc *ScoreCalculator) CalculateMemoryScore(result *models.TestResult) float64 {
-	if result == nil || result.Status != "success" {
+	if result == nil || result.Status != models.TestStatusSuccess {
 		return 0.0
 	}
 
@@ -161,7 +161,7 @@ func (sc *ScoreCalculator) CalculateMemoryScore(result *models.TestResult) float
 // CalculateDiskScore 计算磁盘性能评分
 // 基于顺序读写和随机IOPS计算评分（0-100）
 func (sc *ScoreCalculator) CalculateDiskScore(result *models.TestResult) float64 {
-	if result == nil || result.Status != "success" {
+	if result == nil || result.Status != models.TestStatusSuccess {
 		return 0.0
 	}
 
@@ -194,7 +194,7 @@ func (sc *ScoreCalculator) CalculateDiskScore(result *models.TestResult) float64
 // CalculateNetworkScore 计算网络性能评分
 // 基于延迟、下载和上传速度计算评分（0-100）
 func (sc *ScoreCalculator) CalculateNetworkScore(result *models.TestResult) float64 {
-	if result == nil || result.Status != "success" {
+	if result == nil || result.Status != models.TestStatusSuccess {
 		return 0.0
 	}
 
@@ -267,16 +267,16 @@ func (sc *ScoreCalculator) CalculateOverallScore(results *models.TestResults) *m
 
 	// 如果某些测试未执行，需要调整权重
 	totalWeight := 0.0
-	if results.CPUResult != nil && results.CPUResult.Status == "success" {
+	if results.CPUResult != nil && results.CPUResult.Status == models.TestStatusSuccess {
 		totalWeight += sc.weights["cpu"]
 	}
-	if results.MemoryResult != nil && results.MemoryResult.Status == "success" {
+	if results.MemoryResult != nil && results.MemoryResult.Status == models.TestStatusSuccess {
 		totalWeight += sc.weights["memory"]
 	}
-	if results.DiskResult != nil && results.DiskResult.Status == "success" {
+	if results.DiskResult != nil && results.DiskResult.Status == models.TestStatusSuccess {
 		totalWeight += sc.weights["disk"]
 	}
-	if results.NetworkResult != nil && results.NetworkResult.Status == "success" {
+	if results.NetworkResult != nil && results.NetworkResult.Status == models.TestStatusSuccess {
 		totalWeight += sc.weights["network"]
 	}
 
@@ -425,11 +425,11 @@ func (sc *ScoreCalculator) buildNetworkScoreBreakdown(result *models.TestResult)
 		}
 		if download, ok := getNetworkDownloadSpeed(result); ok {
 			item["download_speed_mbps"] = download
-			item["download_score"] = download / sc.profile.NetworkDownloadMbps * 40.0
+			item["download_score"] = clampMax(download/sc.profile.NetworkDownloadMbps*40.0, 40.0)
 		}
 		if upload, ok := getNetworkUploadSpeed(result); ok {
 			item["upload_speed_mbps"] = upload
-			item["upload_score"] = upload / sc.profile.NetworkUploadMbps * 30.0
+			item["upload_score"] = clampMax(upload/sc.profile.NetworkUploadMbps*30.0, 30.0)
 		}
 		item["upload_estimated"] = isNetworkUploadEstimated(result)
 	}
@@ -437,7 +437,7 @@ func (sc *ScoreCalculator) buildNetworkScoreBreakdown(result *models.TestResult)
 }
 
 func baseBreakdown(result *models.TestResult, score float64, formula string) map[string]interface{} {
-	active := result != nil && result.Status == "success"
+	active := result != nil && result.Status == models.TestStatusSuccess
 	status := "not_run"
 	if result != nil {
 		status = result.Status

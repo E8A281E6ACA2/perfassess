@@ -125,6 +125,12 @@ func TestExecuteMarksFailedDownloadAndUnavailableUpload(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected execute to still succeed, got error: %v", err)
 	}
+	if result.Status != models.TestStatusDegraded {
+		t.Fatalf("expected degraded status, got %q", result.Status)
+	}
+	if result.ErrorMessage == "" {
+		t.Fatal("expected degraded result to carry error message")
+	}
 
 	assertMetricFloat(t, result.Metrics, "average_latency_ms", -1.0)
 	assertMetricFloat(t, result.Metrics, "download_speed_mbps", -1.0)
@@ -142,6 +148,30 @@ func TestExecuteMarksFailedDownloadAndUnavailableUpload(t *testing.T) {
 	if score != 0.0 {
 		t.Fatalf("expected score 0.0 when latency and download fail, got %.2f", score)
 	}
+}
+
+func TestExecuteMarksPartialNetworkFailureAsDegraded(t *testing.T) {
+	networkTest := newTestNetworkTest(t)
+	networkTest.latencyFn = func(_ []string) (float64, error) {
+		return 10.0, nil
+	}
+	networkTest.downloadFn = func() (float64, error) {
+		return 0, fmt.Errorf("download unavailable")
+	}
+	networkTest.uploadFn = func(downloadSpeed float64) (float64, bool, error) {
+		return 0, false, fmt.Errorf("upload unavailable")
+	}
+
+	result, err := networkTest.Execute()
+	if err != nil {
+		t.Fatalf("expected degraded execute to return result without error, got %v", err)
+	}
+	if result.Status != models.TestStatusDegraded {
+		t.Fatalf("expected degraded status, got %q", result.Status)
+	}
+	assertMetricFloat(t, result.Metrics, "average_latency_ms", 10.0)
+	assertMetricFloat(t, result.Metrics, "download_speed_mbps", -1.0)
+	assertMetricFloat(t, result.Metrics, "score", 0.0)
 }
 
 func TestNetworkMetricsToMetricsMap(t *testing.T) {

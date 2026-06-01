@@ -367,6 +367,7 @@ func (rg *ReportGenerator) AddSummary(report *models.Report, overallScore *model
 	successCount := 0
 	failedCount := 0
 	skippedCount := 0
+	degradedCount := 0
 
 	if report.TestResults != nil {
 		for _, result := range []*models.TestResult{
@@ -377,12 +378,14 @@ func (rg *ReportGenerator) AddSummary(report *models.Report, overallScore *model
 		} {
 			if result != nil {
 				switch result.Status {
-				case "success":
+				case models.TestStatusSuccess:
 					successCount++
-				case "failed":
+				case models.TestStatusFailed:
 					failedCount++
-				case "skipped":
+				case models.TestStatusSkipped:
 					skippedCount++
+				case models.TestStatusDegraded:
+					degradedCount++
 				}
 			}
 		}
@@ -391,12 +394,13 @@ func (rg *ReportGenerator) AddSummary(report *models.Report, overallScore *model
 	report.Summary["tests_success"] = successCount
 	report.Summary["tests_failed"] = failedCount
 	report.Summary["tests_skipped"] = skippedCount
+	report.Summary["tests_degraded"] = degradedCount
 
 	allCompleted := successCount == 4 && report.TestResults != nil &&
-		report.TestResults.CPUResult != nil && report.TestResults.CPUResult.Status == "success" &&
-		report.TestResults.MemoryResult != nil && report.TestResults.MemoryResult.Status == "success" &&
-		report.TestResults.DiskResult != nil && report.TestResults.DiskResult.Status == "success" &&
-		report.TestResults.NetworkResult != nil && report.TestResults.NetworkResult.Status == "success"
+		report.TestResults.CPUResult != nil && report.TestResults.CPUResult.Status == models.TestStatusSuccess &&
+		report.TestResults.MemoryResult != nil && report.TestResults.MemoryResult.Status == models.TestStatusSuccess &&
+		report.TestResults.DiskResult != nil && report.TestResults.DiskResult.Status == models.TestStatusSuccess &&
+		report.TestResults.NetworkResult != nil && report.TestResults.NetworkResult.Status == models.TestStatusSuccess
 
 	if !allCompleted {
 		note := "由于未执行所有性能测试，无法给出完整的性能结论。"
@@ -425,7 +429,7 @@ func (rg *ReportGenerator) buildQualityNotes(testResults *models.TestResults) []
 			notes = append(notes, fmt.Sprintf("%s测试未执行。", item.name))
 			continue
 		}
-		if item.result.Status != "success" {
+		if item.result.Status != models.TestStatusSuccess {
 			if item.result.ErrorMessage != "" {
 				notes = append(notes, fmt.Sprintf("%s测试%s：%s。", item.name, statusText(item.result.Status), item.result.ErrorMessage))
 			} else {
@@ -439,7 +443,7 @@ func (rg *ReportGenerator) buildQualityNotes(testResults *models.TestResults) []
 			notes = append(notes, "CPU 测试使用内置后端，结果适合快速参考；如需主流 CPU 基准建议使用 --cpu-backend sysbench。")
 		}
 	}
-	if testResults.CPUResult != nil && testResults.CPUResult.Status == "success" {
+	if testResults.CPUResult != nil && testResults.CPUResult.Status == models.TestStatusSuccess {
 		if stddev, ok := getCPUScoreStdDev(testResults.CPUResult); ok && stddev > 10 {
 			notes = append(notes, fmt.Sprintf("CPU 多轮采样波动较大（stddev %.2f），建议复测。", stddev))
 		}
@@ -449,7 +453,7 @@ func (rg *ReportGenerator) buildQualityNotes(testResults *models.TestResults) []
 			notes = append(notes, "内存测试使用内置后端，结果适合快速参考；如需主流内存基准建议使用 --memory-backend sysbench。")
 		}
 	}
-	if testResults.MemoryResult != nil && testResults.MemoryResult.Status == "success" {
+	if testResults.MemoryResult != nil && testResults.MemoryResult.Status == models.TestStatusSuccess {
 		if readStd, ok := getMemoryReadStdDev(testResults.MemoryResult); ok && readStd > 1000 {
 			notes = append(notes, fmt.Sprintf("内存读取波动较大（stddev %.2f MB/s），建议复测。", readStd))
 		}
@@ -465,7 +469,7 @@ func (rg *ReportGenerator) buildQualityNotes(testResults *models.TestResults) []
 			notes = append(notes, "磁盘测试使用内置后端，结果适合快速参考；如需主流基准建议使用 --disk-backend fio。")
 		}
 	}
-	if testResults.NetworkResult != nil && testResults.NetworkResult.Status == "success" {
+	if testResults.NetworkResult != nil {
 		if isNetworkUploadEstimated(testResults.NetworkResult) {
 			notes = append(notes, "网络上传速度为估算值，网络评分上限为 85；如需真实上传建议使用 --network-backend iperf3。")
 		}
@@ -543,7 +547,7 @@ func (rg *ReportGenerator) buildConfidenceLevel(testResults *models.TestResults)
 			level = "low"
 			continue
 		}
-		if item.result.Status != "success" {
+		if item.result.Status != models.TestStatusSuccess {
 			reasons = append(reasons, item.name+"测试未成功")
 			level = "low"
 		}
@@ -627,10 +631,12 @@ func lowerConfidence(current string, candidate string) string {
 
 func statusText(status string) string {
 	switch status {
-	case "failed":
+	case models.TestStatusFailed:
 		return "失败"
-	case "skipped":
+	case models.TestStatusSkipped:
 		return "跳过"
+	case models.TestStatusDegraded:
+		return "降级"
 	default:
 		return status
 	}
@@ -721,6 +727,9 @@ func (rg *ReportGenerator) FormatReport(report *models.Report) string {
 		sb.WriteString(fmt.Sprintf("成功测试:       %d\n", report.Summary["tests_success"]))
 		sb.WriteString(fmt.Sprintf("失败测试:       %d\n", report.Summary["tests_failed"]))
 		sb.WriteString(fmt.Sprintf("跳过测试:       %d\n", report.Summary["tests_skipped"]))
+		if degraded, ok := report.Summary["tests_degraded"]; ok {
+			sb.WriteString(fmt.Sprintf("降级测试:       %d\n", degraded))
+		}
 
 		// 路由追踪结果
 		if routeResults, ok := report.Summary["route_trace_results"].([]*models.TraceResult); ok && len(routeResults) > 0 {

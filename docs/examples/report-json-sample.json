@@ -102,6 +102,7 @@
     "tests_success": 4,
     "tests_failed": 0,
     "tests_skipped": 0,
+    "tests_degraded": 0,
     "quality_notes": [
       "核心测试均已完成，未发现明显降级或估算路径。"
     ],

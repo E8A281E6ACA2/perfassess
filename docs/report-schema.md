@@ -17,12 +17,12 @@
 每个测试结果使用同一结构：
 
 - `test_name`: 测试名称
-- `status`: `success`、`failed`、`skipped`
+- `status`: `success`、`failed`、`skipped`、`degraded`
 - `start_time`: 测试开始时间
 - `end_time`: 测试结束时间
 - `duration_seconds`: 测试耗时，单位秒
 - `metrics`: 测试指标
-- `error_message`: 失败原因，仅失败时有意义
+- `error_message`: 失败或降级原因
 
 ## CPU Metrics
 
@@ -98,6 +98,7 @@
 - `tests_success`: 成功测试数量
 - `tests_failed`: 失败测试数量
 - `tests_skipped`: 跳过测试数量
+- `tests_degraded`: 降级测试数量，例如网络只完成延迟但吞吐失败
 - `performance_note`: 未完成全部核心测试时的说明
 - `quality_notes`: 质量提示列表
 - `benchmark_profile`: 本次评测档位和实际后端组合

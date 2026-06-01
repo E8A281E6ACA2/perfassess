@@ -50,6 +50,51 @@ func TestCalculateNetworkScoreUsesRealUpload(t *testing.T) {
 	}
 }
 
+func TestCalculateNetworkScoreIgnoresDegradedNetwork(t *testing.T) {
+	calculator := NewScoreCalculator()
+
+	result := &models.TestResult{
+		TestName: "网络性能测试",
+		Status:   models.TestStatusDegraded,
+		Metrics: map[string]interface{}{
+			"average_latency_ms":     10.0,
+			"download_speed_mbps":    -1.0,
+			"upload_speed_mbps":      -1.0,
+			"upload_speed_estimated": false,
+		},
+	}
+
+	score := calculator.CalculateNetworkScore(result)
+	if score != 0.0 {
+		t.Fatalf("expected degraded network score 0, got %.2f", score)
+	}
+}
+
+func TestBuildNetworkScoreBreakdownClampsNegativeSubScores(t *testing.T) {
+	calculator := NewScoreCalculator()
+
+	result := &models.TestResult{
+		TestName: "网络性能测试",
+		Status:   models.TestStatusDegraded,
+		Metrics: map[string]interface{}{
+			"average_latency_ms":  10.0,
+			"download_speed_mbps": -1.0,
+			"upload_speed_mbps":   -1.0,
+		},
+	}
+
+	breakdown := calculator.buildNetworkScoreBreakdown(result)
+	if breakdown["download_score"] != 0.0 {
+		t.Fatalf("expected clamped download score 0, got %#v", breakdown["download_score"])
+	}
+	if breakdown["upload_score"] != 0.0 {
+		t.Fatalf("expected clamped upload score 0, got %#v", breakdown["upload_score"])
+	}
+	if active, _ := breakdown["active"].(bool); active {
+		t.Fatal("expected degraded network breakdown to be inactive")
+	}
+}
+
 func TestFormatSingleTestResultMarksEstimatedUpload(t *testing.T) {
 	generator := NewReportGenerator()
 	result := &models.TestResult{
@@ -420,6 +465,45 @@ func TestAddSummaryMarksIncompleteReport(t *testing.T) {
 	}
 	if failed, _ := report.Summary["tests_failed"].(int); failed != 1 {
 		t.Fatalf("expected 1 failed test, got %d", failed)
+	}
+}
+
+func TestAddSummaryCountsDegradedResult(t *testing.T) {
+	generator := NewReportGenerator()
+	report := &models.Report{
+		SessionID:  "session_degraded",
+		Timestamp:  time.Date(2026, 6, 1, 8, 0, 0, 0, time.UTC),
+		SystemInfo: &models.SystemInfo{},
+		TestResults: &models.TestResults{
+			CPUResult:    &models.TestResult{TestName: "CPU性能测试", Status: models.TestStatusSuccess},
+			MemoryResult: &models.TestResult{TestName: "内存性能测试", Status: models.TestStatusSuccess},
+			DiskResult:   &models.TestResult{TestName: "磁盘性能测试", Status: models.TestStatusSuccess},
+			NetworkResult: &models.TestResult{
+				TestName:     "网络性能测试",
+				Status:       models.TestStatusDegraded,
+				ErrorMessage: "下载速度测试失败",
+				Metrics: map[string]interface{}{
+					"backend":             models.NetworkBackendBuiltin,
+					"average_latency_ms":  10.0,
+					"download_speed_mbps": -1.0,
+					"upload_speed_mbps":   -1.0,
+				},
+			},
+		},
+		Summary: make(map[string]interface{}),
+	}
+
+	generator.AddSummary(report, &models.OverallScore{TotalScore: 80, Grade: "良好"})
+
+	if degraded, _ := report.Summary["tests_degraded"].(int); degraded != 1 {
+		t.Fatalf("expected one degraded test, got %d", degraded)
+	}
+	if grade, _ := report.Summary["grade"].(string); grade != "未完成" {
+		t.Fatalf("expected degraded report to be incomplete, got %q", grade)
+	}
+	notes := strings.Join(report.Summary["quality_notes"].([]string), "\n")
+	if !strings.Contains(notes, "网络测试降级") {
+		t.Fatalf("expected degraded quality note, got %s", notes)
 	}
 }
 

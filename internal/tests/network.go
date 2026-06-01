@@ -156,8 +156,9 @@ func (nt *NetworkTest) Setup() error {
 //   - error: 测试错误
 func (nt *NetworkTest) Execute() (*models.TestResult, error) {
 	nt.MarkStart()
+	status := models.TestStatusSuccess
 	defer func() {
-		nt.MarkEnd("success")
+		nt.MarkEnd(status)
 	}()
 
 	metrics := &models.NetworkMetrics{
@@ -186,6 +187,7 @@ func (nt *NetworkTest) Execute() (*models.TestResult, error) {
 	var err error
 	avgLatency, err = nt.resolveLatencyFunc()(nt.testHosts)
 	if err != nil {
+		status = models.TestStatusDegraded
 		nt.GetLogger().Warn(fmt.Sprintf("延迟测试失败: %v", err))
 		metrics.AppendError("延迟测试失败: " + err.Error())
 	} else {
@@ -198,6 +200,7 @@ func (nt *NetworkTest) Execute() (*models.TestResult, error) {
 	nt.GetLogger().Info("开始下载速度测试...")
 	downloadSpeed, err = nt.resolveDownloadFunc()()
 	if err != nil {
+		status = models.TestStatusDegraded
 		nt.GetLogger().Warn(fmt.Sprintf("下载速度测试失败: %v", err))
 		metrics.AppendError("下载速度测试失败: " + err.Error())
 	} else {
@@ -210,6 +213,7 @@ func (nt *NetworkTest) Execute() (*models.TestResult, error) {
 	nt.GetLogger().Info("开始上传速度测试...")
 	uploadSpeed, uploadEstimated, err = nt.resolveUploadFunc()(downloadSpeed)
 	if err != nil {
+		status = models.TestStatusDegraded
 		nt.GetLogger().Warn(fmt.Sprintf("上传速度测试失败: %v", err))
 		metrics.AppendError("上传速度测试失败: " + err.Error())
 	} else {
@@ -227,11 +231,14 @@ func (nt *NetworkTest) Execute() (*models.TestResult, error) {
 
 	// 计算总体评分
 	score := nt.calculateScore(avgLatency, downloadSpeed, uploadSpeed, uploadEstimated)
+	if status == models.TestStatusDegraded {
+		score = 0
+	}
 	metrics.Score = score
 
 	nt.GetLogger().Info(fmt.Sprintf("网络测试完成，评分: %.2f", score))
 
-	return nt.CreateResult("success", metrics.ToMetricsMap(), ""), nil
+	return nt.CreateResult(status, metrics.ToMetricsMap(), metrics.ErrorMessage), nil
 }
 
 func (nt *NetworkTest) resolveDownloadSource() string {
@@ -433,6 +440,12 @@ func (nt *NetworkTest) calculateScore(latency, downloadSpeed, uploadSpeed float6
 	totalScore := latencyScore*latencyWeight + downloadScore*downloadWeight + uploadScore*uploadWeight
 
 	score := totalScore / totalWeight
+	if score > 100 {
+		return 100
+	}
+	if score < 0 {
+		return 0
+	}
 	if uploadEstimated && score > 85 {
 		return 85
 	}

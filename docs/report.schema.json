@@ -126,7 +126,8 @@
               "enum": [
                 "success",
                 "failed",
-                "skipped"
+                "skipped",
+                "degraded"
               ]
             },
             "duration_seconds": {
@@ -194,7 +195,8 @@
               "enum": [
                 "success",
                 "failed",
-                "skipped"
+                "skipped",
+                "degraded"
               ]
             },
             "duration_seconds": {
@@ -255,7 +257,8 @@
               "enum": [
                 "success",
                 "failed",
-                "skipped"
+                "skipped",
+                "degraded"
               ]
             },
             "duration_seconds": {
@@ -336,7 +339,8 @@
               "enum": [
                 "success",
                 "failed",
-                "skipped"
+                "skipped",
+                "degraded"
               ]
             },
             "duration_seconds": {
@@ -404,6 +408,7 @@
         "tests_success",
         "tests_failed",
         "tests_skipped",
+        "tests_degraded",
         "quality_notes",
         "benchmark_profile",
         "confidence_level",
@@ -424,6 +429,9 @@
           "type": "number"
         },
         "tests_skipped": {
+          "type": "number"
+        },
+        "tests_degraded": {
           "type": "number"
         },
         "performance_note": {

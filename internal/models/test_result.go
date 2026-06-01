@@ -3,13 +3,20 @@ package models
 
 import "time"
 
+const (
+	TestStatusSuccess  = "success"
+	TestStatusFailed   = "failed"
+	TestStatusSkipped  = "skipped"
+	TestStatusDegraded = "degraded"
+)
+
 // TestResult 表示单个性能测试的结果
 // 包含测试的状态、时间、指标和错误信息
 type TestResult struct {
 	// TestName 测试名称，如 "CPU性能测试", "内存性能测试"
 	TestName string `json:"test_name"`
 
-	// Status 测试状态，可选值: "success"(成功), "failed"(失败), "skipped"(跳过)
+	// Status 测试状态，可选值: "success"(成功), "failed"(失败), "skipped"(跳过), "degraded"(降级)
 	Status string `json:"status"`
 
 	// StartTime 测试开始时间
