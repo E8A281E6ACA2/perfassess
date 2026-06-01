@@ -176,3 +176,40 @@
 - `delta_percent`: 相对 A 的百分比变化
 - `winner`: 该指标胜出方
 - `higher_is_better`: 是否数值越高越好
+
+## History Entry
+
+`perfassess history add <report.json>` 会把单次 JSON 报告提取为一行 JSONL 历史索引，默认路径为 `~/.perfassess/history.jsonl`，可通过 `--store` 指定。
+
+核心字段：
+
+- `report_path`: 原始报告路径
+- `session_id`: 评测会话 ID
+- `timestamp`: 报告时间
+- `host_id`: 从系统信息派生的主机标识
+- `cpu_model`: CPU 型号
+- `os`: 操作系统名称和版本
+- `architecture`: 系统架构
+- `score_profile`: 评分基准档位
+- `benchmark_profile`: 本次评测后端组合
+- `grade`: 等级
+- `total_score`: 总分
+- `cpu_score`: CPU 分项分
+- `memory_score`: 内存分项分
+- `disk_score`: 磁盘分项分
+- `network_score`: 网络分项分
+
+`perfassess history trend --format json` 输出趋势对象：
+
+- `host_id`: 趋势对应主机
+- `count`: 样本数量
+- `first`: 第一条历史记录
+- `last`: 最后一条历史记录
+- `total_delta`: 总分变化
+- `cpu_delta`: CPU 分变化
+- `memory_delta`: 内存分变化
+- `disk_delta`: 磁盘分变化
+- `network_delta`: 网络分变化
+- `entries`: 参与趋势计算的历史记录
+
+`perfassess compare-dir <reports-dir> --format json` 输出按指定分数字段排序后的 `History Entry` 数组，`--sort-by` 支持 `total`、`cpu`、`memory`、`disk`、`network`。

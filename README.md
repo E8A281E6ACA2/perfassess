@@ -350,6 +350,15 @@ make run
 # 输出机器可读对比结果
 ./build/perfassess compare vps-a.json vps-b.json --format json
 
+# 把 JSON 报告加入本地历史库
+./build/perfassess history add report.json
+
+# 查看历史趋势
+./build/perfassess history trend
+
+# 批量排序目录中的 JSON 报告
+./build/perfassess compare-dir ./reports --sort-by total
+
 # 自定义综合评分权重
 ./build/perfassess -b all --score-weights cpu=0.4,memory=0.2,disk=0.2,network=0.2
 
@@ -371,6 +380,8 @@ perfassess [command] [flags]
 Commands:
   check-deps               检查外部测试工具依赖
   compare                  对比两份 JSON 评估报告
+  compare-dir              批量排序目录中的 JSON 评估报告
+  history                  管理本地 JSON 报告历史库
 
 Flags:
   -i, --interactive          启用交互式菜单模式
@@ -767,6 +778,9 @@ A: 使用 `--port` 参数指定其他端口：
 | Web 报告 | `./build/perfassess -b all --web` |
 | 保存报告 | `./build/perfassess -b all -o report.txt` |
 | 报告对比 | `./build/perfassess compare vps-a.json vps-b.json` |
+| 批量排序 | `./build/perfassess compare-dir ./reports --sort-by total` |
+| 加入历史 | `./build/perfassess history add report.json` |
+| 趋势分析 | `./build/perfassess history trend` |
 | 路由追踪 | `./build/perfassess --route-trace`（需预装 traceroute/tracert） |
 | 流媒体检测 | `./build/perfassess --streaming` |
 | AI 服务检测 | `./build/perfassess --ai-services` |
@@ -793,6 +807,8 @@ A: 使用 `--port` 参数指定其他端口：
 | `--memory-backend` | - | 内存测试后端 | `--memory-backend sysbench` |
 | `--disk-backend` | - | 磁盘测试后端 | `--disk-backend fio` |
 | `--network-backend` | - | 网络测试后端 | `--network-backend iperf3` |
+| `--store` | - | history 子命令历史库路径 | `history list --store ./history.jsonl` |
+| `--sort-by` | - | compare-dir 排序字段 | `compare-dir ./reports --sort-by cpu` |
 | `--route-trace` | - | 路由追踪 | `--route-trace` |
 | `--streaming` | - | 流媒体检测 | `--streaming` |
 | `--ai-services` | - | AI 服务检测 | `--ai-services` |

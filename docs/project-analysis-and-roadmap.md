@@ -312,7 +312,7 @@
 - 支持多份报告之间的批量对比，先从两份 JSON 报告对比开始
 - 对比时校验 `score_profile` 是否一致，避免不同评分基准下误判胜负
 - 保留文本输出给人工阅读，同时提供 JSON 输出给脚本化处理
-- 后续可扩展为目录批量对比、排序和历史趋势分析
+- 扩展为目录批量对比、排序和历史趋势分析
 
 当前已落地的报告对比边界：
 
@@ -322,6 +322,20 @@
 - 输出差值、百分比变化和胜出方
 - 如果两份报告 `score_profile` 不一致，会标记为不可直接比较
 - 如果至少一份报告未完成，会输出质量提示
+- 新增 `perfassess compare-dir <reports-dir>` 子命令
+- `compare-dir` 支持按 `total`、`cpu`、`memory`、`disk`、`network` 排序
+- `compare-dir` 支持 `--format text|json`
+
+当前已落地的历史趋势边界：
+
+- 新增 `perfassess history add <report.json>` 子命令
+- 默认历史库路径为 `~/.perfassess/history.jsonl`
+- 支持 `--store` 指定历史库路径，便于 CI、脚本和临时目录测试
+- 新增 `perfassess history list` 子命令
+- 新增 `perfassess history trend` 子命令
+- `history trend` 输出总分、CPU、内存、磁盘、网络从首条到末条的差值和百分比变化
+- history 输出支持 `--format text|json`
+- 历史条目只保存报告索引和关键评分字段，不复制完整报告正文
 
 当前已落地的网络后端边界：
 
