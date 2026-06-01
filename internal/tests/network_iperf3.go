@@ -74,7 +74,7 @@ func (b *Iperf3NetworkBackend) Server() string {
 	return b.server
 }
 
-func (b *Iperf3NetworkBackend) DownloadSource() string {
+func (b *Iperf3NetworkBackend) DownloadSource(result NetworkDownloadResult) string {
 	return models.NetworkDownloadSourceIperf3
 }
 
@@ -89,10 +89,10 @@ func (b *Iperf3NetworkBackend) MeasureLatency(hosts []string) (float64, error) {
 	return b.latencyFn(hosts)
 }
 
-func (b *Iperf3NetworkBackend) MeasureDownload() (float64, error) {
+func (b *Iperf3NetworkBackend) MeasureDownload() (NetworkDownloadResult, error) {
 	endpoint, err := b.validateReady()
 	if err != nil {
-		return 0, err
+		return NetworkDownloadResult{}, err
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), b.timeout)
@@ -100,14 +100,14 @@ func (b *Iperf3NetworkBackend) MeasureDownload() (float64, error) {
 
 	output, err := b.runner.Run(ctx, "iperf3", b.commandArgs(endpoint, false)...)
 	if err != nil {
-		return 0, fmt.Errorf("iperf3 download failed: %w", err)
+		return NetworkDownloadResult{}, fmt.Errorf("iperf3 download failed: %w", err)
 	}
 
 	speed, err := parseIperf3Mbps(output)
 	if err != nil {
-		return 0, fmt.Errorf("parse iperf3 download result: %w", err)
+		return NetworkDownloadResult{}, fmt.Errorf("parse iperf3 download result: %w", err)
 	}
-	return speed, nil
+	return NetworkDownloadResult{SpeedMbps: speed, SourceURL: models.NetworkDownloadSourceIperf3}, nil
 }
 
 func (b *Iperf3NetworkBackend) MeasureUpload(downloadSpeed float64) (float64, bool, error) {

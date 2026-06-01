@@ -349,6 +349,7 @@
 - 网络测试失败原因会写入 `network_error` 并展示在终端/Web 报告中
 - 网络报告会展示 `backend`，并在 `iperf3` 场景展示服务端地址
 - 网络测速来源字段会跟随 backend，例如 `iperf3_download` 与 `iperf3_upload`
+- 内置下载测速已支持多个 HTTP 下载源顺序重试，成功时 `download_speed_source` 记录实际 URL，避免单个公共测速源故障直接导致网络降级
 - `iperf3` 后端只负责吞吐测试，延迟继续回退到内置 TCP connect 测量并使用 `latency_source=tcp_connect`
 - 后续真正启用 `iperf3` 前，需要补充真实服务端验证和报告展示
 

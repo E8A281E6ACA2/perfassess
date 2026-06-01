@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -73,8 +75,8 @@ func TestExecutePopulatesSourceMetricsForEstimatedUpload(t *testing.T) {
 	networkTest.latencyFn = func(_ []string) (float64, error) {
 		return 12.5, nil
 	}
-	networkTest.downloadFn = func() (float64, error) {
-		return 200.0, nil
+	networkTest.downloadFn = func() (NetworkDownloadResult, error) {
+		return NetworkDownloadResult{SpeedMbps: 200.0}, nil
 	}
 	networkTest.uploadFn = func(downloadSpeed float64) (float64, bool, error) {
 		if downloadSpeed != 200.0 {
@@ -106,17 +108,64 @@ func TestExecutePopulatesSourceMetricsForEstimatedUpload(t *testing.T) {
 	}
 }
 
+func TestDownloadSpeedFallsBackAcrossMultipleSources(t *testing.T) {
+	failedServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "unavailable", http.StatusServiceUnavailable)
+	}))
+	defer failedServer.Close()
+
+	successServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(strings.Repeat("a", 1024*1024)))
+	}))
+	defer successServer.Close()
+
+	networkTest := newTestNetworkTest(t)
+	networkTest.downloadURLs = []string{
+		failedServer.URL,
+		successServer.URL,
+	}
+
+	result, err := networkTest.TestDownloadSpeed()
+	if err != nil {
+		t.Fatalf("expected fallback download source to succeed, got %v", err)
+	}
+	if result.SpeedMbps <= 0 {
+		t.Fatalf("expected positive speed, got %.2f", result.SpeedMbps)
+	}
+	if result.SourceURL != successServer.URL {
+		t.Fatalf("expected successful source URL %q, got %q", successServer.URL, result.SourceURL)
+	}
+}
+
+func TestDownloadSpeedReportsAllSourceFailures(t *testing.T) {
+	failedServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "unavailable", http.StatusServiceUnavailable)
+	}))
+	defer failedServer.Close()
+
+	networkTest := newTestNetworkTest(t)
+	networkTest.downloadURLs = []string{failedServer.URL}
+
+	_, err := networkTest.TestDownloadSpeed()
+	if err == nil {
+		t.Fatal("expected all source failures to return error")
+	}
+	if !strings.Contains(err.Error(), "所有下载源失败") {
+		t.Fatalf("expected all source failure error, got %v", err)
+	}
+}
+
 func TestExecuteMarksFailedDownloadAndUnavailableUpload(t *testing.T) {
 	networkTest := newTestNetworkTest(t)
 	networkTest.latencyFn = func(_ []string) (float64, error) {
 		return 0, fmt.Errorf("latency unavailable")
 	}
-	networkTest.downloadFn = func() (float64, error) {
-		return 0, fmt.Errorf("download unavailable")
+	networkTest.downloadFn = func() (NetworkDownloadResult, error) {
+		return NetworkDownloadResult{}, fmt.Errorf("download unavailable")
 	}
 	networkTest.uploadFn = func(downloadSpeed float64) (float64, bool, error) {
-		if downloadSpeed != 0.0 {
-			t.Fatalf("expected failed download to pass 0.0 into upload function, got %.2f", downloadSpeed)
+		if downloadSpeed != -1.0 {
+			t.Fatalf("expected failed download to pass -1.0 into upload function, got %.2f", downloadSpeed)
 		}
 		return 0, false, fmt.Errorf("upload unavailable")
 	}
@@ -155,8 +204,8 @@ func TestExecuteMarksPartialNetworkFailureAsDegraded(t *testing.T) {
 	networkTest.latencyFn = func(_ []string) (float64, error) {
 		return 10.0, nil
 	}
-	networkTest.downloadFn = func() (float64, error) {
-		return 0, fmt.Errorf("download unavailable")
+	networkTest.downloadFn = func() (NetworkDownloadResult, error) {
+		return NetworkDownloadResult{}, fmt.Errorf("download unavailable")
 	}
 	networkTest.uploadFn = func(downloadSpeed float64) (float64, bool, error) {
 		return 0, false, fmt.Errorf("upload unavailable")
@@ -266,12 +315,12 @@ func TestIperf3NetworkBackendParsesDownloadMbps(t *testing.T) {
 		Runner: runner,
 	})
 
-	speed, err := backend.MeasureDownload()
+	download, err := backend.MeasureDownload()
 	if err != nil {
 		t.Fatalf("expected download measurement to parse, got error: %v", err)
 	}
-	if speed != 125.0 {
-		t.Fatalf("expected 125 Mbps, got %.2f", speed)
+	if download.SpeedMbps != 125.0 {
+		t.Fatalf("expected 125 Mbps, got %.2f", download.SpeedMbps)
 	}
 	if runner.name != "iperf3" {
 		t.Fatalf("expected iperf3 command, got %q", runner.name)
@@ -364,8 +413,8 @@ func TestExecuteUsesConfiguredBackendName(t *testing.T) {
 	networkTest.latencyFn = func(_ []string) (float64, error) {
 		return 10.0, nil
 	}
-	networkTest.downloadFn = func() (float64, error) {
-		return 100.0, nil
+	networkTest.downloadFn = func() (NetworkDownloadResult, error) {
+		return NetworkDownloadResult{SpeedMbps: 100.0}, nil
 	}
 	networkTest.uploadFn = func(downloadSpeed float64) (float64, bool, error) {
 		return 70.0, true, nil
@@ -385,8 +434,8 @@ func TestExecuteUsesBackendSpecificSources(t *testing.T) {
 	networkTest.latencyFn = func(_ []string) (float64, error) {
 		return 10.0, nil
 	}
-	networkTest.downloadFn = func() (float64, error) {
-		return 100.0, nil
+	networkTest.downloadFn = func() (NetworkDownloadResult, error) {
+		return NetworkDownloadResult{SpeedMbps: 100.0}, nil
 	}
 	networkTest.uploadFn = func(downloadSpeed float64) (float64, bool, error) {
 		return 80.0, false, nil

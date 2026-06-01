@@ -417,6 +417,7 @@ func (sc *ScoreCalculator) buildNetworkScoreBreakdown(result *models.TestResult)
 	item["download_base_mbps"] = sc.profile.NetworkDownloadMbps
 	item["upload_base_mbps"] = sc.profile.NetworkUploadMbps
 	if result != nil && result.Metrics != nil {
+		uploadEstimated := isNetworkUploadEstimated(result)
 		if latency, ok := getNetworkLatency(result); ok {
 			item["average_latency_ms"] = latency
 			if latency > 0 {
@@ -429,9 +430,13 @@ func (sc *ScoreCalculator) buildNetworkScoreBreakdown(result *models.TestResult)
 		}
 		if upload, ok := getNetworkUploadSpeed(result); ok {
 			item["upload_speed_mbps"] = upload
-			item["upload_score"] = clampMax(upload/sc.profile.NetworkUploadMbps*30.0, 30.0)
+			if uploadEstimated {
+				item["upload_score"] = 0.0
+			} else {
+				item["upload_score"] = clampMax(upload/sc.profile.NetworkUploadMbps*30.0, 30.0)
+			}
 		}
-		item["upload_estimated"] = isNetworkUploadEstimated(result)
+		item["upload_estimated"] = uploadEstimated
 	}
 	return item
 }

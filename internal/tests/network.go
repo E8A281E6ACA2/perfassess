@@ -6,6 +6,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"strings"
 	"time"
 
 	"performance-assessment-system/internal/models"
@@ -18,11 +19,16 @@ import (
 type NetworkBenchmarkBackend interface {
 	Name() string
 	Server() string
-	DownloadSource() string
+	DownloadSource(result NetworkDownloadResult) string
 	UploadSource(estimated bool) string
 	MeasureLatency(hosts []string) (float64, error)
-	MeasureDownload() (float64, error)
+	MeasureDownload() (NetworkDownloadResult, error)
 	MeasureUpload(downloadSpeed float64) (float64, bool, error)
+}
+
+type NetworkDownloadResult struct {
+	SpeedMbps float64
+	SourceURL string
 }
 
 // BuiltinNetworkBackend 使用当前项目内置的网络测试逻辑
@@ -38,7 +44,10 @@ func (b *BuiltinNetworkBackend) Server() string {
 	return ""
 }
 
-func (b *BuiltinNetworkBackend) DownloadSource() string {
+func (b *BuiltinNetworkBackend) DownloadSource(result NetworkDownloadResult) string {
+	if result.SourceURL != "" {
+		return result.SourceURL
+	}
 	return models.NetworkDownloadSourceHTTP
 }
 
@@ -53,7 +62,7 @@ func (b *BuiltinNetworkBackend) MeasureLatency(hosts []string) (float64, error) 
 	return b.test.TestLatency(hosts)
 }
 
-func (b *BuiltinNetworkBackend) MeasureDownload() (float64, error) {
+func (b *BuiltinNetworkBackend) MeasureDownload() (NetworkDownloadResult, error) {
 	return b.test.TestDownloadSpeed()
 }
 
@@ -65,12 +74,13 @@ func (b *BuiltinNetworkBackend) MeasureUpload(downloadSpeed float64) (float64, b
 // 测试网络延迟、下载和上传速度
 type NetworkTest struct {
 	*BaseTest
-	httpClient *http.Client
-	testHosts  []string // 测试主机列表
-	backend    NetworkBenchmarkBackend
-	latencyFn  func([]string) (float64, error)
-	downloadFn func() (float64, error)
-	uploadFn   func(float64) (float64, bool, error)
+	httpClient   *http.Client
+	testHosts    []string // 测试主机列表
+	downloadURLs []string
+	backend      NetworkBenchmarkBackend
+	latencyFn    func([]string) (float64, error)
+	downloadFn   func() (NetworkDownloadResult, error)
+	uploadFn     func(float64) (float64, bool, error)
 }
 
 // NewNetworkTest 创建网络性能测试
@@ -94,6 +104,7 @@ func NewNetworkTestWithBackend(logger *logger.Logger, backend NetworkBenchmarkBa
 			"1.1.1.1:53",         // Cloudflare DNS
 			"114.114.114.114:53", // 114 DNS
 		},
+		downloadURLs: defaultNetworkDownloadURLs(),
 	}
 	if backend != nil {
 		test.backend = backend
@@ -113,7 +124,7 @@ func (nt *NetworkTest) resolveLatencyFunc() func([]string) (float64, error) {
 	return nt.TestLatency
 }
 
-func (nt *NetworkTest) resolveDownloadFunc() func() (float64, error) {
+func (nt *NetworkTest) resolveDownloadFunc() func() (NetworkDownloadResult, error) {
 	if nt.downloadFn != nil {
 		return nt.downloadFn
 	}
@@ -179,6 +190,7 @@ func (nt *NetworkTest) Execute() (*models.TestResult, error) {
 	}
 	avgLatency := -1.0
 	downloadSpeed := -1.0
+	downloadResult := NetworkDownloadResult{}
 	uploadSpeed := -1.0
 	uploadEstimated := false
 
@@ -198,14 +210,15 @@ func (nt *NetworkTest) Execute() (*models.TestResult, error) {
 
 	// 测试下载速度
 	nt.GetLogger().Info("开始下载速度测试...")
-	downloadSpeed, err = nt.resolveDownloadFunc()()
+	downloadResult, err = nt.resolveDownloadFunc()()
 	if err != nil {
 		status = models.TestStatusDegraded
 		nt.GetLogger().Warn(fmt.Sprintf("下载速度测试失败: %v", err))
 		metrics.AppendError("下载速度测试失败: " + err.Error())
 	} else {
+		downloadSpeed = downloadResult.SpeedMbps
 		metrics.DownloadSpeedMbps = downloadSpeed
-		metrics.DownloadSource = nt.resolveDownloadSource()
+		metrics.DownloadSource = nt.resolveDownloadSource(downloadResult)
 		nt.GetLogger().Info(fmt.Sprintf("下载速度: %.2f Mbps", downloadSpeed))
 	}
 
@@ -241,9 +254,9 @@ func (nt *NetworkTest) Execute() (*models.TestResult, error) {
 	return nt.CreateResult(status, metrics.ToMetricsMap(), metrics.ErrorMessage), nil
 }
 
-func (nt *NetworkTest) resolveDownloadSource() string {
+func (nt *NetworkTest) resolveDownloadSource(result NetworkDownloadResult) string {
 	if nt.backend != nil {
-		return nt.backend.DownloadSource()
+		return nt.backend.DownloadSource(result)
 	}
 	return models.NetworkDownloadSourceHTTP
 }
@@ -333,25 +346,53 @@ func (nt *NetworkTest) pingHost(host string) (time.Duration, error) {
 // 返回:
 //   - float64: 下载速度（Mbps）
 //   - error: 测试错误
-func (nt *NetworkTest) TestDownloadSpeed() (float64, error) {
-	testURL := "http://speedtest.tele2.net/1GB.zip"
+func (nt *NetworkTest) TestDownloadSpeed() (NetworkDownloadResult, error) {
+	urls := nt.downloadURLs
+	if len(urls) == 0 {
+		urls = defaultNetworkDownloadURLs()
+	}
 
+	var failures []string
+	for _, testURL := range urls {
+		result, err := nt.measureDownloadURL(testURL)
+		if err == nil {
+			return result, nil
+		}
+		failures = append(failures, fmt.Sprintf("%s: %v", testURL, err))
+		nt.GetLogger().Debug(fmt.Sprintf("下载源失败: %s: %v", testURL, err))
+	}
+
+	return NetworkDownloadResult{}, fmt.Errorf("所有下载源失败: %s", strings.Join(failures, "; "))
+}
+
+func defaultNetworkDownloadURLs() []string {
+	return []string{
+		"https://speed.cloudflare.com/__down?bytes=25000000",
+		"https://proof.ovh.net/files/10Mb.dat",
+		"http://speedtest.tele2.net/10MB.zip",
+	}
+}
+
+func (nt *NetworkTest) measureDownloadURL(testURL string) (NetworkDownloadResult, error) {
 	startTime := time.Now()
 
 	resp, err := nt.httpClient.Get(testURL)
 	if err != nil {
-		return 0, fmt.Errorf("下载请求失败: %w", err)
+		return NetworkDownloadResult{}, fmt.Errorf("下载请求失败: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return 0, fmt.Errorf("下载失败，状态码: %d", resp.StatusCode)
+		return NetworkDownloadResult{}, fmt.Errorf("下载失败，状态码: %d", resp.StatusCode)
 	}
 
 	// 读取所有数据
 	bytesRead, err := io.Copy(io.Discard, resp.Body)
 	if err != nil {
-		return 0, fmt.Errorf("读取数据失败: %w", err)
+		return NetworkDownloadResult{}, fmt.Errorf("读取数据失败: %w", err)
+	}
+	if bytesRead <= 0 {
+		return NetworkDownloadResult{}, fmt.Errorf("下载数据为空")
 	}
 
 	duration := time.Since(startTime)
@@ -360,7 +401,10 @@ func (nt *NetworkTest) TestDownloadSpeed() (float64, error) {
 	// 字节 -> 比特 -> Mbps
 	speed := float64(bytesRead*8) / duration.Seconds() / 1000000
 
-	return speed, nil
+	return NetworkDownloadResult{
+		SpeedMbps: speed,
+		SourceURL: testURL,
+	}, nil
 }
 
 // TestUploadSpeed 测试上传速度

@@ -95,6 +95,29 @@ func TestBuildNetworkScoreBreakdownClampsNegativeSubScores(t *testing.T) {
 	}
 }
 
+func TestBuildNetworkScoreBreakdownDoesNotScoreEstimatedUpload(t *testing.T) {
+	calculator := NewScoreCalculator()
+
+	result := &models.TestResult{
+		TestName: "网络性能测试",
+		Status:   models.TestStatusSuccess,
+		Metrics: map[string]interface{}{
+			"average_latency_ms":     10.0,
+			"download_speed_mbps":    100.0,
+			"upload_speed_mbps":      100.0,
+			"upload_speed_estimated": true,
+		},
+	}
+
+	breakdown := calculator.buildNetworkScoreBreakdown(result)
+	if breakdown["upload_score"] != 0.0 {
+		t.Fatalf("expected estimated upload score 0, got %#v", breakdown["upload_score"])
+	}
+	if breakdown["upload_estimated"] != true {
+		t.Fatalf("expected upload_estimated true, got %#v", breakdown["upload_estimated"])
+	}
+}
+
 func TestFormatSingleTestResultMarksEstimatedUpload(t *testing.T) {
 	generator := NewReportGenerator()
 	result := &models.TestResult{
