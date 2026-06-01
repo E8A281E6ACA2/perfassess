@@ -130,10 +130,16 @@ func formatMetric(value float64, unit string) string {
 }
 
 func getCPUScore(result *models.TestResult) (float64, bool) {
+	if result == nil {
+		return 0, false
+	}
 	return metricFloat64(result.Metrics, "total_score")
 }
 
 func getCPUBackend(result *models.TestResult) string {
+	if result == nil {
+		return ""
+	}
 	if backend, ok := metricString(result.Metrics, "backend"); ok {
 		return backend
 	}
@@ -141,14 +147,23 @@ func getCPUBackend(result *models.TestResult) string {
 }
 
 func getCPUSingleCoreEvents(result *models.TestResult) (float64, bool) {
+	if result == nil {
+		return 0, false
+	}
 	return metricFloat64(result.Metrics, "single_core_events_per_sec")
 }
 
 func getCPUMultiCoreEvents(result *models.TestResult) (float64, bool) {
+	if result == nil {
+		return 0, false
+	}
 	return metricFloat64(result.Metrics, "multi_core_events_per_sec")
 }
 
 func getCPUScoreStdDev(result *models.TestResult) (float64, bool) {
+	if result == nil {
+		return 0, false
+	}
 	singleStdDev, singleOK := metricFloat64(result.Metrics, "single_core_score_stddev")
 	multiStdDev, multiOK := metricFloat64(result.Metrics, "multi_core_score_stddev")
 	if !singleOK || !multiOK {
@@ -158,22 +173,67 @@ func getCPUScoreStdDev(result *models.TestResult) (float64, bool) {
 }
 
 func getMemoryReadSpeed(result *models.TestResult) (float64, bool) {
+	if result == nil {
+		return 0, false
+	}
 	return metricFloat64(result.Metrics, "read_speed_mbps")
 }
 
+func getMemoryBackend(result *models.TestResult) string {
+	if result == nil {
+		return ""
+	}
+	if backend, ok := metricString(result.Metrics, "backend"); ok {
+		return backend
+	}
+	return ""
+}
+
+func getMemoryReadSource(result *models.TestResult) string {
+	if result == nil {
+		return ""
+	}
+	if source, ok := metricString(result.Metrics, "read_speed_source"); ok {
+		return source
+	}
+	return ""
+}
+
+func getMemoryWriteSource(result *models.TestResult) string {
+	if result == nil {
+		return ""
+	}
+	if source, ok := metricString(result.Metrics, "write_speed_source"); ok {
+		return source
+	}
+	return ""
+}
+
 func getMemoryWriteSpeed(result *models.TestResult) (float64, bool) {
+	if result == nil {
+		return 0, false
+	}
 	return metricFloat64(result.Metrics, "write_speed_mbps")
 }
 
 func getMemoryReadStdDev(result *models.TestResult) (float64, bool) {
+	if result == nil {
+		return 0, false
+	}
 	return metricFloat64(result.Metrics, "read_speed_mbps_stddev")
 }
 
 func getMemoryWriteStdDev(result *models.TestResult) (float64, bool) {
+	if result == nil {
+		return 0, false
+	}
 	return metricFloat64(result.Metrics, "write_speed_mbps_stddev")
 }
 
 func getDiskReadSpeed(result *models.TestResult) (float64, bool) {
+	if result == nil {
+		return 0, false
+	}
 	if speed, ok := metricFloat64(result.Metrics, "sequential_read_mbps"); ok {
 		return speed, true
 	}
@@ -181,6 +241,9 @@ func getDiskReadSpeed(result *models.TestResult) (float64, bool) {
 }
 
 func getDiskWriteSpeed(result *models.TestResult) (float64, bool) {
+	if result == nil {
+		return 0, false
+	}
 	if speed, ok := metricFloat64(result.Metrics, "sequential_write_mbps"); ok {
 		return speed, true
 	}
@@ -188,26 +251,44 @@ func getDiskWriteSpeed(result *models.TestResult) (float64, bool) {
 }
 
 func getDiskRandomIOPS(result *models.TestResult) (int, bool) {
+	if result == nil {
+		return 0, false
+	}
 	return metricInt(result.Metrics, "random_iops")
 }
 
 func getDiskRandomReadIOPS(result *models.TestResult) (float64, bool) {
+	if result == nil {
+		return 0, false
+	}
 	return metricFloat64(result.Metrics, "random_read_iops")
 }
 
 func getDiskRandomWriteIOPS(result *models.TestResult) (float64, bool) {
+	if result == nil {
+		return 0, false
+	}
 	return metricFloat64(result.Metrics, "random_write_iops")
 }
 
 func getDiskRandomReadP95Latency(result *models.TestResult) (float64, bool) {
+	if result == nil {
+		return 0, false
+	}
 	return metricFloat64(result.Metrics, "random_read_latency_p95_ms")
 }
 
 func getDiskRandomWriteP95Latency(result *models.TestResult) (float64, bool) {
+	if result == nil {
+		return 0, false
+	}
 	return metricFloat64(result.Metrics, "random_write_latency_p95_ms")
 }
 
 func getDiskBackend(result *models.TestResult) string {
+	if result == nil {
+		return ""
+	}
 	if backend, ok := metricString(result.Metrics, "backend"); ok {
 		return backend
 	}
@@ -215,6 +296,9 @@ func getDiskBackend(result *models.TestResult) string {
 }
 
 func getNetworkLatency(result *models.TestResult) (float64, bool) {
+	if result == nil {
+		return 0, false
+	}
 	if latency, ok := metricFloat64(result.Metrics, "average_latency_ms"); ok {
 		return latency, true
 	}
@@ -222,6 +306,9 @@ func getNetworkLatency(result *models.TestResult) (float64, bool) {
 }
 
 func getNetworkBackend(result *models.TestResult) string {
+	if result == nil {
+		return ""
+	}
 	if backend, ok := metricString(result.Metrics, "backend"); ok {
 		return backend
 	}
@@ -229,6 +316,9 @@ func getNetworkBackend(result *models.TestResult) string {
 }
 
 func getNetworkBackendServer(result *models.TestResult) string {
+	if result == nil {
+		return ""
+	}
 	if server, ok := metricString(result.Metrics, "backend_server"); ok {
 		return server
 	}
@@ -236,14 +326,23 @@ func getNetworkBackendServer(result *models.TestResult) string {
 }
 
 func getNetworkDownloadSpeed(result *models.TestResult) (float64, bool) {
+	if result == nil {
+		return 0, false
+	}
 	return metricFloat64(result.Metrics, "download_speed_mbps")
 }
 
 func getNetworkUploadSpeed(result *models.TestResult) (float64, bool) {
+	if result == nil {
+		return 0, false
+	}
 	return metricFloat64(result.Metrics, "upload_speed_mbps")
 }
 
 func getNetworkLatencySource(result *models.TestResult) string {
+	if result == nil {
+		return ""
+	}
 	if source, ok := metricString(result.Metrics, "latency_source"); ok {
 		return source
 	}
@@ -251,6 +350,9 @@ func getNetworkLatencySource(result *models.TestResult) string {
 }
 
 func getNetworkDownloadSource(result *models.TestResult) string {
+	if result == nil {
+		return ""
+	}
 	if source, ok := metricString(result.Metrics, "download_speed_source"); ok {
 		return source
 	}
@@ -258,6 +360,9 @@ func getNetworkDownloadSource(result *models.TestResult) string {
 }
 
 func getNetworkUploadSource(result *models.TestResult) string {
+	if result == nil {
+		return ""
+	}
 	if source, ok := metricString(result.Metrics, "upload_speed_source"); ok {
 		return source
 	}
@@ -265,6 +370,9 @@ func getNetworkUploadSource(result *models.TestResult) string {
 }
 
 func getNetworkError(result *models.TestResult) string {
+	if result == nil {
+		return ""
+	}
 	if message, ok := metricString(result.Metrics, "network_error"); ok {
 		return message
 	}
@@ -272,6 +380,9 @@ func getNetworkError(result *models.TestResult) string {
 }
 
 func isNetworkUploadEstimated(result *models.TestResult) bool {
+	if result == nil {
+		return false
+	}
 	if estimated, ok := metricBool(result.Metrics, "upload_speed_estimated"); ok {
 		return estimated
 	}

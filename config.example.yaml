@@ -20,6 +20,9 @@ disk_backend: builtin
 # CPU 测试后端：builtin, sysbench
 cpu_backend: builtin
 
+# 内存测试后端：builtin, sysbench
+memory_backend: builtin
+
 # 网络测试后端：builtin, iperf3
 # builtin 为当前内置 HTTP/TCP 测试；iperf3 用于真实吞吐测试
 network_backend: builtin

@@ -120,6 +120,10 @@ func (bt *BaseTest) GetDuration() time.Duration {
 // 返回:
 //   - *models.TestResult: 测试结果
 func (bt *BaseTest) CreateResult(status string, metrics map[string]interface{}, errorMsg string) *models.TestResult {
+	startTime := bt.startTime
+	if startTime.IsZero() {
+		startTime = time.Now()
+	}
 	endTime := bt.endTime
 	if endTime.IsZero() {
 		endTime = time.Now()
@@ -128,9 +132,9 @@ func (bt *BaseTest) CreateResult(status string, metrics map[string]interface{}, 
 	return &models.TestResult{
 		TestName:        bt.name,
 		Status:          status,
-		StartTime:       bt.startTime,
+		StartTime:       startTime,
 		EndTime:         endTime,
-		DurationSeconds: endTime.Sub(bt.startTime).Seconds(),
+		DurationSeconds: endTime.Sub(startTime).Seconds(),
 		Metrics:         metrics,
 		ErrorMessage:    errorMsg,
 	}

@@ -43,6 +43,9 @@ type Config struct {
 	// CPUBackend CPU 测试后端，可选值: builtin, sysbench
 	CPUBackend string `mapstructure:"cpu_backend"`
 
+	// MemoryBackend 内存测试后端，可选值: builtin, sysbench
+	MemoryBackend string `mapstructure:"memory_backend"`
+
 	// NetworkBackend 网络测试后端，可选值: builtin, iperf3
 	NetworkBackend string `mapstructure:"network_backend"`
 
@@ -81,6 +84,7 @@ func DefaultConfig() *Config {
 		EnableSecurityScan: false,
 		RouteTraceTargets:  []string{"8.8.8.8", "1.1.1.1", "cloudflare.com"},
 		CPUBackend:         "builtin",
+		MemoryBackend:      "builtin",
 		NetworkBackend:     "builtin",
 		Iperf3Server:       "",
 		DiskBackend:        "builtin",
@@ -146,6 +150,17 @@ func (c *Config) Validate() error {
 		return &ConfigError{
 			Field:   "cpu_backend",
 			Message: "无效的 CPU 测试后端: " + c.CPUBackend,
+		}
+	}
+
+	validMemoryBackends := map[string]bool{
+		"builtin":  true,
+		"sysbench": true,
+	}
+	if !validMemoryBackends[c.MemoryBackend] {
+		return &ConfigError{
+			Field:   "memory_backend",
+			Message: "无效的内存测试后端: " + c.MemoryBackend,
 		}
 	}
 

@@ -17,6 +17,9 @@ func TestDefaultConfigUsesBuiltinNetworkBackend(t *testing.T) {
 	if cfg.CPUBackend != "builtin" {
 		t.Fatalf("expected default cpu backend builtin, got %q", cfg.CPUBackend)
 	}
+	if cfg.MemoryBackend != "builtin" {
+		t.Fatalf("expected default memory backend builtin, got %q", cfg.MemoryBackend)
+	}
 	if err := cfg.Validate(); err != nil {
 		t.Fatalf("expected default config to validate, got %v", err)
 	}
@@ -82,6 +85,24 @@ func TestValidateRejectsUnknownCPUBackend(t *testing.T) {
 	}
 	if configErr.Field != "cpu_backend" {
 		t.Fatalf("expected field cpu_backend, got %q", configErr.Field)
+	}
+}
+
+func TestValidateRejectsUnknownMemoryBackend(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.MemoryBackend = "unknown"
+
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("expected invalid memory backend to fail validation")
+	}
+
+	configErr, ok := err.(*ConfigError)
+	if !ok {
+		t.Fatalf("expected ConfigError, got %T", err)
+	}
+	if configErr.Field != "memory_backend" {
+		t.Fatalf("expected field memory_backend, got %q", configErr.Field)
 	}
 }
 

@@ -89,8 +89,9 @@ func NewCPUTestWithBackend(logger *logger.Logger, backend CPUBenchmarkBackend) *
 //   - error: 测试错误
 func (ct *CPUTest) Execute() (*models.TestResult, error) {
 	ct.MarkStart()
+	status := "success"
 	defer func() {
-		ct.MarkEnd("success")
+		ct.MarkEnd(status)
 	}()
 
 	metrics := make(map[string]interface{})
@@ -100,7 +101,8 @@ func (ct *CPUTest) Execute() (*models.TestResult, error) {
 	ct.GetLogger().Info("开始单核CPU测试...")
 	singleCoreSamples, err := ct.collectSamples(cpuSampleRuns, ct.backend.MeasureSingleCore)
 	if err != nil {
-		return ct.CreateResult("failed", nil, fmt.Sprintf("单核测试失败: %v", err)), err
+		status = "failed"
+		return ct.CreateResult("failed", metrics, fmt.Sprintf("单核测试失败: %v", err)), err
 	}
 	singleCoreStats := calculateScoreStats(singleCoreSamples)
 	singleCoreScore := singleCoreStats.Median
@@ -114,7 +116,8 @@ func (ct *CPUTest) Execute() (*models.TestResult, error) {
 	ct.GetLogger().Info("开始多核CPU测试...")
 	multiCoreSamples, err := ct.collectSamples(cpuSampleRuns, ct.backend.MeasureMultiCore)
 	if err != nil {
-		return ct.CreateResult("failed", nil, fmt.Sprintf("多核测试失败: %v", err)), err
+		status = "failed"
+		return ct.CreateResult("failed", metrics, fmt.Sprintf("多核测试失败: %v", err)), err
 	}
 	multiCoreStats := calculateScoreStats(multiCoreSamples)
 	multiCoreScore := multiCoreStats.Median

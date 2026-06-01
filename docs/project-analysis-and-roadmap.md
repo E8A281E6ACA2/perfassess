@@ -147,13 +147,16 @@
   - `total_score`
   - `cpu_cores`
 - Memory:
+  - `backend`
   - `read_speed_mbps`
+  - `read_speed_source`
   - `read_speed_mbps_samples`
   - `read_speed_mbps_min`
   - `read_speed_mbps_median`
   - `read_speed_mbps_max`
   - `read_speed_mbps_stddev`
   - `write_speed_mbps`
+  - `write_speed_source`
   - `write_speed_mbps_samples`
   - `write_speed_mbps_min`
   - `write_speed_mbps_median`
@@ -385,6 +388,44 @@
   - `random_write_latency_p95_ms`
 - 报告层优先展示兼容关键指标，质量提示中说明 fio 后端可提供更高可信度
 - 解析失败时必须返回明确错误，不静默降级为 0
+
+## 当前批次设计：主流评测闭环
+
+目标：补齐内存主流基准、报告可信度总结和 JSON schema 文档，使报告不仅给出结果，也说明本次结果的可信程度。
+
+### 内存后端设计
+
+- 新增 `MemoryBackend` 配置，可选值为 `builtin` 与 `sysbench`
+- 默认继续使用 `builtin`，保证无依赖默认一把梭可运行
+- `--full` 预设使用 `sysbench` 内存后端
+- `sysbench` 内存后端执行：
+  - 读取：`sysbench memory --memory-oper=read --memory-block-size=1M --memory-total-size=<size>M run`
+  - 写入：`sysbench memory --memory-oper=write --memory-block-size=1M --memory-total-size=<size>M run`
+- 解析 `MiB/sec` 作为内存吞吐指标
+- 输出字段：
+  - `backend`
+  - `read_speed_mbps`
+  - `read_speed_source`
+  - `write_speed_mbps`
+  - `write_speed_source`
+  - `score`
+  - `test_size_mb`
+
+### 可信度闭环设计
+
+- 报告摘要新增 `benchmark_profile`
+  - `name`
+  - `cpu_backend`
+  - `memory_backend`
+  - `disk_backend`
+  - `network_backend`
+  - `mainstream_count`
+- 报告摘要新增 `confidence_level`
+  - `level`: `high`、`medium`、`low`
+  - `reasons`: 降级、估算、缺失或未执行原因
+- `name` 当前包括 `quick`、`default`、`full`、`full_iperf3` 和 `custom`
+- 文本报告展示评测档位、后端组合和置信等级
+- JSON schema 文档记录关键字段、单位、来源和估算语义
 
 ### 验证要求
 

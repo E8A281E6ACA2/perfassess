@@ -1,0 +1,119 @@
+{
+  "session_id": "session_example",
+  "timestamp": "2026-06-01T10:00:00Z",
+  "system_info": {
+    "cpu": {
+      "model": "Example CPU",
+      "cores": 4,
+      "threads": 8,
+      "frequency_mhz": 2400
+    },
+    "memory": {
+      "total_mb": 8192,
+      "available_mb": 4096,
+      "memory_type": "Unknown"
+    },
+    "disk": {
+      "total_gb": 100,
+      "available_gb": 60,
+      "disk_type": "SSD"
+    },
+    "os": {
+      "name": "linux",
+      "version": "example",
+      "architecture": "x86_64"
+    }
+  },
+  "test_results": {
+    "cpu_result": {
+      "test_name": "CPU性能测试",
+      "status": "success",
+      "duration_seconds": 30.1,
+      "metrics": {
+        "backend": "sysbench",
+        "single_core_source": "sysbench",
+        "single_core_score": 85,
+        "single_core_events_per_sec": 1020,
+        "multi_core_source": "sysbench",
+        "multi_core_score": 90,
+        "multi_core_events_per_sec": 8600,
+        "total_score": 88,
+        "cpu_cores": 8
+      }
+    },
+    "memory_result": {
+      "test_name": "内存性能测试",
+      "status": "success",
+      "duration_seconds": 12.4,
+      "metrics": {
+        "backend": "sysbench",
+        "read_speed_mbps": 3200,
+        "read_speed_source": "sysbench",
+        "write_speed_mbps": 2800,
+        "write_speed_source": "sysbench",
+        "score": 33.5,
+        "test_size_mb": 1024
+      }
+    },
+    "disk_result": {
+      "test_name": "磁盘性能测试",
+      "status": "success",
+      "duration_seconds": 20.2,
+      "metrics": {
+        "backend": "fio",
+        "sequential_read_mbps": 1000,
+        "sequential_read_source": "fio",
+        "sequential_write_mbps": 800,
+        "sequential_write_source": "fio",
+        "random_iops": 12000,
+        "random_iops_source": "fio",
+        "random_read_iops": 7000,
+        "random_write_iops": 5000,
+        "random_read_latency_p95_ms": 1.25,
+        "random_write_latency_p95_ms": 2.5,
+        "score": 95
+      }
+    },
+    "network_result": {
+      "test_name": "网络性能测试",
+      "status": "success",
+      "duration_seconds": 8.8,
+      "metrics": {
+        "backend": "iperf3",
+        "backend_server": "127.0.0.1:5201",
+        "average_latency_ms": 10,
+        "latency_source": "tcp_connect",
+        "download_speed_mbps": 900,
+        "download_speed_source": "iperf3_download",
+        "upload_speed_mbps": 850,
+        "upload_speed_source": "iperf3_upload",
+        "upload_speed_estimated": false,
+        "score": 100
+      }
+    }
+  },
+  "summary": {
+    "total_score": 79.6,
+    "grade": "良好",
+    "tests_success": 4,
+    "tests_failed": 0,
+    "tests_skipped": 0,
+    "quality_notes": [
+      "核心测试均已完成，未发现明显降级或估算路径。"
+    ],
+    "benchmark_profile": {
+      "name": "full_iperf3",
+      "cpu_backend": "sysbench",
+      "memory_backend": "sysbench",
+      "disk_backend": "fio",
+      "network_backend": "iperf3",
+      "mainstream_count": 4
+    },
+    "confidence_level": {
+      "level": "high",
+      "reasons": [
+        "核心测试均使用主流或真实测量路径。"
+      ]
+    }
+  }
+}

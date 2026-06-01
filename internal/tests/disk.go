@@ -139,8 +139,9 @@ func (dt *DiskTest) Setup() error {
 //   - error: 测试错误
 func (dt *DiskTest) Execute() (*models.TestResult, error) {
 	dt.MarkStart()
+	status := "success"
 	defer func() {
-		dt.MarkEnd("success")
+		dt.MarkEnd(status)
 	}()
 
 	metrics := make(map[string]interface{})
@@ -150,7 +151,8 @@ func (dt *DiskTest) Execute() (*models.TestResult, error) {
 	dt.GetLogger().Info("开始磁盘顺序写入测试...")
 	writeSpeed, err := dt.backend.MeasureSequentialWrite(100) // 100MB
 	if err != nil {
-		return dt.CreateResult("failed", nil, fmt.Sprintf("写入测试失败: %v", err)), err
+		status = "failed"
+		return dt.CreateResult("failed", metrics, fmt.Sprintf("写入测试失败: %v", err)), err
 	}
 	metrics["write_speed_mbps"] = writeSpeed
 	metrics["sequential_write_mbps"] = writeSpeed
@@ -161,7 +163,8 @@ func (dt *DiskTest) Execute() (*models.TestResult, error) {
 	dt.GetLogger().Info("开始磁盘顺序读取测试...")
 	readSpeed, err := dt.backend.MeasureSequentialRead(100) // 100MB
 	if err != nil {
-		return dt.CreateResult("failed", nil, fmt.Sprintf("读取测试失败: %v", err)), err
+		status = "failed"
+		return dt.CreateResult("failed", metrics, fmt.Sprintf("读取测试失败: %v", err)), err
 	}
 	metrics["read_speed_mbps"] = readSpeed
 	metrics["sequential_read_mbps"] = readSpeed
@@ -172,7 +175,8 @@ func (dt *DiskTest) Execute() (*models.TestResult, error) {
 	dt.GetLogger().Info("开始磁盘随机IOPS测试...")
 	iops, err := dt.backend.MeasureRandomIOPS(5) // 5秒测试
 	if err != nil {
-		return dt.CreateResult("failed", nil, fmt.Sprintf("IOPS测试失败: %v", err)), err
+		status = "failed"
+		return dt.CreateResult("failed", metrics, fmt.Sprintf("IOPS测试失败: %v", err)), err
 	}
 	metrics["random_iops"] = iops
 	metrics["random_iops_source"] = dt.backend.RandomIOPSSource()

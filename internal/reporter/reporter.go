@@ -202,14 +202,25 @@ func (rg *ReportGenerator) formatSingleTestResult(testName string, result *model
 			}
 
 		case "memory", "内存性能测试":
+			if backend := getMemoryBackend(result); backend != "" {
+				sb.WriteString(fmt.Sprintf("  测试后端:     %s\n", backend))
+			}
 			if speed, ok := getMemoryReadSpeed(result); ok {
-				sb.WriteString(fmt.Sprintf("  读取速度:     %.2f MB/s\n", speed))
+				if source := getMemoryReadSource(result); source != "" {
+					sb.WriteString(fmt.Sprintf("  读取速度:     %.2f MB/s (%s)\n", speed, source))
+				} else {
+					sb.WriteString(fmt.Sprintf("  读取速度:     %.2f MB/s\n", speed))
+				}
 			}
 			if stddev, ok := getMemoryReadStdDev(result); ok {
 				sb.WriteString(fmt.Sprintf("  读取波动:     %.2f MB/s stddev\n", stddev))
 			}
 			if speed, ok := getMemoryWriteSpeed(result); ok {
-				sb.WriteString(fmt.Sprintf("  写入速度:     %.2f MB/s\n", speed))
+				if source := getMemoryWriteSource(result); source != "" {
+					sb.WriteString(fmt.Sprintf("  写入速度:     %.2f MB/s (%s)\n", speed, source))
+				} else {
+					sb.WriteString(fmt.Sprintf("  写入速度:     %.2f MB/s\n", speed))
+				}
 			}
 			if stddev, ok := getMemoryWriteStdDev(result); ok {
 				sb.WriteString(fmt.Sprintf("  写入波动:     %.2f MB/s stddev\n", stddev))
@@ -313,6 +324,8 @@ func (rg *ReportGenerator) AddSummary(report *models.Report, overallScore *model
 	report.Summary["disk_score"] = overallScore.DiskScore
 	report.Summary["network_score"] = overallScore.NetworkScore
 	report.Summary["quality_notes"] = rg.buildQualityNotes(report.TestResults)
+	report.Summary["benchmark_profile"] = rg.buildBenchmarkProfile(report.TestResults)
+	report.Summary["confidence_level"] = rg.buildConfidenceLevel(report.TestResults)
 
 	// 统计测试执行情况
 	successCount := 0
@@ -385,12 +398,19 @@ func (rg *ReportGenerator) buildQualityNotes(testResults *models.TestResults) []
 		}
 	}
 
-	if testResults.CPUResult != nil && testResults.CPUResult.Status == "success" {
+	if testResults.CPUResult != nil {
 		if getCPUBackend(testResults.CPUResult) == "builtin" {
 			notes = append(notes, "CPU 测试使用内置后端，结果适合快速参考；如需主流 CPU 基准建议使用 --cpu-backend sysbench。")
 		}
+	}
+	if testResults.CPUResult != nil && testResults.CPUResult.Status == "success" {
 		if stddev, ok := getCPUScoreStdDev(testResults.CPUResult); ok && stddev > 10 {
 			notes = append(notes, fmt.Sprintf("CPU 多轮采样波动较大（stddev %.2f），建议复测。", stddev))
+		}
+	}
+	if testResults.MemoryResult != nil {
+		if getMemoryBackend(testResults.MemoryResult) == "builtin" {
+			notes = append(notes, "内存测试使用内置后端，结果适合快速参考；如需主流内存基准建议使用 --memory-backend sysbench。")
 		}
 	}
 	if testResults.MemoryResult != nil && testResults.MemoryResult.Status == "success" {
@@ -401,7 +421,7 @@ func (rg *ReportGenerator) buildQualityNotes(testResults *models.TestResults) []
 			notes = append(notes, fmt.Sprintf("内存写入波动较大（stddev %.2f MB/s），建议复测。", writeStd))
 		}
 	}
-	if testResults.DiskResult != nil && testResults.DiskResult.Status == "success" {
+	if testResults.DiskResult != nil {
 		switch getDiskBackend(testResults.DiskResult) {
 		case "":
 			notes = append(notes, "磁盘测试未标记后端来源。")
@@ -422,6 +442,151 @@ func (rg *ReportGenerator) buildQualityNotes(testResults *models.TestResults) []
 		notes = append(notes, "核心测试均已完成，未发现明显降级或估算路径。")
 	}
 	return notes
+}
+
+func (rg *ReportGenerator) buildBenchmarkProfile(testResults *models.TestResults) map[string]interface{} {
+	profile := map[string]interface{}{
+		"name":             "custom",
+		"cpu_backend":      resultBackend(testResults, "cpu"),
+		"memory_backend":   resultBackend(testResults, "memory"),
+		"disk_backend":     resultBackend(testResults, "disk"),
+		"network_backend":  resultBackend(testResults, "network"),
+		"mainstream_count": countMainstreamBackends(testResults),
+	}
+
+	if testResults != nil &&
+		getCPUBackend(testResults.CPUResult) == models.CPUBackendBuiltin &&
+		getMemoryBackend(testResults.MemoryResult) == models.MemoryBackendBuiltin &&
+		getDiskBackend(testResults.DiskResult) == models.DiskBackendBuiltin &&
+		testResults.NetworkResult == nil {
+		profile["name"] = "quick"
+	}
+	if testResults != nil &&
+		getCPUBackend(testResults.CPUResult) == models.CPUBackendBuiltin &&
+		getMemoryBackend(testResults.MemoryResult) == models.MemoryBackendBuiltin &&
+		getDiskBackend(testResults.DiskResult) == models.DiskBackendBuiltin &&
+		getNetworkBackend(testResults.NetworkResult) == models.NetworkBackendBuiltin {
+		profile["name"] = "default"
+	}
+	if testResults != nil &&
+		getCPUBackend(testResults.CPUResult) == models.CPUBackendSysbench &&
+		getMemoryBackend(testResults.MemoryResult) == models.MemoryBackendSysbench &&
+		getDiskBackend(testResults.DiskResult) == models.DiskBackendFio {
+		if testResults.NetworkResult == nil || getNetworkBackend(testResults.NetworkResult) == models.NetworkBackendBuiltin {
+			profile["name"] = "full"
+		}
+		if getNetworkBackend(testResults.NetworkResult) == models.NetworkBackendIperf3 {
+			profile["name"] = "full_iperf3"
+		}
+	}
+	return profile
+}
+
+func (rg *ReportGenerator) buildConfidenceLevel(testResults *models.TestResults) map[string]interface{} {
+	level := "high"
+	reasons := []string{}
+
+	if testResults == nil {
+		return map[string]interface{}{
+			"level":   "low",
+			"reasons": []string{"未获取测试结果。"},
+		}
+	}
+
+	for _, item := range []struct {
+		name   string
+		result *models.TestResult
+	}{
+		{name: "CPU", result: testResults.CPUResult},
+		{name: "内存", result: testResults.MemoryResult},
+		{name: "磁盘", result: testResults.DiskResult},
+		{name: "网络", result: testResults.NetworkResult},
+	} {
+		if item.result == nil {
+			reasons = append(reasons, item.name+"测试未执行")
+			level = "low"
+			continue
+		}
+		if item.result.Status != "success" {
+			reasons = append(reasons, item.name+"测试未成功")
+			level = "low"
+		}
+	}
+
+	if getCPUBackend(testResults.CPUResult) == models.CPUBackendBuiltin {
+		reasons = append(reasons, "CPU 使用内置后端")
+		level = lowerConfidence(level, "medium")
+	}
+	if getMemoryBackend(testResults.MemoryResult) == models.MemoryBackendBuiltin {
+		reasons = append(reasons, "内存使用内置后端")
+		level = lowerConfidence(level, "medium")
+	}
+	if getDiskBackend(testResults.DiskResult) == models.DiskBackendBuiltin {
+		reasons = append(reasons, "磁盘使用内置后端")
+		level = lowerConfidence(level, "medium")
+	}
+	if isNetworkUploadEstimated(testResults.NetworkResult) {
+		reasons = append(reasons, "网络上传为估算值")
+		level = lowerConfidence(level, "medium")
+	}
+
+	if len(reasons) == 0 {
+		reasons = append(reasons, "核心测试均使用主流或真实测量路径。")
+	}
+	return map[string]interface{}{
+		"level":   level,
+		"reasons": reasons,
+	}
+}
+
+func resultBackend(testResults *models.TestResults, name string) string {
+	if testResults == nil {
+		return ""
+	}
+	switch name {
+	case "cpu":
+		return getCPUBackend(testResults.CPUResult)
+	case "memory":
+		return getMemoryBackend(testResults.MemoryResult)
+	case "disk":
+		return getDiskBackend(testResults.DiskResult)
+	case "network":
+		return getNetworkBackend(testResults.NetworkResult)
+	default:
+		return ""
+	}
+}
+
+func countMainstreamBackends(testResults *models.TestResults) int {
+	count := 0
+	if testResults == nil {
+		return count
+	}
+	if getCPUBackend(testResults.CPUResult) == models.CPUBackendSysbench {
+		count++
+	}
+	if getMemoryBackend(testResults.MemoryResult) == models.MemoryBackendSysbench {
+		count++
+	}
+	if getDiskBackend(testResults.DiskResult) == models.DiskBackendFio {
+		count++
+	}
+	if getNetworkBackend(testResults.NetworkResult) == models.NetworkBackendIperf3 {
+		count++
+	}
+	return count
+}
+
+func lowerConfidence(current string, candidate string) string {
+	rank := map[string]int{
+		"low":    0,
+		"medium": 1,
+		"high":   2,
+	}
+	if rank[candidate] < rank[current] {
+		return candidate
+	}
+	return current
 }
 
 func statusText(status string) string {
@@ -470,6 +635,18 @@ func (rg *ReportGenerator) FormatReport(report *models.Report) string {
 
 	if note, ok := report.Summary["performance_note"].(string); ok && note != "" {
 		sb.WriteString(fmt.Sprintf("说明:           %s\n", note))
+	}
+	if profile, ok := report.Summary["benchmark_profile"].(map[string]interface{}); ok {
+		sb.WriteString(fmt.Sprintf("评测档位:       %v\n", profile["name"]))
+		sb.WriteString(fmt.Sprintf("后端组合:       CPU=%v, 内存=%v, 磁盘=%v, 网络=%v\n",
+			profile["cpu_backend"],
+			profile["memory_backend"],
+			profile["disk_backend"],
+			profile["network_backend"],
+		))
+	}
+	if confidence, ok := report.Summary["confidence_level"].(map[string]interface{}); ok {
+		sb.WriteString(fmt.Sprintf("置信等级:       %v\n", confidence["level"]))
 	}
 	if notes, ok := report.Summary["quality_notes"].([]string); ok && len(notes) > 0 {
 		sb.WriteString("质量提示:\n")

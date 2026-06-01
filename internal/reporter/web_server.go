@@ -206,16 +206,20 @@ func (ws *WebServer) getKeyMetrics(result *models.TestResult) string {
 	case "memory", "内存性能测试":
 		readSpeed, readOK := getMemoryReadSpeed(result)
 		writeSpeed, writeOK := getMemoryWriteSpeed(result)
+		prefix := ""
+		if backend := getMemoryBackend(result); backend != "" {
+			prefix = backend + " | "
+		}
 		if readOK && writeOK {
 			readStdDev, readStdOK := getMemoryReadStdDev(result)
 			writeStdDev, writeStdOK := getMemoryWriteStdDev(result)
 			if readStdOK && writeStdOK {
-				return fmt.Sprintf("读/写: %.2f / %.2f MB/s (stddev %.2f / %.2f)", readSpeed, writeSpeed, readStdDev, writeStdDev)
+				return fmt.Sprintf("%s读/写: %.2f / %.2f MB/s (stddev %.2f / %.2f)", prefix, readSpeed, writeSpeed, readStdDev, writeStdDev)
 			}
-			return fmt.Sprintf("读/写: %.2f / %.2f MB/s", readSpeed, writeSpeed)
+			return fmt.Sprintf("%s读/写: %.2f / %.2f MB/s", prefix, readSpeed, writeSpeed)
 		}
 		if readOK {
-			return fmt.Sprintf("读取: %.2f MB/s", readSpeed)
+			return fmt.Sprintf("%s读取: %.2f MB/s", prefix, readSpeed)
 		}
 	case "disk", "磁盘性能测试":
 		if speed, ok := getDiskReadSpeed(result); ok {

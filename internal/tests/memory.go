@@ -23,6 +23,45 @@ const memorySampleRuns = 3
 type MemoryTest struct {
 	*BaseTest
 	testSize int // 测试数据大小（MB）
+	backend  MemoryBenchmarkBackend
+}
+
+type MemoryBenchmarkBackend interface {
+	Name() string
+	ReadSource() string
+	WriteSource() string
+	MeasureRead(sizeMB int) (MemoryBackendResult, error)
+	MeasureWrite(sizeMB int) (MemoryBackendResult, error)
+}
+
+type MemoryBackendResult struct {
+	SpeedMBps float64
+}
+
+type BuiltinMemoryBackend struct {
+	test *MemoryTest
+}
+
+func (b *BuiltinMemoryBackend) Name() string {
+	return models.MemoryBackendBuiltin
+}
+
+func (b *BuiltinMemoryBackend) ReadSource() string {
+	return models.MemorySourceBuiltin
+}
+
+func (b *BuiltinMemoryBackend) WriteSource() string {
+	return models.MemorySourceBuiltin
+}
+
+func (b *BuiltinMemoryBackend) MeasureRead(sizeMB int) (MemoryBackendResult, error) {
+	speed, err := b.test.TestSequentialRead(sizeMB)
+	return MemoryBackendResult{SpeedMBps: speed}, err
+}
+
+func (b *BuiltinMemoryBackend) MeasureWrite(sizeMB int) (MemoryBackendResult, error) {
+	speed, err := b.test.TestSequentialWrite(sizeMB)
+	return MemoryBackendResult{SpeedMBps: speed}, err
 }
 
 // NewMemoryTest 创建内存性能测试
@@ -32,10 +71,20 @@ type MemoryTest struct {
 // 返回:
 //   - *MemoryTest: 内存测试实例
 func NewMemoryTest(logger *logger.Logger) *MemoryTest {
-	return &MemoryTest{
+	return NewMemoryTestWithBackend(logger, nil)
+}
+
+func NewMemoryTestWithBackend(logger *logger.Logger, backend MemoryBenchmarkBackend) *MemoryTest {
+	test := &MemoryTest{
 		BaseTest: NewBaseTest("内存性能测试", 60*time.Second, logger),
 		testSize: 0, // 将在Setup中计算
 	}
+	if backend != nil {
+		test.backend = backend
+	} else {
+		test.backend = &BuiltinMemoryBackend{test: test}
+	}
+	return test
 }
 
 // Setup 测试前的准备工作
@@ -61,23 +110,27 @@ func (mt *MemoryTest) Setup() error {
 //   - error: 测试错误
 func (mt *MemoryTest) Execute() (*models.TestResult, error) {
 	mt.MarkStart()
+	status := "success"
 	defer func() {
-		mt.MarkEnd("success")
+		mt.MarkEnd(status)
 	}()
 
 	metrics := make(map[string]interface{})
+	metrics["backend"] = mt.backend.Name()
 
 	// 测试顺序读取速度
 	mt.GetLogger().Info("开始内存顺序读取测试...")
-	readSamples, err := mt.collectSamples(memorySampleRuns, func() (float64, error) {
-		return mt.TestSequentialRead(mt.testSize)
+	readSamples, err := mt.collectSamples(memorySampleRuns, func() (MemoryBackendResult, error) {
+		return mt.backend.MeasureRead(mt.testSize)
 	})
 	if err != nil {
-		return mt.CreateResult("failed", nil, fmt.Sprintf("读取测试失败: %v", err)), err
+		status = "failed"
+		return mt.CreateResult("failed", metrics, fmt.Sprintf("读取测试失败: %v", err)), err
 	}
-	readStats := calculateSampleStats(readSamples)
+	readStats := calculateMemorySpeedStats(readSamples)
 	readSpeed := readStats.Median
 	metrics["read_speed_mbps"] = readSpeed
+	metrics["read_speed_source"] = mt.backend.ReadSource()
 	addSampleStatsMetrics(metrics, "read_speed_mbps", readStats)
 	mt.GetLogger().Info(fmt.Sprintf("读取速度: %.2f MB/s", readSpeed))
 
@@ -85,15 +138,17 @@ func (mt *MemoryTest) Execute() (*models.TestResult, error) {
 
 	// 测试顺序写入速度
 	mt.GetLogger().Info("开始内存顺序写入测试...")
-	writeSamples, err := mt.collectSamples(memorySampleRuns, func() (float64, error) {
-		return mt.TestSequentialWrite(mt.testSize)
+	writeSamples, err := mt.collectSamples(memorySampleRuns, func() (MemoryBackendResult, error) {
+		return mt.backend.MeasureWrite(mt.testSize)
 	})
 	if err != nil {
-		return mt.CreateResult("failed", nil, fmt.Sprintf("写入测试失败: %v", err)), err
+		status = "failed"
+		return mt.CreateResult("failed", metrics, fmt.Sprintf("写入测试失败: %v", err)), err
 	}
-	writeStats := calculateSampleStats(writeSamples)
+	writeStats := calculateMemorySpeedStats(writeSamples)
 	writeSpeed := writeStats.Median
 	metrics["write_speed_mbps"] = writeSpeed
+	metrics["write_speed_source"] = mt.backend.WriteSource()
 	addSampleStatsMetrics(metrics, "write_speed_mbps", writeStats)
 	mt.GetLogger().Info(fmt.Sprintf("写入速度: %.2f MB/s", writeSpeed))
 
@@ -107,20 +162,28 @@ func (mt *MemoryTest) Execute() (*models.TestResult, error) {
 	return mt.CreateResult("success", metrics, ""), nil
 }
 
-func (mt *MemoryTest) collectSamples(runs int, measure func() (float64, error)) ([]float64, error) {
-	samples := make([]float64, 0, runs)
+func (mt *MemoryTest) collectSamples(runs int, measure func() (MemoryBackendResult, error)) ([]MemoryBackendResult, error) {
+	samples := make([]MemoryBackendResult, 0, runs)
 	for i := 0; i < runs; i++ {
-		speed, err := measure()
+		result, err := measure()
 		if err != nil {
 			return nil, err
 		}
-		samples = append(samples, speed)
+		samples = append(samples, result)
 	}
 	return samples, nil
 }
 
+func calculateMemorySpeedStats(samples []MemoryBackendResult) sampleStats {
+	speeds := make([]float64, 0, len(samples))
+	for _, sample := range samples {
+		speeds = append(speeds, sample.SpeedMBps)
+	}
+	return calculateSampleStats(speeds)
+}
+
 // GetSafeTestSize 获取安全的测试大小
-// 限制为可用内存的保守比例（默认40%，上限1GB），最小512MB
+// 限制为可用内存的保守比例（默认15%，上限256MB），最小128MB
 // 返回:
 //   - int: 测试大小（MB）
 //   - error: 获取错误
@@ -139,11 +202,11 @@ func (mt *MemoryTest) GetSafeTestSize() (int, error) {
 		availableMB = limitMB
 	}
 
-	// 检查最小内存要求（512MB）
-	if availableMB < 512 {
+	// 检查最小内存要求（256MB）
+	if availableMB < 256 {
 		return 0, utils.WrapError(
 			utils.ErrInsufficientMemory,
-			fmt.Sprintf("可用内存不足: %d MB < 512 MB", availableMB),
+			fmt.Sprintf("可用内存不足: %d MB < 256 MB", availableMB),
 		)
 	}
 
@@ -159,18 +222,18 @@ func (mt *MemoryTest) GetSafeTestSize() (int, error) {
 		)
 	}
 
-	// 使用更保守的比例避免 OOM，并设置绝对上线
-	testSize := int(float64(availableMB) * 0.4)
-	if testSize > 1024 {
-		testSize = 1024
+	// 使用保守比例避免默认一把梭在小内存 VPS 或并发场景下触发 OOM。
+	testSize := int(float64(availableMB) * 0.15)
+	if testSize > 256 {
+		testSize = 256
 	}
 	if maxUsable := availableMB - reserveMB; testSize > maxUsable {
 		testSize = maxUsable
 	}
 
-	// 至少使用256MB进行测试
-	if testSize < 256 {
-		testSize = 256
+	// 至少使用128MB进行测试。
+	if testSize < 128 {
+		testSize = 128
 	}
 
 	return testSize, nil

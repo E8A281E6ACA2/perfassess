@@ -21,6 +21,9 @@ func TestBindFlagsQuickPreset(t *testing.T) {
 	if app.config.CPUBackend != "builtin" {
 		t.Fatalf("expected quick preset cpu backend builtin, got %q", app.config.CPUBackend)
 	}
+	if app.config.MemoryBackend != "builtin" {
+		t.Fatalf("expected quick preset memory backend builtin, got %q", app.config.MemoryBackend)
+	}
 	if app.config.EnableRouteTrace {
 		t.Fatal("expected quick preset to disable route trace")
 	}
@@ -45,6 +48,9 @@ func TestBindFlagsFullPresetWithIperf3Server(t *testing.T) {
 	if app.config.CPUBackend != "sysbench" {
 		t.Fatalf("expected full preset cpu backend sysbench, got %q", app.config.CPUBackend)
 	}
+	if app.config.MemoryBackend != "sysbench" {
+		t.Fatalf("expected full preset memory backend sysbench, got %q", app.config.MemoryBackend)
+	}
 	if app.config.NetworkBackend != "iperf3" {
 		t.Fatalf("expected full preset with server to use iperf3, got %q", app.config.NetworkBackend)
 	}
@@ -56,7 +62,7 @@ func TestBindFlagsFullPresetWithIperf3Server(t *testing.T) {
 func TestBindFlagsFullPresetAllowsExplicitBackendOverride(t *testing.T) {
 	app := NewCLI()
 	cmd := app.GetRootCmd()
-	args := []string{"--full", "--iperf3-server", "127.0.0.1:5201", "--network-backend", "builtin", "--disk-backend", "builtin", "--cpu-backend", "builtin"}
+	args := []string{"--full", "--iperf3-server", "127.0.0.1:5201", "--network-backend", "builtin", "--disk-backend", "builtin", "--cpu-backend", "builtin", "--memory-backend", "builtin"}
 	if err := cmd.ParseFlags(args); err != nil {
 		t.Fatalf("failed to parse flags: %v", err)
 	}
@@ -73,6 +79,9 @@ func TestBindFlagsFullPresetAllowsExplicitBackendOverride(t *testing.T) {
 	}
 	if app.config.CPUBackend != "builtin" {
 		t.Fatalf("expected explicit cpu backend override, got %q", app.config.CPUBackend)
+	}
+	if app.config.MemoryBackend != "builtin" {
+		t.Fatalf("expected explicit memory backend override, got %q", app.config.MemoryBackend)
 	}
 }
 

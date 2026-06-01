@@ -296,7 +296,7 @@ func (ac *AssessmentController) runPerformanceTests() (*models.TestResults, erro
 		case "cpu":
 			testList = append(testList, ac.newCPUTest())
 		case "memory":
-			testList = append(testList, tests.NewMemoryTest(ac.logger))
+			testList = append(testList, ac.newMemoryTest())
 		case "disk":
 			testList = append(testList, ac.newDiskTest())
 		case "network":
@@ -319,6 +319,14 @@ func (ac *AssessmentController) newCPUTest() tests.PerformanceTest {
 	}
 
 	return tests.NewCPUTest(ac.logger)
+}
+
+func (ac *AssessmentController) newMemoryTest() tests.PerformanceTest {
+	if ac.config.MemoryBackend == models.MemoryBackendSysbench {
+		return tests.NewMemoryTestWithBackend(ac.logger, tests.NewSysbenchMemoryBackend(tests.SysbenchMemoryConfig{}))
+	}
+
+	return tests.NewMemoryTest(ac.logger)
 }
 
 func (ac *AssessmentController) newDiskTest() tests.PerformanceTest {

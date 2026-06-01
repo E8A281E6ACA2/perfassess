@@ -154,6 +154,36 @@ func TestFormatSingleTestResultShowsFioDetailedMetrics(t *testing.T) {
 	}
 }
 
+func TestFormatSingleTestResultShowsMemoryBackendAndSources(t *testing.T) {
+	generator := NewReportGenerator()
+	result := &models.TestResult{
+		TestName:        "内存性能测试",
+		Status:          "success",
+		DurationSeconds: 4.5,
+		Metrics: map[string]interface{}{
+			"backend":            "sysbench",
+			"read_speed_mbps":    3200.0,
+			"read_speed_source":  "sysbench",
+			"write_speed_mbps":   2800.0,
+			"write_speed_source": "sysbench",
+			"score":              35.0,
+		},
+	}
+
+	formatted := generator.formatSingleTestResult("内存性能测试", result)
+
+	expectedSnippets := []string{
+		"测试后端:     sysbench",
+		"读取速度:     3200.00 MB/s (sysbench)",
+		"写入速度:     2800.00 MB/s (sysbench)",
+	}
+	for _, snippet := range expectedSnippets {
+		if !strings.Contains(formatted, snippet) {
+			t.Fatalf("expected formatted report to contain %q, got:\n%s", snippet, formatted)
+		}
+	}
+}
+
 func TestFormatSingleTestResultShowsNetworkError(t *testing.T) {
 	generator := NewReportGenerator()
 	result := &models.TestResult{
@@ -373,6 +403,13 @@ func TestAddSummaryAddsQualityNotes(t *testing.T) {
 					"backend": "builtin",
 				},
 			},
+			MemoryResult: &models.TestResult{
+				TestName: "内存性能测试",
+				Status:   "success",
+				Metrics: map[string]interface{}{
+					"backend": "builtin",
+				},
+			},
 			DiskResult: &models.TestResult{
 				TestName: "磁盘性能测试",
 				Status:   "success",
@@ -401,6 +438,7 @@ func TestAddSummaryAddsQualityNotes(t *testing.T) {
 	joined := strings.Join(notes, "\n")
 	expectedSnippets := []string{
 		"CPU 测试使用内置后端",
+		"内存测试使用内置后端",
 		"磁盘测试使用内置后端",
 		"网络上传速度为估算值",
 	}
@@ -408,5 +446,104 @@ func TestAddSummaryAddsQualityNotes(t *testing.T) {
 		if !strings.Contains(joined, snippet) {
 			t.Fatalf("expected quality notes to contain %q, got %v", snippet, notes)
 		}
+	}
+}
+
+func TestAddSummaryAddsBenchmarkProfileAndConfidence(t *testing.T) {
+	generator := NewReportGenerator()
+	report := &models.Report{
+		SessionID:  "session_profile",
+		Timestamp:  time.Date(2026, 6, 1, 8, 0, 0, 0, time.UTC),
+		SystemInfo: &models.SystemInfo{},
+		TestResults: &models.TestResults{
+			CPUResult: &models.TestResult{
+				TestName: "CPU性能测试",
+				Status:   "success",
+				Metrics: map[string]interface{}{
+					"backend": "sysbench",
+				},
+			},
+			MemoryResult: &models.TestResult{
+				TestName: "内存性能测试",
+				Status:   "success",
+				Metrics: map[string]interface{}{
+					"backend": "sysbench",
+				},
+			},
+			DiskResult: &models.TestResult{
+				TestName: "磁盘性能测试",
+				Status:   "success",
+				Metrics: map[string]interface{}{
+					"backend": "fio",
+				},
+			},
+			NetworkResult: &models.TestResult{
+				TestName: "网络性能测试",
+				Status:   "success",
+				Metrics: map[string]interface{}{
+					"backend":                "iperf3",
+					"upload_speed_estimated": false,
+				},
+			},
+		},
+		Summary: make(map[string]interface{}),
+	}
+
+	generator.AddSummary(report, &models.OverallScore{})
+
+	profile, ok := report.Summary["benchmark_profile"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected benchmark profile, got %#v", report.Summary["benchmark_profile"])
+	}
+	if profile["name"] != "full_iperf3" {
+		t.Fatalf("expected full_iperf3 profile, got %#v", profile)
+	}
+	if profile["mainstream_count"] != 4 {
+		t.Fatalf("expected 4 mainstream backends, got %#v", profile["mainstream_count"])
+	}
+
+	confidence, ok := report.Summary["confidence_level"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected confidence level, got %#v", report.Summary["confidence_level"])
+	}
+	if confidence["level"] != "high" {
+		t.Fatalf("expected high confidence, got %#v", confidence)
+	}
+}
+
+func TestAddSummaryDetectsQuickBenchmarkProfile(t *testing.T) {
+	generator := NewReportGenerator()
+	report := &models.Report{
+		SessionID:  "session_quick",
+		Timestamp:  time.Date(2026, 6, 1, 8, 0, 0, 0, time.UTC),
+		SystemInfo: &models.SystemInfo{},
+		TestResults: &models.TestResults{
+			CPUResult: &models.TestResult{
+				TestName: "CPU性能测试",
+				Status:   "success",
+				Metrics:  map[string]interface{}{"backend": "builtin"},
+			},
+			MemoryResult: &models.TestResult{
+				TestName: "内存性能测试",
+				Status:   "success",
+				Metrics:  map[string]interface{}{"backend": "builtin"},
+			},
+			DiskResult: &models.TestResult{
+				TestName: "磁盘性能测试",
+				Status:   "success",
+				Metrics:  map[string]interface{}{"backend": "builtin"},
+			},
+		},
+		Summary: make(map[string]interface{}),
+	}
+
+	generator.AddSummary(report, &models.OverallScore{})
+
+	profile, ok := report.Summary["benchmark_profile"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected benchmark profile, got %#v", report.Summary["benchmark_profile"])
+	}
+	if profile["name"] != "quick" {
+		t.Fatalf("expected quick profile, got %#v", profile)
 	}
 }

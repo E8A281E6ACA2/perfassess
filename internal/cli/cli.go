@@ -156,6 +156,10 @@ func (c *CLI) setupCommands() {
 	flags.String("cpu-backend", "builtin",
 		"CPU 测试后端 (builtin,sysbench)")
 
+	// --memory-backend 参数：选择内存测试后端
+	flags.String("memory-backend", "builtin",
+		"内存测试后端 (builtin,sysbench)")
+
 	// --web 参数：启用 Web 报告
 	flags.Bool("web", false,
 		"启用 Web 报告服务器")
@@ -202,7 +206,7 @@ func (c *CLI) newCheckDepsCommand() *cobra.Command {
 			if missing > 0 {
 				fmt.Println()
 				fmt.Printf("发现 %d 个缺失依赖。程序不会自动安装，请按提示手动安装后重试。\n", missing)
-				fmt.Println("说明：缺失可选依赖不会影响默认一把梭，但会影响 --cpu-backend sysbench、--disk-backend fio、--network-backend iperf3 或 --route-trace。")
+				fmt.Println("说明：缺失可选依赖不会影响默认一把梭，但会影响 --cpu-backend sysbench、--memory-backend sysbench、--disk-backend fio、--network-backend iperf3 或 --route-trace。")
 			}
 			return nil
 		},
@@ -296,6 +300,11 @@ func (c *CLI) bindFlags(cmd *cobra.Command) error {
 		c.config.CPUBackend = cpuBackend
 	}
 
+	// 绑定 memory-backend 参数
+	if memoryBackend, err := flags.GetString("memory-backend"); err == nil && flags.Changed("memory-backend") {
+		c.config.MemoryBackend = memoryBackend
+	}
+
 	// 绑定 log-level 参数
 	if logLevel, err := flags.GetString("log-level"); err == nil {
 		c.config.LogLevel = logLevel
@@ -323,6 +332,7 @@ func (c *CLI) applyQuickPreset() {
 	c.config.EnableSecurityScan = false
 	c.config.DiskBackend = "builtin"
 	c.config.CPUBackend = "builtin"
+	c.config.MemoryBackend = "builtin"
 	c.config.NetworkBackend = "builtin"
 }
 
@@ -333,6 +343,7 @@ func (c *CLI) applyFullPreset() {
 	c.config.EnableAIServices = true
 	c.config.EnableSecurityScan = true
 	c.config.CPUBackend = "sysbench"
+	c.config.MemoryBackend = "sysbench"
 	c.config.DiskBackend = "fio"
 }
 
@@ -425,6 +436,14 @@ func (c *CLI) validateFlags() error {
 		return fmt.Errorf("无效的 CPU 测试后端: %s\n有效的 CPU 测试后端: builtin, sysbench", c.config.CPUBackend)
 	}
 
+	validMemoryBackends := map[string]bool{
+		"builtin":  true,
+		"sysbench": true,
+	}
+	if !validMemoryBackends[c.config.MemoryBackend] {
+		return fmt.Errorf("无效的内存测试后端: %s\n有效的内存测试后端: builtin, sysbench", c.config.MemoryBackend)
+	}
+
 	validDiskBackends := map[string]bool{
 		"builtin": true,
 		"fio":     true,
@@ -459,6 +478,7 @@ func (c *CLI) printWelcome() {
 		}
 		fmt.Printf("输出格式: %s\n", c.config.OutputFormat)
 		fmt.Printf("CPU测试后端: %s\n", c.config.CPUBackend)
+		fmt.Printf("内存测试后端: %s\n", c.config.MemoryBackend)
 		fmt.Printf("磁盘测试后端: %s\n", c.config.DiskBackend)
 		fmt.Printf("网络测试后端: %s\n", c.config.NetworkBackend)
 		if c.config.EnableRouteTrace {

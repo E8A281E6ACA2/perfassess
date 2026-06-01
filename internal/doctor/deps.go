@@ -17,7 +17,7 @@ type DependencyStatus struct {
 
 func CheckDependencies() []DependencyStatus {
 	deps := []DependencyStatus{
-		checkDependency("sysbench", "sysbench CPU 基准测试", sysbenchInstallHint(), false),
+		checkDependency("sysbench", "sysbench CPU/内存基准测试", sysbenchInstallHint(), false),
 		checkDependency("iperf3", "iperf3 网络吞吐测试", iperf3InstallHint(), false),
 		checkDependency("fio", "fio 磁盘基准测试", fioInstallHint(), false),
 	}
