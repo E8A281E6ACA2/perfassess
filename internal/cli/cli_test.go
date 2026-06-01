@@ -1,6 +1,15 @@
 package cli
 
-import "testing"
+import (
+	"bytes"
+	"encoding/json"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"performance-assessment-system/internal/models"
+)
 
 func TestBindFlagsQuickPreset(t *testing.T) {
 	app := NewCLI()
@@ -160,6 +169,46 @@ func TestValidateFlagsRejectsUnknownScoreProfile(t *testing.T) {
 	}
 }
 
+func TestCompareCommandOutputsJSON(t *testing.T) {
+	dir := t.TempDir()
+	pathA := filepath.Join(dir, "a.json")
+	pathB := filepath.Join(dir, "b.json")
+	writeCLIReport(t, pathA, 80, "server")
+	writeCLIReport(t, pathB, 90, "server")
+
+	app := NewCLI()
+	cmd := app.GetRootCmd()
+	var output bytes.Buffer
+	cmd.SetOut(&output)
+	cmd.SetArgs([]string{"compare", pathA, pathB, "--format", "json"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("expected compare command to succeed, got %v", err)
+	}
+
+	var decoded map[string]interface{}
+	if err := json.Unmarshal(output.Bytes(), &decoded); err != nil {
+		t.Fatalf("expected compare command to output valid json, got %v\n%s", err, output.String())
+	}
+	if decoded["winner"] != "B" {
+		t.Fatalf("expected winner B, got %#v", decoded["winner"])
+	}
+}
+
+func TestCompareCommandRejectsInvalidFormat(t *testing.T) {
+	app := NewCLI()
+	cmd := app.GetRootCmd()
+	cmd.SetArgs([]string{"compare", "a.json", "b.json", "--format", "xml"})
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected invalid compare format to fail")
+	}
+	if !strings.Contains(err.Error(), "无效的对比输出格式") {
+		t.Fatalf("expected invalid format error, got %v", err)
+	}
+}
+
 func assertStringSlice(t *testing.T, actual []string, expected []string) {
 	t.Helper()
 
@@ -170,5 +219,28 @@ func assertStringSlice(t *testing.T, actual []string, expected []string) {
 		if actual[i] != expected[i] {
 			t.Fatalf("expected %v, got %v", expected, actual)
 		}
+	}
+}
+
+func writeCLIReport(t *testing.T, path string, total float64, profile string) {
+	t.Helper()
+	report := &models.Report{
+		SessionID: "cli_test",
+		Summary: map[string]interface{}{
+			"cpu_score":     total,
+			"memory_score":  total,
+			"disk_score":    total,
+			"network_score": total,
+			"total_score":   total,
+			"grade":         "良好",
+			"score_profile": profile,
+		},
+	}
+	content, err := json.Marshal(report)
+	if err != nil {
+		t.Fatalf("failed to marshal report: %v", err)
+	}
+	if err := os.WriteFile(path, content, 0644); err != nil {
+		t.Fatalf("failed to write report: %v", err)
 	}
 }

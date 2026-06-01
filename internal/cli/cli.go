@@ -10,6 +10,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"performance-assessment-system/internal/compare"
 	"performance-assessment-system/internal/config"
 	"performance-assessment-system/internal/controller"
 	"performance-assessment-system/internal/doctor"
@@ -85,6 +86,7 @@ func (c *CLI) setupCommands() {
 		RunE: c.run,
 	}
 	c.rootCmd.AddCommand(c.newCheckDepsCommand())
+	c.rootCmd.AddCommand(c.newCompareCommand())
 
 	// 添加命令行参数
 	flags := c.rootCmd.Flags()
@@ -185,6 +187,39 @@ func (c *CLI) setupCommands() {
 	c.rootCmd.PreRunE = func(cmd *cobra.Command, args []string) error {
 		return c.bindFlags(cmd)
 	}
+}
+
+func (c *CLI) newCompareCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "compare <report-a.json> <report-b.json>",
+		Short: "对比两份 JSON 评估报告",
+		Args:  cobra.ExactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			format, _ := cmd.Flags().GetString("format")
+			if format != "text" && format != "json" {
+				return fmt.Errorf("无效的对比输出格式: %s\n有效的输出格式: text, json", format)
+			}
+
+			result, err := compare.CompareFiles(args[0], args[1])
+			if err != nil {
+				return err
+			}
+
+			if format == "json" {
+				content, err := compare.FormatJSON(result)
+				if err != nil {
+					return err
+				}
+				fmt.Fprintln(cmd.OutOrStdout(), content)
+				return nil
+			}
+
+			fmt.Fprint(cmd.OutOrStdout(), compare.FormatText(result))
+			return nil
+		},
+	}
+	cmd.Flags().String("format", "text", "对比输出格式 (text,json)")
+	return cmd
 }
 
 func (c *CLI) newCheckDepsCommand() *cobra.Command {

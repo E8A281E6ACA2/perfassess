@@ -143,7 +143,6 @@
 - `formula`: 计算说明
 - 原始指标字段，例如 `read_speed_mbps`、`random_iops`、`download_speed_mbps`
 - 基准线字段，例如 `read_base_mbps`、`sequential_read_base_mbps`、`download_base_mbps`
-- 基准字段，例如 `read_base_mbps`、`random_iops_base`、`download_base_mbps`
 
 总分规则：
 
@@ -151,3 +150,29 @@
 - `normalized_total.active_weight`: 成功测试分项的权重和
 - `normalized_total.score`: `weighted_sum / active_weight`
 - 未执行或失败的核心测试不会参与权重归一化，但会降低 `confidence_level`
+
+## Compare Result
+
+`perfassess compare <report-a.json> <report-b.json>` 输出两份 JSON 报告的对比结果。文本格式用于人工阅读，`--format json` 用于脚本化处理。
+
+核心字段：
+
+- `report_a`: A 报告路径或标签
+- `report_b`: B 报告路径或标签
+- `winner`: 胜出方，可能为 `A`、`B`、`平局` 或 `不可直接比较`
+- `score_profile_a`: A 报告评分基准
+- `score_profile_b`: B 报告评分基准
+- `comparable`: 两份报告是否可直接比较
+- `warnings`: 不可直接比较或未完成报告的提示
+- `total_difference`: 总分差异
+- `metric_differences`: CPU、内存、磁盘、网络分项差异
+
+差异字段：
+
+- `name`: 指标名称
+- `report_a`: A 报告数值
+- `report_b`: B 报告数值
+- `delta`: `B - A`
+- `delta_percent`: 相对 A 的百分比变化
+- `winner`: 该指标胜出方
+- `higher_is_better`: 是否数值越高越好

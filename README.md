@@ -344,6 +344,12 @@ make run
 # 输出机器可读 JSON
 ./build/perfassess -b all --output-format json -o report.json
 
+# 对比两份 JSON 报告
+./build/perfassess compare vps-a.json vps-b.json
+
+# 输出机器可读对比结果
+./build/perfassess compare vps-a.json vps-b.json --format json
+
 # 自定义综合评分权重
 ./build/perfassess -b all --score-weights cpu=0.4,memory=0.2,disk=0.2,network=0.2
 
@@ -364,6 +370,7 @@ perfassess [command] [flags]
 
 Commands:
   check-deps               检查外部测试工具依赖
+  compare                  对比两份 JSON 评估报告
 
 Flags:
   -i, --interactive          启用交互式菜单模式
@@ -759,6 +766,7 @@ A: 使用 `--port` 参数指定其他端口：
 | 完整测试 | `./build/perfassess -b all` |
 | Web 报告 | `./build/perfassess -b all --web` |
 | 保存报告 | `./build/perfassess -b all -o report.txt` |
+| 报告对比 | `./build/perfassess compare vps-a.json vps-b.json` |
 | 路由追踪 | `./build/perfassess --route-trace`（需预装 traceroute/tracert） |
 | 流媒体检测 | `./build/perfassess --streaming` |
 | AI 服务检测 | `./build/perfassess --ai-services` |
