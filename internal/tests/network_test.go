@@ -206,6 +206,26 @@ func TestIperf3NetworkBackendReportsMissingBinary(t *testing.T) {
 	}
 }
 
+func TestIperf3NetworkBackendUsesLatencyFallback(t *testing.T) {
+	backend := NewIperf3NetworkBackend(Iperf3Config{
+		Server: "127.0.0.1:5201",
+		LatencyFn: func(hosts []string) (float64, error) {
+			if len(hosts) != 1 || hosts[0] != "1.1.1.1:53" {
+				t.Fatalf("unexpected latency hosts: %v", hosts)
+			}
+			return 8.5, nil
+		},
+	})
+
+	latency, err := backend.MeasureLatency([]string{"1.1.1.1:53"})
+	if err != nil {
+		t.Fatalf("expected latency fallback to succeed, got error: %v", err)
+	}
+	if latency != 8.5 {
+		t.Fatalf("expected latency 8.5, got %.2f", latency)
+	}
+}
+
 func TestIperf3NetworkBackendParsesDownloadMbps(t *testing.T) {
 	runner := &fakeCommandRunner{
 		output:     []byte(`{"end":{"sum_received":{"bits_per_second":125000000}}}`),
@@ -352,6 +372,37 @@ func TestExecuteUsesBackendSpecificSources(t *testing.T) {
 	assertMetricBool(t, result.Metrics, "upload_speed_estimated", false)
 }
 
+func TestExecuteWithIperf3BackendUsesLatencyFallbackWithoutError(t *testing.T) {
+	runner := &fakeCommandRunner{
+		outputs: [][]byte{
+			[]byte(`{"end":{"sum_received":{"bits_per_second":100000000}}}`),
+			[]byte(`{"end":{"sum_sent":{"bits_per_second":50000000}}}`),
+		},
+		lookPathOK: true,
+	}
+	backend := NewIperf3NetworkBackend(Iperf3Config{
+		Server: "127.0.0.1:5201",
+		Runner: runner,
+		LatencyFn: func(hosts []string) (float64, error) {
+			return 9.5, nil
+		},
+	})
+	networkTest := NewNetworkTestWithBackend(newTestLogger(t), backend)
+
+	result, err := networkTest.Execute()
+	if err != nil {
+		t.Fatalf("expected execute to succeed, got error: %v", err)
+	}
+
+	assertMetricFloat(t, result.Metrics, "average_latency_ms", 9.5)
+	assertMetricFloat(t, result.Metrics, "download_speed_mbps", 100.0)
+	assertMetricFloat(t, result.Metrics, "upload_speed_mbps", 50.0)
+	assertMetricString(t, result.Metrics, "download_speed_source", models.NetworkDownloadSourceIperf3)
+	assertMetricString(t, result.Metrics, "upload_speed_source", models.NetworkUploadSourceIperf3)
+	assertMetricString(t, result.Metrics, "network_error", "")
+	assertMetricBool(t, result.Metrics, "upload_speed_estimated", false)
+}
+
 func newTestLogger(t *testing.T) *logger.Logger {
 	t.Helper()
 
@@ -413,16 +464,26 @@ func assertMetricInt(t *testing.T, metrics map[string]interface{}, key string, e
 
 type fakeCommandRunner struct {
 	output      []byte
+	outputs     [][]byte
 	err         error
 	lookPathOK  bool
 	lookPathErr error
 	name        string
 	args        []string
+	calls       int
 }
 
 func (r *fakeCommandRunner) Run(ctx context.Context, name string, args ...string) ([]byte, error) {
 	r.name = name
 	r.args = append([]string(nil), args...)
+	r.calls++
+	if len(r.outputs) > 0 {
+		index := r.calls - 1
+		if index >= len(r.outputs) {
+			index = len(r.outputs) - 1
+		}
+		return r.outputs[index], r.err
+	}
 	return r.output, r.err
 }
 

@@ -30,15 +30,17 @@ func (r *execCommandRunner) LookPath(name string) (string, error) {
 }
 
 type Iperf3NetworkBackend struct {
-	server  string
-	timeout time.Duration
-	runner  commandRunner
+	server    string
+	timeout   time.Duration
+	runner    commandRunner
+	latencyFn func([]string) (float64, error)
 }
 
 type Iperf3Config struct {
-	Server  string
-	Timeout time.Duration
-	Runner  commandRunner
+	Server    string
+	Timeout   time.Duration
+	Runner    commandRunner
+	LatencyFn func([]string) (float64, error)
 }
 
 type iperf3Endpoint struct {
@@ -57,9 +59,10 @@ func NewIperf3NetworkBackend(cfg Iperf3Config) *Iperf3NetworkBackend {
 	}
 
 	return &Iperf3NetworkBackend{
-		server:  cfg.Server,
-		timeout: timeout,
-		runner:  runner,
+		server:    cfg.Server,
+		timeout:   timeout,
+		runner:    runner,
+		latencyFn: cfg.LatencyFn,
 	}
 }
 
@@ -80,7 +83,10 @@ func (b *Iperf3NetworkBackend) UploadSource(estimated bool) string {
 }
 
 func (b *Iperf3NetworkBackend) MeasureLatency(hosts []string) (float64, error) {
-	return 0, fmt.Errorf("iperf3 latency measurement is not implemented")
+	if b.latencyFn == nil {
+		return 0, fmt.Errorf("iperf3 latency fallback is not configured")
+	}
+	return b.latencyFn(hosts)
 }
 
 func (b *Iperf3NetworkBackend) MeasureDownload() (float64, error) {
