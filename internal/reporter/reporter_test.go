@@ -1,6 +1,7 @@
 package reporter
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 	"time"
@@ -257,6 +258,81 @@ func TestFormatReportIncludesIncompleteNote(t *testing.T) {
 	for _, snippet := range expectedSnippets {
 		if !strings.Contains(formatted, snippet) {
 			t.Fatalf("expected formatted report to contain %q, got:\n%s", snippet, formatted)
+		}
+	}
+}
+
+func TestOutputFormatterOutputsJSONReport(t *testing.T) {
+	formatter := NewOutputFormatter()
+	report := &models.Report{
+		SessionID:   "session_json",
+		Timestamp:   time.Date(2026, 6, 1, 8, 0, 0, 0, time.UTC),
+		SystemInfo:  &models.SystemInfo{},
+		TestResults: &models.TestResults{},
+		Summary: map[string]interface{}{
+			"grade": "未完成",
+		},
+		FormattedContent: "text report",
+	}
+
+	content, err := formatter.OutputJSON(report)
+	if err != nil {
+		t.Fatalf("expected JSON output to succeed, got %v", err)
+	}
+
+	var decoded map[string]interface{}
+	if err := json.Unmarshal([]byte(content), &decoded); err != nil {
+		t.Fatalf("expected valid JSON, got %v\n%s", err, content)
+	}
+	if decoded["session_id"] != "session_json" {
+		t.Fatalf("expected session_id in JSON, got %v", decoded["session_id"])
+	}
+	if _, exists := decoded["FormattedContent"]; exists {
+		t.Fatal("expected formatted content to be omitted from JSON")
+	}
+}
+
+func TestAddSummaryAddsQualityNotes(t *testing.T) {
+	generator := NewReportGenerator()
+	report := &models.Report{
+		SessionID:  "session_quality",
+		Timestamp:  time.Date(2026, 6, 1, 8, 0, 0, 0, time.UTC),
+		SystemInfo: &models.SystemInfo{},
+		TestResults: &models.TestResults{
+			DiskResult: &models.TestResult{
+				TestName: "磁盘性能测试",
+				Status:   "success",
+				Metrics: map[string]interface{}{
+					"backend": "builtin",
+				},
+			},
+			NetworkResult: &models.TestResult{
+				TestName: "网络性能测试",
+				Status:   "success",
+				Metrics: map[string]interface{}{
+					"average_latency_ms":     10.0,
+					"upload_speed_estimated": true,
+				},
+			},
+		},
+		Summary: make(map[string]interface{}),
+	}
+
+	generator.AddSummary(report, &models.OverallScore{})
+
+	notes, ok := report.Summary["quality_notes"].([]string)
+	if !ok || len(notes) == 0 {
+		t.Fatalf("expected quality notes, got %#v", report.Summary["quality_notes"])
+	}
+	joined := strings.Join(notes, "\n")
+	expectedSnippets := []string{
+		"CPU测试未执行",
+		"磁盘测试使用内置后端",
+		"网络上传速度为估算值",
+	}
+	for _, snippet := range expectedSnippets {
+		if !strings.Contains(joined, snippet) {
+			t.Fatalf("expected quality notes to contain %q, got %v", snippet, notes)
 		}
 	}
 }

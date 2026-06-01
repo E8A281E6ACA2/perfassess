@@ -424,13 +424,13 @@ func (ac *AssessmentController) outputReport(report *models.Report) error {
 	formatter := reporter.NewOutputFormatter()
 
 	// 输出到控制台
-	if err := formatter.OutputToConsole(report); err != nil {
+	if err := formatter.OutputToConsoleWithFormat(report, ac.config.OutputFormat); err != nil {
 		return fmt.Errorf("输出到控制台失败: %w", err)
 	}
 
 	// 如果指定了输出文件，保存到文件
 	if ac.config.Output != "" {
-		if err := formatter.OutputToFile(report, ac.config.Output); err != nil {
+		if err := formatter.OutputToFileWithFormat(report, ac.config.Output, ac.config.OutputFormat); err != nil {
 			return fmt.Errorf("输出到文件失败: %w", err)
 		}
 		ac.logger.Info("报告已保存到文件", zap.String("file", ac.config.Output))

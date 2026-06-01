@@ -110,6 +110,7 @@ func (ws *WebServer) prepareTemplateData() map[string]interface{} {
 	// 评分颜色
 	data["OverallScoreColor"] = ws.getScoreColor(overallScore.TotalScore)
 	data["OverallGradeClass"] = ws.getGradeClass(overallScore.Grade)
+	data["QualityNotes"] = ws.getQualityNotes()
 
 	// 测试结果列表
 	testResultsList := []map[string]interface{}{}
@@ -132,6 +133,26 @@ func (ws *WebServer) prepareTemplateData() map[string]interface{} {
 	data["TestResultsList"] = testResultsList
 
 	return data
+}
+
+func (ws *WebServer) getQualityNotes() []string {
+	if ws.report == nil || ws.report.Summary == nil {
+		return nil
+	}
+	switch notes := ws.report.Summary["quality_notes"].(type) {
+	case []string:
+		return notes
+	case []interface{}:
+		result := make([]string, 0, len(notes))
+		for _, note := range notes {
+			if text, ok := note.(string); ok {
+				result = append(result, text)
+			}
+		}
+		return result
+	default:
+		return nil
+	}
 }
 
 // formatTestResult 格式化测试结果

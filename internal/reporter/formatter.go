@@ -2,10 +2,11 @@
 package reporter
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
-	
+
 	"performance-assessment-system/internal/models"
 )
 
@@ -21,8 +22,21 @@ func NewOutputFormatter() *OutputFormatter {
 // OutputToConsole 将报告输出到控制台
 // 使用彩色文本增强可读性
 func (of *OutputFormatter) OutputToConsole(report *models.Report) error {
+	return of.OutputToConsoleWithFormat(report, "text")
+}
+
+func (of *OutputFormatter) OutputToConsoleWithFormat(report *models.Report, format string) error {
 	if report == nil {
 		return fmt.Errorf("报告不能为空")
+	}
+
+	if format == "json" {
+		content, err := of.OutputJSON(report)
+		if err != nil {
+			return err
+		}
+		fmt.Println(content)
+		return nil
 	}
 
 	// 获取格式化内容
@@ -33,28 +47,40 @@ func (of *OutputFormatter) OutputToConsole(report *models.Report) error {
 
 	// 为关键信息添加颜色
 	coloredContent := of.colorizeContent(content)
-	
+
 	// 输出到控制台
 	fmt.Println(coloredContent)
-	
+
 	return nil
 }
 
 // OutputToFile 将报告输出到文件
 // 保存为纯文本格式
 func (of *OutputFormatter) OutputToFile(report *models.Report, filepath string) error {
+	return of.OutputToFileWithFormat(report, filepath, "text")
+}
+
+func (of *OutputFormatter) OutputToFileWithFormat(report *models.Report, filepath string, format string) error {
 	if report == nil {
 		return fmt.Errorf("报告不能为空")
 	}
-	
+
 	if filepath == "" {
 		return fmt.Errorf("文件路径不能为空")
 	}
 
-	// 获取格式化内容
-	content := report.FormattedContent
-	if content == "" {
-		return fmt.Errorf("报告内容为空")
+	var content string
+	if format == "json" {
+		jsonContent, err := of.OutputJSON(report)
+		if err != nil {
+			return err
+		}
+		content = jsonContent + "\n"
+	} else {
+		content = report.FormattedContent
+		if content == "" {
+			return fmt.Errorf("报告内容为空")
+		}
 	}
 
 	// 写入文件
@@ -74,7 +100,7 @@ func (of *OutputFormatter) FormatTable(data map[string]interface{}) string {
 	}
 
 	var sb strings.Builder
-	
+
 	// 计算最大键长度用于对齐
 	maxKeyLen := 0
 	for key := range data {
@@ -82,13 +108,13 @@ func (of *OutputFormatter) FormatTable(data map[string]interface{}) string {
 			maxKeyLen = len(key)
 		}
 	}
-	
+
 	// 格式化每一行
 	for key, value := range data {
 		padding := strings.Repeat(" ", maxKeyLen-len(key))
 		sb.WriteString(fmt.Sprintf("%s%s: %v\n", key, padding, value))
 	}
-	
+
 	return sb.String()
 }
 
@@ -107,12 +133,12 @@ func (of *OutputFormatter) Colorize(text string, color string) string {
 		"white":   "\033[37m",
 		"bold":    "\033[1m",
 	}
-	
+
 	colorCode, ok := colors[color]
 	if !ok {
 		return text
 	}
-	
+
 	return colorCode + text + colors["reset"]
 }
 
@@ -120,13 +146,13 @@ func (of *OutputFormatter) Colorize(text string, color string) string {
 func (of *OutputFormatter) colorizeContent(content string) string {
 	lines := strings.Split(content, "\n")
 	var coloredLines []string
-	
+
 	for _, line := range lines {
 		coloredLine := line
-		
+
 		// 标题行（包含 === 或 --- 或 ╔ ╚ ║）
 		if strings.Contains(line, "===") || strings.Contains(line, "---") ||
-			strings.Contains(line, "╔") || strings.Contains(line, "╚") || 
+			strings.Contains(line, "╔") || strings.Contains(line, "╚") ||
 			strings.Contains(line, "║") || strings.Contains(line, "════") {
 			coloredLine = of.Colorize(line, "cyan")
 		} else if strings.Contains(line, "性能等级") {
@@ -161,10 +187,10 @@ func (of *OutputFormatter) colorizeContent(content string) string {
 			// 错误信息行
 			coloredLine = of.Colorize(line, "red")
 		}
-		
+
 		coloredLines = append(coloredLines, coloredLine)
 	}
-	
+
 	return strings.Join(coloredLines, "\n")
 }
 
@@ -174,10 +200,12 @@ func (of *OutputFormatter) OutputJSON(report *models.Report) (string, error) {
 	if report == nil {
 		return "", fmt.Errorf("报告不能为空")
 	}
-	
-	// 这里可以使用encoding/json包来序列化
-	// 为了保持简单，暂时返回提示信息
-	return "JSON输出功能待实现", nil
+
+	data, err := json.MarshalIndent(report, "", "  ")
+	if err != nil {
+		return "", fmt.Errorf("序列化 JSON 报告失败: %w", err)
+	}
+	return string(data), nil
 }
 
 // OutputSummary 输出简化的摘要信息
@@ -188,17 +216,17 @@ func (of *OutputFormatter) OutputSummary(report *models.Report) error {
 	}
 
 	var sb strings.Builder
-	
+
 	sb.WriteString(of.Colorize("=== 性能评估摘要 ===\n", "cyan"))
 	sb.WriteString("\n")
-	
+
 	// 总体评分
 	if report.Summary != nil {
 		if totalScore, ok := report.Summary["total_score"].(float64); ok {
-			sb.WriteString(fmt.Sprintf("总体评分: %s\n", 
+			sb.WriteString(fmt.Sprintf("总体评分: %s\n",
 				of.Colorize(fmt.Sprintf("%.2f / 100", totalScore), "bold")))
 		}
-		
+
 		if grade, ok := report.Summary["grade"].(string); ok {
 			gradeColor := "white"
 			switch grade {
@@ -213,9 +241,9 @@ func (of *OutputFormatter) OutputSummary(report *models.Report) error {
 			}
 			sb.WriteString(fmt.Sprintf("性能等级: %s\n", of.Colorize(grade, gradeColor)))
 		}
-		
+
 		sb.WriteString("\n")
-		
+
 		// 各项评分
 		if cpuScore, ok := report.Summary["cpu_score"].(float64); ok {
 			sb.WriteString(fmt.Sprintf("CPU:    %.2f\n", cpuScore))
@@ -230,7 +258,7 @@ func (of *OutputFormatter) OutputSummary(report *models.Report) error {
 			sb.WriteString(fmt.Sprintf("网络:   %.2f\n", netScore))
 		}
 	}
-	
+
 	fmt.Print(sb.String())
 	return nil
 }

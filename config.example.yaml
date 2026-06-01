@@ -4,8 +4,8 @@
 # 日志级别：debug, info, warn, error
 log_level: info
 
-# 输出格式：json, text
-output_format: json
+# 输出格式：text, json
+output_format: text
 
 # 数据采集间隔（秒）
 collection_interval: 60
@@ -14,8 +14,11 @@ collection_interval: 60
 # 如果不需要地理位置识别功能，可以留空
 geoip_db_path: ""
 
+# 磁盘测试后端：builtin, fio
+disk_backend: builtin
+
 # 网络测试后端：builtin, iperf3
-# builtin 为当前内置 HTTP/TCP 测试；iperf3 后端目前为预留入口
+# builtin 为当前内置 HTTP/TCP 测试；iperf3 用于真实吞吐测试
 network_backend: builtin
 
 # iperf3 服务端地址，仅在 network_backend=iperf3 时使用

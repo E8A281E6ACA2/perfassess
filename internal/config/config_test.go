@@ -11,8 +11,38 @@ func TestDefaultConfigUsesBuiltinNetworkBackend(t *testing.T) {
 	if cfg.DiskBackend != "builtin" {
 		t.Fatalf("expected default disk backend builtin, got %q", cfg.DiskBackend)
 	}
+	if cfg.OutputFormat != "text" {
+		t.Fatalf("expected default output format text, got %q", cfg.OutputFormat)
+	}
 	if err := cfg.Validate(); err != nil {
 		t.Fatalf("expected default config to validate, got %v", err)
+	}
+}
+
+func TestValidateRejectsUnknownOutputFormat(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.OutputFormat = "xml"
+
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("expected invalid output format to fail validation")
+	}
+
+	configErr, ok := err.(*ConfigError)
+	if !ok {
+		t.Fatalf("expected ConfigError, got %T", err)
+	}
+	if configErr.Field != "output_format" {
+		t.Fatalf("expected field output_format, got %q", configErr.Field)
+	}
+}
+
+func TestValidateAcceptsJSONOutputFormat(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.OutputFormat = "json"
+
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("expected json output format to validate, got %v", err)
 	}
 }
 

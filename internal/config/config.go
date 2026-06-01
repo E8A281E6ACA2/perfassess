@@ -14,6 +14,9 @@ type Config struct {
 	// 如果为空，则只输出到控制台
 	Output string `mapstructure:"output"`
 
+	// OutputFormat 输出格式，可选值: text, json
+	OutputFormat string `mapstructure:"output_format"`
+
 	// Verbose 是否启用详细输出模式
 	// 启用后会显示更多调试信息
 	Verbose bool `mapstructure:"verbose"`
@@ -66,6 +69,7 @@ func DefaultConfig() *Config {
 	return &Config{
 		Tests:              []string{"all"},
 		Output:             "",
+		OutputFormat:       "text",
 		Verbose:            false,
 		EnableRouteTrace:   false,
 		EnableStreaming:    false,
@@ -116,6 +120,17 @@ func (c *Config) Validate() error {
 		return &ConfigError{
 			Field:   "log_level",
 			Message: "无效的日志级别: " + c.LogLevel,
+		}
+	}
+
+	validOutputFormats := map[string]bool{
+		"text": true,
+		"json": true,
+	}
+	if !validOutputFormats[c.OutputFormat] {
+		return &ConfigError{
+			Field:   "output_format",
+			Message: "无效的输出格式: " + c.OutputFormat,
 		}
 	}
 

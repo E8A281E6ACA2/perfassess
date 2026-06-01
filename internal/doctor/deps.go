@@ -7,17 +7,18 @@ import (
 )
 
 type DependencyStatus struct {
-	Name    string
-	Purpose string
-	Found   bool
-	Path    string
-	Hint    string
+	Name     string
+	Purpose  string
+	Found    bool
+	Path     string
+	Hint     string
+	Required bool
 }
 
 func CheckDependencies() []DependencyStatus {
 	deps := []DependencyStatus{
-		checkDependency("iperf3", "iperf3 网络吞吐测试", iperf3InstallHint()),
-		checkDependency("fio", "fio 磁盘基准测试", fioInstallHint()),
+		checkDependency("iperf3", "iperf3 网络吞吐测试", iperf3InstallHint(), false),
+		checkDependency("fio", "fio 磁盘基准测试", fioInstallHint(), false),
 	}
 
 	routeBin := "traceroute"
@@ -26,27 +27,29 @@ func CheckDependencies() []DependencyStatus {
 		routeBin = "tracert"
 		routeHint = routeTraceInstallHint(routeBin)
 	}
-	deps = append(deps, checkDependency(routeBin, "路由追踪测试", routeHint))
+	deps = append(deps, checkDependency(routeBin, "路由追踪测试", routeHint, false))
 
 	return deps
 }
 
-func checkDependency(name string, purpose string, hint string) DependencyStatus {
+func checkDependency(name string, purpose string, hint string, required bool) DependencyStatus {
 	path, err := exec.LookPath(name)
 	if err != nil {
 		return DependencyStatus{
-			Name:    name,
-			Purpose: purpose,
-			Found:   false,
-			Hint:    hint,
+			Name:     name,
+			Purpose:  purpose,
+			Found:    false,
+			Hint:     hint,
+			Required: required,
 		}
 	}
 
 	return DependencyStatus{
-		Name:    name,
-		Purpose: purpose,
-		Found:   true,
-		Path:    path,
+		Name:     name,
+		Purpose:  purpose,
+		Found:    true,
+		Path:     path,
+		Required: required,
 	}
 }
 

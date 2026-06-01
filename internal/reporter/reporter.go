@@ -291,6 +291,7 @@ func (rg *ReportGenerator) AddSummary(report *models.Report, overallScore *model
 	report.Summary["memory_score"] = overallScore.MemoryScore
 	report.Summary["disk_score"] = overallScore.DiskScore
 	report.Summary["network_score"] = overallScore.NetworkScore
+	report.Summary["quality_notes"] = rg.buildQualityNotes(report.TestResults)
 
 	// 统计测试执行情况
 	successCount := 0
@@ -335,6 +336,81 @@ func (rg *ReportGenerator) AddSummary(report *models.Report, overallScore *model
 	}
 }
 
+func (rg *ReportGenerator) buildQualityNotes(testResults *models.TestResults) []string {
+	if testResults == nil {
+		return []string{"未获取测试结果，报告置信度不足。"}
+	}
+
+	notes := []string{}
+	for _, item := range []struct {
+		name   string
+		result *models.TestResult
+	}{
+		{name: "CPU", result: testResults.CPUResult},
+		{name: "内存", result: testResults.MemoryResult},
+		{name: "磁盘", result: testResults.DiskResult},
+		{name: "网络", result: testResults.NetworkResult},
+	} {
+		if item.result == nil {
+			notes = append(notes, fmt.Sprintf("%s测试未执行。", item.name))
+			continue
+		}
+		if item.result.Status != "success" {
+			if item.result.ErrorMessage != "" {
+				notes = append(notes, fmt.Sprintf("%s测试%s：%s。", item.name, statusText(item.result.Status), item.result.ErrorMessage))
+			} else {
+				notes = append(notes, fmt.Sprintf("%s测试%s。", item.name, statusText(item.result.Status)))
+			}
+		}
+	}
+
+	if testResults.CPUResult != nil && testResults.CPUResult.Status == "success" {
+		if stddev, ok := getCPUScoreStdDev(testResults.CPUResult); ok && stddev > 10 {
+			notes = append(notes, fmt.Sprintf("CPU 多轮采样波动较大（stddev %.2f），建议复测。", stddev))
+		}
+	}
+	if testResults.MemoryResult != nil && testResults.MemoryResult.Status == "success" {
+		if readStd, ok := getMemoryReadStdDev(testResults.MemoryResult); ok && readStd > 1000 {
+			notes = append(notes, fmt.Sprintf("内存读取波动较大（stddev %.2f MB/s），建议复测。", readStd))
+		}
+		if writeStd, ok := getMemoryWriteStdDev(testResults.MemoryResult); ok && writeStd > 1000 {
+			notes = append(notes, fmt.Sprintf("内存写入波动较大（stddev %.2f MB/s），建议复测。", writeStd))
+		}
+	}
+	if testResults.DiskResult != nil && testResults.DiskResult.Status == "success" {
+		switch getDiskBackend(testResults.DiskResult) {
+		case "":
+			notes = append(notes, "磁盘测试未标记后端来源。")
+		case "builtin":
+			notes = append(notes, "磁盘测试使用内置后端，结果适合快速参考；如需主流基准建议使用 --disk-backend fio。")
+		}
+	}
+	if testResults.NetworkResult != nil && testResults.NetworkResult.Status == "success" {
+		if isNetworkUploadEstimated(testResults.NetworkResult) {
+			notes = append(notes, "网络上传速度为估算值，网络评分上限为 85；如需真实上传建议使用 --network-backend iperf3。")
+		}
+		if message := getNetworkError(testResults.NetworkResult); message != "" {
+			notes = append(notes, "网络测试存在部分失败："+message)
+		}
+	}
+
+	if len(notes) == 0 {
+		notes = append(notes, "核心测试均已完成，未发现明显降级或估算路径。")
+	}
+	return notes
+}
+
+func statusText(status string) string {
+	switch status {
+	case "failed":
+		return "失败"
+	case "skipped":
+		return "跳过"
+	default:
+		return status
+	}
+}
+
 // formatReport 格式化完整报告
 func (rg *ReportGenerator) FormatReport(report *models.Report) string {
 	var sb strings.Builder
@@ -370,6 +446,12 @@ func (rg *ReportGenerator) FormatReport(report *models.Report) string {
 
 	if note, ok := report.Summary["performance_note"].(string); ok && note != "" {
 		sb.WriteString(fmt.Sprintf("说明:           %s\n", note))
+	}
+	if notes, ok := report.Summary["quality_notes"].([]string); ok && len(notes) > 0 {
+		sb.WriteString("质量提示:\n")
+		for _, note := range notes {
+			sb.WriteString(fmt.Sprintf("  - %s\n", note))
+		}
 	}
 
 	sb.WriteString("\n")

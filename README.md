@@ -242,6 +242,21 @@ sudo rm /usr/local/bin/perfassess
 make run
 ```
 
+#### 预设模式
+
+```bash
+# 快速预设：CPU + 内存 + 磁盘内置测试，适合快速巡检
+./build/perfassess --quick
+
+# 完整预设：基础测试 + 路由追踪 + 流媒体 + AI 服务 + 安全体检
+./build/perfassess --full
+
+# 完整预设 + 主流网络吞吐后端（需要 iperf3 服务端）
+./build/perfassess --full --iperf3-server 1.2.3.4:5201
+```
+
+`--full` 会优先使用 `fio` 磁盘后端；如果未安装 fio，程序会给出明确提示但不会自动安装。只有提供 `--iperf3-server` 时，`--full` 才会自动切换到 `iperf3` 网络后端。
+
 #### 单项测试
 
 ```bash
@@ -320,6 +335,9 @@ make run
 # 保存报告到文件
 ./build/perfassess -b all -o report.txt
 
+# 输出机器可读 JSON
+./build/perfassess -b all --output-format json -o report.json
+
 # 详细输出模式
 ./build/perfassess -b all -v
 
@@ -338,7 +356,10 @@ Commands:
 Flags:
   -i, --interactive          启用交互式菜单模式
   -b, --benchmarks strings   指定要运行的检测项目 (cpu,memory,disk,network,all) (default [all])
+      --quick                快速预设：只运行 CPU、内存、磁盘基础测试
+      --full                 完整预设：运行基础测试并启用可选检查；提供 iperf3 服务端时使用 iperf3
   -o, --output string        指定输出文件路径（不指定则只输出到控制台）
+      --output-format string 指定输出格式 (text,json) (default "text")
   -v, --verbose              启用详细输出模式
       --log-level string     设置日志级别 (debug,info,warn,error) (default "info")
       --route-trace          启用路由追踪功能
@@ -729,7 +750,10 @@ A: 使用 `--port` 参数指定其他端口：
 |------|------|------|------|
 | `--interactive` | `-i` | 交互式菜单 | `-i` |
 | `--benchmarks` | `-b` | 检测项目 | `-b cpu,memory` |
+| `--quick` | - | 快速预设 | `--quick` |
+| `--full` | - | 完整预设 | `--full` |
 | `--output` | `-o` | 输出文件 | `-o report.txt` |
+| `--output-format` | - | 输出格式 | `--output-format json` |
 | `--verbose` | `-v` | 详细输出 | `-v` |
 | `--web` | - | Web 报告 | `--web` |
 | `--port` | - | Web 端口 | `--port 9090` |

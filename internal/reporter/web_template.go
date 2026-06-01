@@ -71,6 +71,26 @@ const HTMLTemplate = `<!DOCTYPE html>
             transform: translateY(-4px);
             box-shadow: 0 8px 16px rgba(0,0,0,0.1);
         }
+
+        .quality-notes {
+            background: #fff8e5;
+            border: 1px solid #ffd36a;
+            border-radius: 12px;
+            padding: 20px 24px;
+            margin-bottom: 34px;
+        }
+
+        .quality-notes h3 {
+            color: #7a4d00;
+            margin-bottom: 12px;
+        }
+
+        .quality-notes li {
+            margin-left: 20px;
+            margin-bottom: 8px;
+            color: #5f4700;
+            line-height: 1.6;
+        }
         
         .score-card h3 {
             font-size: 14px;
@@ -264,6 +284,17 @@ const HTMLTemplate = `<!DOCTYPE html>
                     <div class="score-value" style="color: #4facfe;">{{printf "%.0f" .OverallScore.NetworkScore}}</div>
                 </div>
             </div>
+
+            {{if .QualityNotes}}
+            <div class="quality-notes">
+                <h3>质量提示</h3>
+                <ul>
+                    {{range .QualityNotes}}
+                    <li>{{.}}</li>
+                    {{end}}
+                </ul>
+            </div>
+            {{end}}
             
             <!-- 系统信息 -->
             <div class="section">

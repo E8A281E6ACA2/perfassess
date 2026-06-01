@@ -96,6 +96,14 @@ func (c *CLI) setupCommands() {
 	flags.StringSliceP("benchmarks", "b", []string{"all"},
 		"指定要运行的检测项目 (cpu,memory,disk,network,all)")
 
+	// --quick 参数：快速预设
+	flags.Bool("quick", false,
+		"快速预设：只运行 CPU、内存、磁盘基础测试")
+
+	// --full 参数：完整预设
+	flags.Bool("full", false,
+		"完整预设：运行基础测试并启用可选检查；提供 iperf3 服务端时使用 iperf3")
+
 	// 保留 --tests 作为别名，向后兼容
 	flags.StringSliceP("tests", "t", []string{},
 		"(已弃用，请使用 --benchmarks) 指定要运行的测试类型")
@@ -103,6 +111,10 @@ func (c *CLI) setupCommands() {
 	// --output 参数：指定输出文件路径
 	flags.StringP("output", "o", "",
 		"指定输出文件路径（不指定则只输出到控制台）")
+
+	// --output-format 参数：指定输出格式
+	flags.String("output-format", "text",
+		"指定输出格式 (text,json)")
 
 	// --verbose 参数：启用详细输出模式
 	flags.BoolP("verbose", "v", false,
@@ -169,19 +181,24 @@ func (c *CLI) newCheckDepsCommand() *cobra.Command {
 
 			missing := 0
 			for _, status := range statuses {
+				requiredText := "可选"
+				if status.Required {
+					requiredText = "必需"
+				}
 				if status.Found {
-					fmt.Printf("[OK] %s - %s (%s)\n", status.Name, status.Purpose, status.Path)
+					fmt.Printf("[OK] [%s] %s - %s (%s)\n", requiredText, status.Name, status.Purpose, status.Path)
 					continue
 				}
 
 				missing++
-				fmt.Printf("[缺失] %s - %s\n", status.Name, status.Purpose)
+				fmt.Printf("[缺失] [%s] %s - %s\n", requiredText, status.Name, status.Purpose)
 				fmt.Printf("       %s\n", status.Hint)
 			}
 
 			if missing > 0 {
 				fmt.Println()
 				fmt.Printf("发现 %d 个缺失依赖。程序不会自动安装，请按提示手动安装后重试。\n", missing)
+				fmt.Println("说明：缺失可选依赖不会影响默认一把梭，但会影响 --disk-backend fio、--network-backend iperf3 或 --route-trace。")
 			}
 			return nil
 		},
@@ -192,10 +209,19 @@ func (c *CLI) newCheckDepsCommand() *cobra.Command {
 func (c *CLI) bindFlags(cmd *cobra.Command) error {
 	flags := cmd.Flags()
 
+	quick, _ := flags.GetBool("quick")
+	full, _ := flags.GetBool("full")
+	if quick {
+		c.applyQuickPreset()
+	}
+	if full {
+		c.applyFullPreset()
+	}
+
 	// 绑定 benchmarks 参数（优先）
-	if benchmarks, err := flags.GetStringSlice("benchmarks"); err == nil && len(benchmarks) > 0 {
+	if benchmarks, err := flags.GetStringSlice("benchmarks"); err == nil && flags.Changed("benchmarks") && len(benchmarks) > 0 {
 		c.config.Tests = benchmarks
-	} else if tests, err := flags.GetStringSlice("tests"); err == nil && len(tests) > 0 {
+	} else if tests, err := flags.GetStringSlice("tests"); err == nil && flags.Changed("tests") && len(tests) > 0 {
 		// 向后兼容 --tests 参数
 		c.config.Tests = tests
 	}
@@ -205,8 +231,13 @@ func (c *CLI) bindFlags(cmd *cobra.Command) error {
 		c.config.Output = output
 	}
 
+	// 绑定 output-format 参数
+	if outputFormat, err := flags.GetString("output-format"); err == nil {
+		c.config.OutputFormat = outputFormat
+	}
+
 	// 绑定 verbose 参数
-	if verbose, err := flags.GetBool("verbose"); err == nil {
+	if verbose, err := flags.GetBool("verbose"); err == nil && flags.Changed("verbose") {
 		c.config.Verbose = verbose
 		if verbose {
 			c.config.LogLevel = "debug"
@@ -214,32 +245,32 @@ func (c *CLI) bindFlags(cmd *cobra.Command) error {
 	}
 
 	// 绑定 route-trace 参数
-	if routeTrace, err := flags.GetBool("route-trace"); err == nil {
+	if routeTrace, err := flags.GetBool("route-trace"); err == nil && flags.Changed("route-trace") {
 		c.config.EnableRouteTrace = routeTrace
 	}
 
 	// 绑定 streaming 参数
-	if streaming, err := flags.GetBool("streaming"); err == nil {
+	if streaming, err := flags.GetBool("streaming"); err == nil && flags.Changed("streaming") {
 		c.config.EnableStreaming = streaming
 	}
 
 	// 绑定 ai-services 参数
-	if aiServices, err := flags.GetBool("ai-services"); err == nil {
+	if aiServices, err := flags.GetBool("ai-services"); err == nil && flags.Changed("ai-services") {
 		c.config.EnableAIServices = aiServices
 	}
 
 	// 绑定 stress 参数
-	if stress, err := flags.GetBool("stress"); err == nil {
+	if stress, err := flags.GetBool("stress"); err == nil && flags.Changed("stress") {
 		c.config.EnableStressTest = stress
 	}
 
 	// 绑定 security 参数
-	if security, err := flags.GetBool("security"); err == nil {
+	if security, err := flags.GetBool("security"); err == nil && flags.Changed("security") {
 		c.config.EnableSecurityScan = security
 	}
 
 	// 绑定 network-backend 参数
-	if networkBackend, err := flags.GetString("network-backend"); err == nil {
+	if networkBackend, err := flags.GetString("network-backend"); err == nil && flags.Changed("network-backend") {
 		c.config.NetworkBackend = networkBackend
 	}
 
@@ -247,9 +278,12 @@ func (c *CLI) bindFlags(cmd *cobra.Command) error {
 	if iperf3Server, err := flags.GetString("iperf3-server"); err == nil {
 		c.config.Iperf3Server = iperf3Server
 	}
+	if full && c.config.Iperf3Server != "" && !flags.Changed("network-backend") {
+		c.config.NetworkBackend = "iperf3"
+	}
 
 	// 绑定 disk-backend 参数
-	if diskBackend, err := flags.GetString("disk-backend"); err == nil {
+	if diskBackend, err := flags.GetString("disk-backend"); err == nil && flags.Changed("disk-backend") {
 		c.config.DiskBackend = diskBackend
 	}
 
@@ -259,16 +293,36 @@ func (c *CLI) bindFlags(cmd *cobra.Command) error {
 	}
 
 	// 绑定 web 参数
-	if web, err := flags.GetBool("web"); err == nil {
+	if web, err := flags.GetBool("web"); err == nil && flags.Changed("web") {
 		c.config.EnableWeb = web
 	}
 
 	// 绑定 port 参数
-	if port, err := flags.GetInt("port"); err == nil {
+	if port, err := flags.GetInt("port"); err == nil && flags.Changed("port") {
 		c.config.WebPort = port
 	}
 
 	return nil
+}
+
+func (c *CLI) applyQuickPreset() {
+	c.config.Tests = []string{"cpu", "memory", "disk"}
+	c.config.EnableRouteTrace = false
+	c.config.EnableStreaming = false
+	c.config.EnableAIServices = false
+	c.config.EnableStressTest = false
+	c.config.EnableSecurityScan = false
+	c.config.DiskBackend = "builtin"
+	c.config.NetworkBackend = "builtin"
+}
+
+func (c *CLI) applyFullPreset() {
+	c.config.Tests = []string{"all"}
+	c.config.EnableRouteTrace = true
+	c.config.EnableStreaming = true
+	c.config.EnableAIServices = true
+	c.config.EnableSecurityScan = true
+	c.config.DiskBackend = "fio"
 }
 
 // run 执行主命令
@@ -344,6 +398,14 @@ func (c *CLI) validateFlags() error {
 		return fmt.Errorf("无效的日志级别: %s\n有效的日志级别: debug, info, warn, error", c.config.LogLevel)
 	}
 
+	validOutputFormats := map[string]bool{
+		"text": true,
+		"json": true,
+	}
+	if !validOutputFormats[c.config.OutputFormat] {
+		return fmt.Errorf("无效的输出格式: %s\n有效的输出格式: text, json", c.config.OutputFormat)
+	}
+
 	validDiskBackends := map[string]bool{
 		"builtin": true,
 		"fio":     true,
@@ -376,6 +438,7 @@ func (c *CLI) printWelcome() {
 		if c.config.Output != "" {
 			fmt.Printf("输出文件: %s\n", c.config.Output)
 		}
+		fmt.Printf("输出格式: %s\n", c.config.OutputFormat)
 		fmt.Printf("磁盘测试后端: %s\n", c.config.DiskBackend)
 		fmt.Printf("网络测试后端: %s\n", c.config.NetworkBackend)
 		if c.config.EnableRouteTrace {
