@@ -2,6 +2,7 @@ package reporter
 
 import (
 	"encoding/json"
+	"math"
 	"strings"
 	"testing"
 	"time"
@@ -277,6 +278,75 @@ func TestCalculateOverallScoreNormalizesWeightsForExecutedTests(t *testing.T) {
 	}
 }
 
+func TestCalculateOverallScoreUsesCustomWeights(t *testing.T) {
+	calculator := NewScoreCalculatorWithWeights(map[string]float64{
+		"cpu":     0.70,
+		"memory":  0.10,
+		"disk":    0.10,
+		"network": 0.10,
+	})
+	results := &models.TestResults{
+		CPUResult: &models.TestResult{
+			TestName: "CPU性能测试",
+			Status:   "success",
+			Metrics: map[string]interface{}{
+				"total_score": 50.0,
+			},
+		},
+		MemoryResult: &models.TestResult{
+			TestName: "内存性能测试",
+			Status:   "success",
+			Metrics: map[string]interface{}{
+				"read_speed_mbps":  5000.0,
+				"write_speed_mbps": 3000.0,
+			},
+		},
+	}
+
+	overall := calculator.CalculateOverallScore(results)
+	expectedTotal := (50.0*0.70 + 100.0*0.10) / 0.80
+	if math.Abs(overall.TotalScore-expectedTotal) > 0.0001 {
+		t.Fatalf("expected custom weighted total %.2f, got %.2f", expectedTotal, overall.TotalScore)
+	}
+	if overall.Weights["cpu"] != 0.70 {
+		t.Fatalf("expected custom cpu weight, got %#v", overall.Weights)
+	}
+}
+
+func TestBuildScoreBreakdownIncludesFormulaAndActiveWeight(t *testing.T) {
+	calculator := NewScoreCalculator()
+	results := &models.TestResults{
+		MemoryResult: &models.TestResult{
+			TestName: "内存性能测试",
+			Status:   "success",
+			Metrics: map[string]interface{}{
+				"read_speed_mbps":  5000.0,
+				"write_speed_mbps": 3000.0,
+			},
+		},
+	}
+	overall := calculator.CalculateOverallScore(results)
+
+	breakdown := calculator.BuildScoreBreakdown(results, overall)
+	memory, ok := breakdown["memory"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected memory breakdown, got %#v", breakdown["memory"])
+	}
+	if memory["score"] != 100.0 {
+		t.Fatalf("expected memory score 100, got %#v", memory["score"])
+	}
+	if memory["formula"] == "" {
+		t.Fatalf("expected memory formula, got %#v", memory)
+	}
+	normalized, ok := breakdown["normalized_total"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected normalized total breakdown, got %#v", breakdown["normalized_total"])
+	}
+	if normalized["active_weight"] != 0.20 {
+		t.Fatalf("expected active weight 0.20, got %#v", normalized["active_weight"])
+	}
+}
+
 func TestAddSummaryMarksIncompleteReport(t *testing.T) {
 	generator := NewReportGenerator()
 	report := &models.Report{
@@ -341,6 +411,17 @@ func TestFormatReportIncludesIncompleteNote(t *testing.T) {
 			"tests_failed":     0,
 			"tests_skipped":    0,
 			"performance_note": "由于未执行所有性能测试，无法给出完整的性能结论。",
+			"score_breakdown": map[string]interface{}{
+				"cpu": map[string]interface{}{
+					"score":   80.0,
+					"weight":  0.3,
+					"formula": "CPU 分数优先使用 total_score。",
+				},
+				"normalized_total": map[string]interface{}{
+					"score":         76.0,
+					"active_weight": 0.3,
+				},
+			},
 		},
 	}
 
@@ -349,6 +430,7 @@ func TestFormatReportIncludesIncompleteNote(t *testing.T) {
 	expectedSnippets := []string{
 		"性能等级:       未完成",
 		"说明:           由于未执行所有性能测试，无法给出完整的性能结论。",
+		"评分说明:",
 		"成功测试:       1",
 	}
 
@@ -430,6 +512,10 @@ func TestAddSummaryAddsQualityNotes(t *testing.T) {
 	}
 
 	generator.AddSummary(report, &models.OverallScore{})
+
+	if _, ok := report.Summary["score_breakdown"].(map[string]interface{}); !ok {
+		t.Fatalf("expected score breakdown, got %#v", report.Summary["score_breakdown"])
+	}
 
 	notes, ok := report.Summary["quality_notes"].([]string)
 	if !ok || len(notes) == 0 {

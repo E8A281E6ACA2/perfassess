@@ -22,6 +22,12 @@ func NewReportGenerator() *ReportGenerator {
 	}
 }
 
+func NewReportGeneratorWithWeights(weights map[string]float64) *ReportGenerator {
+	return &ReportGenerator{
+		scoreCalculator: NewScoreCalculatorWithWeights(weights),
+	}
+}
+
 // GenerateReport 生成完整的评估报告
 // 包含系统信息、测试结果、评分和摘要
 func (rg *ReportGenerator) GenerateReport(sessionID string, systemInfo *models.SystemInfo, testResults *models.TestResults) (*models.Report, error) {
@@ -326,6 +332,7 @@ func (rg *ReportGenerator) AddSummary(report *models.Report, overallScore *model
 	report.Summary["quality_notes"] = rg.buildQualityNotes(report.TestResults)
 	report.Summary["benchmark_profile"] = rg.buildBenchmarkProfile(report.TestResults)
 	report.Summary["confidence_level"] = rg.buildConfidenceLevel(report.TestResults)
+	report.Summary["score_breakdown"] = rg.scoreCalculator.BuildScoreBreakdown(report.TestResults, overallScore)
 
 	// 统计测试执行情况
 	successCount := 0
@@ -648,6 +655,25 @@ func (rg *ReportGenerator) FormatReport(report *models.Report) string {
 	if confidence, ok := report.Summary["confidence_level"].(map[string]interface{}); ok {
 		sb.WriteString(fmt.Sprintf("置信等级:       %v\n", confidence["level"]))
 	}
+	if breakdown, ok := report.Summary["score_breakdown"].(map[string]interface{}); ok {
+		sb.WriteString("评分说明:\n")
+		for _, key := range []string{"cpu", "memory", "disk", "network"} {
+			if item, ok := breakdown[key].(map[string]interface{}); ok {
+				sb.WriteString(fmt.Sprintf("  - %s: 分数 %v，权重 %v，%s\n",
+					scoreComponentLabel(key),
+					formatBreakdownNumber(item["score"]),
+					formatBreakdownNumber(item["weight"]),
+					item["formula"],
+				))
+			}
+		}
+		if normalized, ok := breakdown["normalized_total"].(map[string]interface{}); ok {
+			sb.WriteString(fmt.Sprintf("  - 总分: %v，参与权重 %v\n",
+				formatBreakdownNumber(normalized["score"]),
+				formatBreakdownNumber(normalized["active_weight"]),
+			))
+		}
+	}
 	if notes, ok := report.Summary["quality_notes"].([]string); ok && len(notes) > 0 {
 		sb.WriteString("质量提示:\n")
 		for _, note := range notes {
@@ -763,4 +789,32 @@ func (rg *ReportGenerator) FormatReport(report *models.Report) string {
 	sb.WriteString("════════════════════════════════════════════════════════════════\n")
 
 	return sb.String()
+}
+
+func scoreComponentLabel(key string) string {
+	switch key {
+	case "cpu":
+		return "CPU"
+	case "memory":
+		return "内存"
+	case "disk":
+		return "磁盘"
+	case "network":
+		return "网络"
+	default:
+		return key
+	}
+}
+
+func formatBreakdownNumber(value interface{}) string {
+	switch v := value.(type) {
+	case float64:
+		return fmt.Sprintf("%.2f", v)
+	case float32:
+		return fmt.Sprintf("%.2f", v)
+	case int:
+		return fmt.Sprintf("%d", v)
+	default:
+		return fmt.Sprintf("%v", value)
+	}
 }

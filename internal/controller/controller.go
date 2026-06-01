@@ -204,7 +204,7 @@ func (ac *AssessmentController) RunAssessment(session *models.AssessmentSession)
 	}
 
 	// 更新格式化报告以包含新增的摘要内容
-	report.FormattedContent = reporter.NewReportGenerator().FormatReport(report)
+	report.FormattedContent = reporter.NewReportGeneratorWithWeights(ac.config.ScoreWeights).FormatReport(report)
 
 	ac.logger.Info("评估报告生成完成")
 
@@ -423,7 +423,7 @@ func (ac *AssessmentController) runSecurityScan(systemInfo *models.SystemInfo) *
 // generateReport 生成评估报告
 func (ac *AssessmentController) generateReport(sessionID string, systemInfo *models.SystemInfo, testResults *models.TestResults) (*models.Report, error) {
 	// 创建报告生成器
-	reportGenerator := reporter.NewReportGenerator()
+	reportGenerator := reporter.NewReportGeneratorWithWeights(ac.config.ScoreWeights)
 
 	// 生成报告
 	report, err := reportGenerator.GenerateReport(sessionID, systemInfo, testResults)

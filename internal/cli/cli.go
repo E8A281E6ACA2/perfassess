@@ -5,6 +5,7 @@ package cli
 import (
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -115,6 +116,10 @@ func (c *CLI) setupCommands() {
 	// --output-format 参数：指定输出格式
 	flags.String("output-format", "text",
 		"指定输出格式 (text,json)")
+
+	// --score-weights 参数：指定综合评分权重
+	flags.String("score-weights", "",
+		"综合评分权重，如 cpu=0.3,memory=0.2,disk=0.25,network=0.25")
 
 	// --verbose 参数：启用详细输出模式
 	flags.BoolP("verbose", "v", false,
@@ -242,6 +247,15 @@ func (c *CLI) bindFlags(cmd *cobra.Command) error {
 	// 绑定 output-format 参数
 	if outputFormat, err := flags.GetString("output-format"); err == nil {
 		c.config.OutputFormat = outputFormat
+	}
+
+	// 绑定 score-weights 参数
+	if scoreWeights, err := flags.GetString("score-weights"); err == nil && flags.Changed("score-weights") {
+		weights, err := parseScoreWeights(scoreWeights)
+		if err != nil {
+			return err
+		}
+		c.config.ScoreWeights = weights
 	}
 
 	// 绑定 verbose 参数
@@ -428,6 +442,10 @@ func (c *CLI) validateFlags() error {
 		return fmt.Errorf("无效的输出格式: %s\n有效的输出格式: text, json", c.config.OutputFormat)
 	}
 
+	if err := config.ValidateScoreWeights(c.config.ScoreWeights); err != nil {
+		return err
+	}
+
 	validCPUBackends := map[string]bool{
 		"builtin":  true,
 		"sysbench": true,
@@ -477,6 +495,12 @@ func (c *CLI) printWelcome() {
 			fmt.Printf("输出文件: %s\n", c.config.Output)
 		}
 		fmt.Printf("输出格式: %s\n", c.config.OutputFormat)
+		fmt.Printf("评分权重: CPU=%.2f, 内存=%.2f, 磁盘=%.2f, 网络=%.2f\n",
+			c.config.ScoreWeights["cpu"],
+			c.config.ScoreWeights["memory"],
+			c.config.ScoreWeights["disk"],
+			c.config.ScoreWeights["network"],
+		)
 		fmt.Printf("CPU测试后端: %s\n", c.config.CPUBackend)
 		fmt.Printf("内存测试后端: %s\n", c.config.MemoryBackend)
 		fmt.Printf("磁盘测试后端: %s\n", c.config.DiskBackend)
@@ -498,6 +522,40 @@ func (c *CLI) printWelcome() {
 		}
 		fmt.Println()
 	}
+}
+
+func parseScoreWeights(value string) (map[string]float64, error) {
+	weights := config.DefaultScoreWeights()
+	if strings.TrimSpace(value) == "" {
+		return weights, nil
+	}
+
+	seen := map[string]bool{}
+	for _, part := range strings.Split(value, ",") {
+		pair := strings.SplitN(strings.TrimSpace(part), "=", 2)
+		if len(pair) != 2 {
+			return nil, fmt.Errorf("无效的评分权重格式: %s", part)
+		}
+		key := strings.TrimSpace(pair[0])
+		raw := strings.TrimSpace(pair[1])
+		parsed, err := strconv.ParseFloat(raw, 64)
+		if err != nil {
+			return nil, fmt.Errorf("无效的评分权重数值: %s=%s", key, raw)
+		}
+		weights[key] = parsed
+		seen[key] = true
+	}
+
+	required := []string{"cpu", "memory", "disk", "network"}
+	for _, key := range required {
+		if !seen[key] {
+			return nil, fmt.Errorf("评分权重必须显式包含 %s", key)
+		}
+	}
+	if err := config.ValidateScoreWeights(weights); err != nil {
+		return nil, err
+	}
+	return weights, nil
 }
 
 // Execute 执行命令行界面

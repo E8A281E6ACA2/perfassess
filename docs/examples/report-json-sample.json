@@ -114,6 +114,47 @@
       "reasons": [
         "核心测试均使用主流或真实测量路径。"
       ]
+    },
+    "score_breakdown": {
+      "cpu": {
+        "active": true,
+        "status": "success",
+        "score": 88,
+        "weight": 0.3,
+        "formula": "CPU 分数优先使用 total_score；缺失时按单核 30% + 多核 70% 计算。",
+        "single_core_score": 85,
+        "multi_core_score": 90,
+        "multi_core_events_per_sec": 8600
+      },
+      "memory": {
+        "active": true,
+        "status": "success",
+        "score": 33.5,
+        "weight": 0.2,
+        "formula": "内存分数 = 读取相对 5000 MB/s 最高 50 分 + 写入相对 3000 MB/s 最高 50 分。",
+        "read_speed_mbps": 3200,
+        "write_speed_mbps": 2800
+      },
+      "disk": {
+        "active": true,
+        "status": "success",
+        "score": 95,
+        "weight": 0.25,
+        "formula": "磁盘分数 = 顺序读相对 500 MB/s 最高 35 分 + 顺序写相对 300 MB/s 最高 35 分 + 随机 IOPS 相对 5000 最高 30 分。"
+      },
+      "network": {
+        "active": true,
+        "status": "success",
+        "score": 100,
+        "weight": 0.25,
+        "formula": "网络分数 = 延迟、下载、真实上传归一化计算；估算上传不参与真实上传评分且网络评分上限为 85。"
+      },
+      "normalized_total": {
+        "score": 79.6,
+        "active_weight": 1,
+        "weighted_sum": 79.6,
+        "formula": "总分 = 已成功测试分项加权和 / 已成功测试权重和。"
+      }
     }
   }
 }

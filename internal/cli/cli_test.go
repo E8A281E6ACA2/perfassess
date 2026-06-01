@@ -101,6 +101,39 @@ func TestBindFlagsOutputFormat(t *testing.T) {
 	}
 }
 
+func TestBindFlagsScoreWeights(t *testing.T) {
+	app := NewCLI()
+	cmd := app.GetRootCmd()
+	args := []string{"--score-weights", "cpu=0.4,memory=0.1,disk=0.3,network=0.2"}
+	if err := cmd.ParseFlags(args); err != nil {
+		t.Fatalf("failed to parse flags: %v", err)
+	}
+
+	if err := app.bindFlags(cmd); err != nil {
+		t.Fatalf("expected score weights bind to succeed, got %v", err)
+	}
+
+	if app.config.ScoreWeights["cpu"] != 0.4 {
+		t.Fatalf("expected cpu weight 0.4, got %.2f", app.config.ScoreWeights["cpu"])
+	}
+	if app.config.ScoreWeights["memory"] != 0.1 {
+		t.Fatalf("expected memory weight 0.1, got %.2f", app.config.ScoreWeights["memory"])
+	}
+}
+
+func TestBindFlagsScoreWeightsRejectsMissingComponent(t *testing.T) {
+	app := NewCLI()
+	cmd := app.GetRootCmd()
+	args := []string{"--score-weights", "cpu=0.4,memory=0.1,disk=0.3"}
+	if err := cmd.ParseFlags(args); err != nil {
+		t.Fatalf("failed to parse flags: %v", err)
+	}
+
+	if err := app.bindFlags(cmd); err == nil {
+		t.Fatal("expected missing score weight to fail")
+	}
+}
+
 func assertStringSlice(t *testing.T, actual []string, expected []string) {
 	t.Helper()
 

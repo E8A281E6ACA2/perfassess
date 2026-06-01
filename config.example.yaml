@@ -7,6 +7,13 @@ log_level: info
 # 输出格式：text, json
 output_format: text
 
+# 综合评分权重，四项都需要配置，数值会按已成功测试自动归一化
+score_weights:
+  cpu: 0.30
+  memory: 0.20
+  disk: 0.25
+  network: 0.25
+
 # 数据采集间隔（秒）
 collection_interval: 60
 

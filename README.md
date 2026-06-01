@@ -344,6 +344,9 @@ make run
 # 输出机器可读 JSON
 ./build/perfassess -b all --output-format json -o report.json
 
+# 自定义综合评分权重
+./build/perfassess -b all --score-weights cpu=0.4,memory=0.2,disk=0.2,network=0.2
+
 # 详细输出模式
 ./build/perfassess -b all -v
 
@@ -366,6 +369,7 @@ Flags:
       --full                 完整预设：运行基础测试并启用可选检查；提供 iperf3 服务端时使用 iperf3
   -o, --output string        指定输出文件路径（不指定则只输出到控制台）
       --output-format string 指定输出格式 (text,json) (default "text")
+      --score-weights string 综合评分权重，如 cpu=0.3,memory=0.2,disk=0.25,network=0.25
   -v, --verbose              启用详细输出模式
       --log-level string     设置日志级别 (debug,info,warn,error) (default "info")
       --route-trace          启用路由追踪功能
@@ -767,6 +771,7 @@ A: 使用 `--port` 参数指定其他端口：
 | `--verbose` | `-v` | 详细输出 | `-v` |
 | `--web` | - | Web 报告 | `--web` |
 | `--port` | - | Web 端口 | `--port 9090` |
+| `--score-weights` | - | 综合评分权重 | `--score-weights cpu=0.4,memory=0.2,disk=0.2,network=0.2` |
 | `--cpu-backend` | - | CPU 测试后端 | `--cpu-backend sysbench` |
 | `--memory-backend` | - | 内存测试后端 | `--memory-backend sysbench` |
 | `--disk-backend` | - | 磁盘测试后端 | `--disk-backend fio` |

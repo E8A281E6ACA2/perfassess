@@ -14,6 +14,9 @@ func TestDefaultConfigUsesBuiltinNetworkBackend(t *testing.T) {
 	if cfg.OutputFormat != "text" {
 		t.Fatalf("expected default output format text, got %q", cfg.OutputFormat)
 	}
+	if cfg.ScoreWeights["cpu"] != DefaultCPUWeight || cfg.ScoreWeights["network"] != DefaultNetworkWeight {
+		t.Fatalf("expected default score weights, got %#v", cfg.ScoreWeights)
+	}
 	if cfg.CPUBackend != "builtin" {
 		t.Fatalf("expected default cpu backend builtin, got %q", cfg.CPUBackend)
 	}
@@ -22,6 +25,46 @@ func TestDefaultConfigUsesBuiltinNetworkBackend(t *testing.T) {
 	}
 	if err := cfg.Validate(); err != nil {
 		t.Fatalf("expected default config to validate, got %v", err)
+	}
+}
+
+func TestValidateRejectsMissingScoreWeight(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.ScoreWeights = map[string]float64{
+		"cpu":    0.3,
+		"memory": 0.2,
+		"disk":   0.5,
+	}
+
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("expected missing score weight to fail validation")
+	}
+
+	configErr, ok := err.(*ConfigError)
+	if !ok {
+		t.Fatalf("expected ConfigError, got %T", err)
+	}
+	if configErr.Field != "score_weights" {
+		t.Fatalf("expected field score_weights, got %q", configErr.Field)
+	}
+}
+
+func TestValidateRejectsNegativeScoreWeight(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.ScoreWeights["cpu"] = -0.1
+
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("expected negative score weight to fail validation")
+	}
+
+	configErr, ok := err.(*ConfigError)
+	if !ok {
+		t.Fatalf("expected ConfigError, got %T", err)
+	}
+	if configErr.Field != "score_weights" {
+		t.Fatalf("expected field score_weights, got %q", configErr.Field)
 	}
 }
 

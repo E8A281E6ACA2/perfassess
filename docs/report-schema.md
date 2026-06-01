@@ -102,6 +102,7 @@
 - `quality_notes`: 质量提示列表
 - `benchmark_profile`: 本次评测档位和实际后端组合
 - `confidence_level`: 本次报告置信等级和原因
+- `score_breakdown`: 评分计算依据和分项权重
 
 ## Benchmark Profile
 
@@ -122,3 +123,27 @@
 - 核心测试未执行或失败时为 `low`
 - 使用内置后端或估算上传时至少降为 `medium`
 - 核心测试均成功且未发现明显降级或估算路径时为 `high`
+
+## Score Breakdown
+
+- `cpu`: CPU 评分依据
+- `memory`: 内存评分依据
+- `disk`: 磁盘评分依据
+- `network`: 网络评分依据
+- `normalized_total`: 总分归一化说明
+
+每个分项通常包含：
+
+- `active`: 是否参与总分
+- `status`: 测试状态
+- `score`: 分项得分
+- `weight`: 该分项权重
+- `formula`: 计算说明
+- 原始指标字段，例如 `read_speed_mbps`、`random_iops`、`download_speed_mbps`
+
+总分规则：
+
+- `normalized_total.weighted_sum`: 成功测试分项的加权和
+- `normalized_total.active_weight`: 成功测试分项的权重和
+- `normalized_total.score`: `weighted_sum / active_weight`
+- 未执行或失败的核心测试不会参与权重归一化，但会降低 `confidence_level`

@@ -2,6 +2,7 @@
 package reporter
 
 import (
+	"performance-assessment-system/internal/config"
 	"performance-assessment-system/internal/models"
 )
 
@@ -17,19 +18,17 @@ type ScoreCalculator struct {
 // 使用默认权重配置
 func NewScoreCalculator() *ScoreCalculator {
 	return &ScoreCalculator{
-		weights: map[string]float64{
-			"cpu":     0.30,
-			"memory":  0.20,
-			"disk":    0.25,
-			"network": 0.25,
-		},
+		weights: config.DefaultScoreWeights(),
 	}
 }
 
 // NewScoreCalculatorWithWeights 创建带自定义权重的评分计算器
 func NewScoreCalculatorWithWeights(weights map[string]float64) *ScoreCalculator {
+	if err := config.ValidateScoreWeights(weights); err != nil {
+		weights = config.DefaultScoreWeights()
+	}
 	return &ScoreCalculator{
-		weights: weights,
+		weights: cloneWeights(weights),
 	}
 }
 
@@ -253,6 +252,178 @@ func (sc *ScoreCalculator) CalculateOverallScore(results *models.TestResults) *m
 		Grade:        grade,
 		Weights:      sc.weights,
 	}
+}
+
+func (sc *ScoreCalculator) BuildScoreBreakdown(results *models.TestResults, overall *models.OverallScore) map[string]interface{} {
+	if results == nil {
+		return map[string]interface{}{
+			"normalized_total": map[string]interface{}{
+				"score":         0.0,
+				"active_weight": 0.0,
+				"formula":       "未获取测试结果，无法计算总分。",
+			},
+		}
+	}
+
+	breakdown := map[string]interface{}{
+		"cpu":     sc.buildCPUScoreBreakdown(results.CPUResult),
+		"memory":  sc.buildMemoryScoreBreakdown(results.MemoryResult),
+		"disk":    sc.buildDiskScoreBreakdown(results.DiskResult),
+		"network": sc.buildNetworkScoreBreakdown(results.NetworkResult),
+	}
+
+	activeWeight := 0.0
+	weightedSum := 0.0
+	for _, key := range []string{"cpu", "memory", "disk", "network"} {
+		item := breakdown[key].(map[string]interface{})
+		active, _ := item["active"].(bool)
+		score, _ := item["score"].(float64)
+		weight := sc.weights[key]
+		item["weight"] = weight
+		if active {
+			activeWeight += weight
+			weightedSum += score * weight
+		}
+	}
+
+	totalScore := 0.0
+	if activeWeight > 0 {
+		totalScore = weightedSum / activeWeight
+	}
+	if overall != nil {
+		totalScore = overall.TotalScore
+	}
+
+	breakdown["normalized_total"] = map[string]interface{}{
+		"score":         totalScore,
+		"active_weight": activeWeight,
+		"weighted_sum":  weightedSum,
+		"formula":       "总分 = 已成功测试分项加权和 / 已成功测试权重和。",
+	}
+	return breakdown
+}
+
+func (sc *ScoreCalculator) buildCPUScoreBreakdown(result *models.TestResult) map[string]interface{} {
+	score := sc.CalculateCPUScore(result)
+	item := baseBreakdown(result, score, "CPU 分数优先使用 total_score；缺失时按单核 30% + 多核 70% 计算。")
+	if result != nil && result.Metrics != nil {
+		if single, ok := metricFloat64(result.Metrics, "single_core_score"); ok {
+			item["single_core_score"] = single
+		}
+		if multi, ok := metricFloat64(result.Metrics, "multi_core_score"); ok {
+			item["multi_core_score"] = multi
+		}
+		if events, ok := getCPUMultiCoreEvents(result); ok {
+			item["multi_core_events_per_sec"] = events
+		}
+	}
+	return item
+}
+
+func (sc *ScoreCalculator) buildMemoryScoreBreakdown(result *models.TestResult) map[string]interface{} {
+	score := sc.CalculateMemoryScore(result)
+	item := baseBreakdown(result, score, "内存分数 = 读取相对 5000 MB/s 最高 50 分 + 写入相对 3000 MB/s 最高 50 分。")
+	item["read_base_mbps"] = 5000.0
+	item["write_base_mbps"] = 3000.0
+	if result != nil && result.Metrics != nil {
+		if read, ok := getMemoryReadSpeed(result); ok {
+			item["read_speed_mbps"] = read
+			item["read_score"] = clampMax(read/5000.0*50.0, 50.0)
+		}
+		if write, ok := getMemoryWriteSpeed(result); ok {
+			item["write_speed_mbps"] = write
+			item["write_score"] = clampMax(write/3000.0*50.0, 50.0)
+		}
+	}
+	return item
+}
+
+func (sc *ScoreCalculator) buildDiskScoreBreakdown(result *models.TestResult) map[string]interface{} {
+	score := sc.CalculateDiskScore(result)
+	item := baseBreakdown(result, score, "磁盘分数 = 顺序读相对 500 MB/s 最高 35 分 + 顺序写相对 300 MB/s 最高 35 分 + 随机 IOPS 相对 5000 最高 30 分。")
+	item["sequential_read_base_mbps"] = 500.0
+	item["sequential_write_base_mbps"] = 300.0
+	item["random_iops_base"] = 5000.0
+	if result != nil && result.Metrics != nil {
+		if read, ok := getDiskReadSpeed(result); ok {
+			item["sequential_read_mbps"] = read
+			item["sequential_read_score"] = clampMax(read/500.0*35.0, 35.0)
+		}
+		if write, ok := getDiskWriteSpeed(result); ok {
+			item["sequential_write_mbps"] = write
+			item["sequential_write_score"] = clampMax(write/300.0*35.0, 35.0)
+		}
+		if iops, ok := getDiskRandomIOPS(result); ok {
+			item["random_iops"] = iops
+			item["random_iops_score"] = clampMax(float64(iops)/5000.0*30.0, 30.0)
+		}
+	}
+	return item
+}
+
+func (sc *ScoreCalculator) buildNetworkScoreBreakdown(result *models.TestResult) map[string]interface{} {
+	score := sc.CalculateNetworkScore(result)
+	item := baseBreakdown(result, score, "网络分数 = 延迟、下载、真实上传归一化计算；估算上传不参与真实上传评分且网络评分上限为 85。")
+	item["latency_base_ms"] = 50.0
+	item["download_base_mbps"] = 100.0
+	item["upload_base_mbps"] = 50.0
+	if result != nil && result.Metrics != nil {
+		if latency, ok := getNetworkLatency(result); ok {
+			item["average_latency_ms"] = latency
+			if latency > 0 {
+				item["latency_score"] = minFloat(50.0/latency*30.0, 30.0)
+			}
+		}
+		if download, ok := getNetworkDownloadSpeed(result); ok {
+			item["download_speed_mbps"] = download
+			item["download_score"] = download / 100.0 * 40.0
+		}
+		if upload, ok := getNetworkUploadSpeed(result); ok {
+			item["upload_speed_mbps"] = upload
+			item["upload_score"] = upload / 50.0 * 30.0
+		}
+		item["upload_estimated"] = isNetworkUploadEstimated(result)
+	}
+	return item
+}
+
+func baseBreakdown(result *models.TestResult, score float64, formula string) map[string]interface{} {
+	active := result != nil && result.Status == "success"
+	status := "not_run"
+	if result != nil {
+		status = result.Status
+	}
+	return map[string]interface{}{
+		"active":  active,
+		"status":  status,
+		"score":   score,
+		"formula": formula,
+	}
+}
+
+func clampMax(score float64, max float64) float64 {
+	if score > max {
+		return max
+	}
+	if score < 0 {
+		return 0
+	}
+	return score
+}
+
+func minFloat(a, b float64) float64 {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+func cloneWeights(weights map[string]float64) map[string]float64 {
+	cloned := make(map[string]float64, len(weights))
+	for key, value := range weights {
+		cloned[key] = value
+	}
+	return cloned
 }
 
 // GetPerformanceGrade 根据评分获取性能等级

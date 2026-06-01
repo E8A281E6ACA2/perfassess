@@ -2,6 +2,15 @@
 // 负责加载、解析和管理应用程序的配置参数
 package config
 
+import "fmt"
+
+const (
+	DefaultCPUWeight     = 0.30
+	DefaultMemoryWeight  = 0.20
+	DefaultDiskWeight    = 0.25
+	DefaultNetworkWeight = 0.25
+)
+
 // Config 表示应用程序的配置结构
 // 包含所有可配置的参数和选项，对应命令行参数和配置文件
 type Config struct {
@@ -16,6 +25,9 @@ type Config struct {
 
 	// OutputFormat 输出格式，可选值: text, json
 	OutputFormat string `mapstructure:"output_format"`
+
+	// ScoreWeights 综合评分权重，键为 cpu/memory/disk/network
+	ScoreWeights map[string]float64 `mapstructure:"score_weights"`
 
 	// Verbose 是否启用详细输出模式
 	// 启用后会显示更多调试信息
@@ -76,6 +88,7 @@ func DefaultConfig() *Config {
 		Tests:              []string{"all"},
 		Output:             "",
 		OutputFormat:       "text",
+		ScoreWeights:       DefaultScoreWeights(),
 		Verbose:            false,
 		EnableRouteTrace:   false,
 		EnableStreaming:    false,
@@ -92,6 +105,15 @@ func DefaultConfig() *Config {
 		GeoIPDBPath:        "",
 		EnableWeb:          false,
 		WebPort:            8080,
+	}
+}
+
+func DefaultScoreWeights() map[string]float64 {
+	return map[string]float64{
+		"cpu":     DefaultCPUWeight,
+		"memory":  DefaultMemoryWeight,
+		"disk":    DefaultDiskWeight,
+		"network": DefaultNetworkWeight,
 	}
 }
 
@@ -142,6 +164,10 @@ func (c *Config) Validate() error {
 		}
 	}
 
+	if err := ValidateScoreWeights(c.ScoreWeights); err != nil {
+		return err
+	}
+
 	validCPUBackends := map[string]bool{
 		"builtin":  true,
 		"sysbench": true,
@@ -183,6 +209,59 @@ func (c *Config) Validate() error {
 		return &ConfigError{
 			Field:   "disk_backend",
 			Message: "无效的磁盘测试后端: " + c.DiskBackend,
+		}
+	}
+
+	return nil
+}
+
+func ValidateScoreWeights(weights map[string]float64) error {
+	if len(weights) == 0 {
+		return &ConfigError{
+			Field:   "score_weights",
+			Message: "评分权重不能为空",
+		}
+	}
+
+	required := []string{"cpu", "memory", "disk", "network"}
+	total := 0.0
+	for _, key := range required {
+		value, ok := weights[key]
+		if !ok {
+			return &ConfigError{
+				Field:   "score_weights",
+				Message: "缺少评分权重: " + key,
+			}
+		}
+		if value < 0 {
+			return &ConfigError{
+				Field:   "score_weights",
+				Message: fmt.Sprintf("评分权重不能为负数: %s=%.4f", key, value),
+			}
+		}
+		total += value
+	}
+
+	for key := range weights {
+		known := false
+		for _, requiredKey := range required {
+			if key == requiredKey {
+				known = true
+				break
+			}
+		}
+		if !known {
+			return &ConfigError{
+				Field:   "score_weights",
+				Message: "未知评分权重: " + key,
+			}
+		}
+	}
+
+	if total <= 0 {
+		return &ConfigError{
+			Field:   "score_weights",
+			Message: "评分权重总和必须大于 0",
 		}
 	}
 
