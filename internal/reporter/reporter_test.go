@@ -87,6 +87,73 @@ func TestFormatSingleTestResultMarksEstimatedUpload(t *testing.T) {
 	}
 }
 
+func TestFormatSingleTestResultShowsCPUBackendAndEvents(t *testing.T) {
+	generator := NewReportGenerator()
+	result := &models.TestResult{
+		TestName:        "CPU性能测试",
+		Status:          "success",
+		DurationSeconds: 31.2,
+		Metrics: map[string]interface{}{
+			"backend":                    "sysbench",
+			"single_core_score":          88.0,
+			"single_core_events_per_sec": 1056.5,
+			"multi_core_score":           92.0,
+			"multi_core_events_per_sec":  8844.25,
+			"total_score":                90.0,
+			"cpu_cores":                  8,
+		},
+	}
+
+	formatted := generator.formatSingleTestResult("CPU性能测试", result)
+
+	expectedSnippets := []string{
+		"测试后端:     sysbench",
+		"单核吞吐:     1056.50 events/s",
+		"多核吞吐:     8844.25 events/s",
+		"总体评分:     90.00",
+	}
+	for _, snippet := range expectedSnippets {
+		if !strings.Contains(formatted, snippet) {
+			t.Fatalf("expected formatted report to contain %q, got:\n%s", snippet, formatted)
+		}
+	}
+}
+
+func TestFormatSingleTestResultShowsFioDetailedMetrics(t *testing.T) {
+	generator := NewReportGenerator()
+	result := &models.TestResult{
+		TestName:        "磁盘性能测试",
+		Status:          "success",
+		DurationSeconds: 20.5,
+		Metrics: map[string]interface{}{
+			"backend":                     "fio",
+			"read_speed_mbps":             1000.0,
+			"write_speed_mbps":            800.0,
+			"random_iops":                 12000,
+			"random_read_iops":            7000.5,
+			"random_write_iops":           5000.5,
+			"random_read_latency_p95_ms":  1.25,
+			"random_write_latency_p95_ms": 2.5,
+			"score":                       95.0,
+		},
+	}
+
+	formatted := generator.formatSingleTestResult("磁盘性能测试", result)
+
+	expectedSnippets := []string{
+		"测试后端:     fio",
+		"随机读IOPS:   7000.50",
+		"随机写IOPS:   5000.50",
+		"随机读P95:    1.25 ms",
+		"随机写P95:    2.50 ms",
+	}
+	for _, snippet := range expectedSnippets {
+		if !strings.Contains(formatted, snippet) {
+			t.Fatalf("expected formatted report to contain %q, got:\n%s", snippet, formatted)
+		}
+	}
+}
+
 func TestFormatSingleTestResultShowsNetworkError(t *testing.T) {
 	generator := NewReportGenerator()
 	result := &models.TestResult{
@@ -299,6 +366,13 @@ func TestAddSummaryAddsQualityNotes(t *testing.T) {
 		Timestamp:  time.Date(2026, 6, 1, 8, 0, 0, 0, time.UTC),
 		SystemInfo: &models.SystemInfo{},
 		TestResults: &models.TestResults{
+			CPUResult: &models.TestResult{
+				TestName: "CPU性能测试",
+				Status:   "success",
+				Metrics: map[string]interface{}{
+					"backend": "builtin",
+				},
+			},
 			DiskResult: &models.TestResult{
 				TestName: "磁盘性能测试",
 				Status:   "success",
@@ -326,7 +400,7 @@ func TestAddSummaryAddsQualityNotes(t *testing.T) {
 	}
 	joined := strings.Join(notes, "\n")
 	expectedSnippets := []string{
-		"CPU测试未执行",
+		"CPU 测试使用内置后端",
 		"磁盘测试使用内置后端",
 		"网络上传速度为估算值",
 	}

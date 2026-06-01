@@ -33,6 +33,7 @@ type DiskBenchmarkBackend interface {
 	MeasureSequentialWrite(fileSizeMB int) (float64, error)
 	MeasureSequentialRead(fileSizeMB int) (float64, error)
 	MeasureRandomIOPS(durationSec int) (int, error)
+	AppendMetrics(metrics map[string]interface{})
 	Cleanup() error
 }
 
@@ -67,6 +68,8 @@ func (b *BuiltinDiskBackend) MeasureSequentialRead(fileSizeMB int) (float64, err
 func (b *BuiltinDiskBackend) MeasureRandomIOPS(durationSec int) (int, error) {
 	return b.test.TestRandomIOPS(durationSec)
 }
+
+func (b *BuiltinDiskBackend) AppendMetrics(metrics map[string]interface{}) {}
 
 func (b *BuiltinDiskBackend) Cleanup() error {
 	return b.test.CleanupTestFiles()
@@ -178,6 +181,7 @@ func (dt *DiskTest) Execute() (*models.TestResult, error) {
 	// 计算总体评分
 	score := dt.calculateScore(readSpeed, writeSpeed, float64(iops))
 	metrics["score"] = score
+	dt.backend.AppendMetrics(metrics)
 
 	dt.GetLogger().Info(fmt.Sprintf("磁盘测试完成，评分: %.2f", score))
 

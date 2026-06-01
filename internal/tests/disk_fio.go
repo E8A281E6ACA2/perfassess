@@ -13,9 +13,12 @@ import (
 )
 
 type FioDiskBackend struct {
-	workDir string
-	timeout time.Duration
-	runner  commandRunner
+	workDir       string
+	timeout       time.Duration
+	runner        commandRunner
+	seqReadStats  fioDirectionStats
+	seqWriteStats fioDirectionStats
+	randomStats   fioRandomStats
 }
 
 type FioConfig struct {
@@ -66,7 +69,12 @@ func (b *FioDiskBackend) MeasureSequentialWrite(fileSizeMB int) (float64, error)
 	if err != nil {
 		return 0, err
 	}
-	return parseFioBandwidthMBps(output, "write")
+	stats, err := parseFioDirectionStats(output, "write")
+	if err != nil {
+		return 0, err
+	}
+	b.seqWriteStats = stats
+	return stats.BandwidthMBps, nil
 }
 
 func (b *FioDiskBackend) MeasureSequentialRead(fileSizeMB int) (float64, error) {
@@ -74,7 +82,12 @@ func (b *FioDiskBackend) MeasureSequentialRead(fileSizeMB int) (float64, error) 
 	if err != nil {
 		return 0, err
 	}
-	return parseFioBandwidthMBps(output, "read")
+	stats, err := parseFioDirectionStats(output, "read")
+	if err != nil {
+		return 0, err
+	}
+	b.seqReadStats = stats
+	return stats.BandwidthMBps, nil
 }
 
 func (b *FioDiskBackend) MeasureRandomIOPS(durationSec int) (int, error) {
@@ -82,7 +95,33 @@ func (b *FioDiskBackend) MeasureRandomIOPS(durationSec int) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	return parseFioRandomIOPS(output)
+	stats, err := parseFioRandomStats(output)
+	if err != nil {
+		return 0, err
+	}
+	b.randomStats = stats
+	return int(math.Round(stats.ReadIOPS + stats.WriteIOPS)), nil
+}
+
+func (b *FioDiskBackend) AppendMetrics(metrics map[string]interface{}) {
+	if b.seqReadStats.BandwidthMBps > 0 {
+		metrics["sequential_read_iops"] = b.seqReadStats.IOPS
+		metrics["sequential_read_latency_ms"] = b.seqReadStats.LatencyMeanMs
+		metrics["sequential_read_latency_p95_ms"] = b.seqReadStats.LatencyP95Ms
+	}
+	if b.seqWriteStats.BandwidthMBps > 0 {
+		metrics["sequential_write_iops"] = b.seqWriteStats.IOPS
+		metrics["sequential_write_latency_ms"] = b.seqWriteStats.LatencyMeanMs
+		metrics["sequential_write_latency_p95_ms"] = b.seqWriteStats.LatencyP95Ms
+	}
+	if b.randomStats.ReadIOPS > 0 || b.randomStats.WriteIOPS > 0 {
+		metrics["random_read_iops"] = b.randomStats.ReadIOPS
+		metrics["random_write_iops"] = b.randomStats.WriteIOPS
+		metrics["random_read_latency_ms"] = b.randomStats.ReadLatencyMeanMs
+		metrics["random_write_latency_ms"] = b.randomStats.WriteLatencyMeanMs
+		metrics["random_read_latency_p95_ms"] = b.randomStats.ReadLatencyP95Ms
+		metrics["random_write_latency_p95_ms"] = b.randomStats.WriteLatencyP95Ms
+	}
 }
 
 func (b *FioDiskBackend) Cleanup() error {
@@ -139,47 +178,115 @@ type fioJSONResult struct {
 }
 
 type fioJobStats struct {
-	BwBytes int64   `json:"bw_bytes"`
-	IOPS    float64 `json:"iops"`
+	BwBytes int64      `json:"bw_bytes"`
+	IOPS    float64    `json:"iops"`
+	Latency fioLatency `json:"lat_ns"`
+	Clat    fioLatency `json:"clat_ns"`
+}
+
+type fioLatency struct {
+	Mean       float64            `json:"mean"`
+	Percentile map[string]float64 `json:"percentile"`
+}
+
+type fioDirectionStats struct {
+	BandwidthMBps float64
+	IOPS          float64
+	LatencyMeanMs float64
+	LatencyP95Ms  float64
+}
+
+type fioRandomStats struct {
+	ReadIOPS           float64
+	WriteIOPS          float64
+	ReadLatencyMeanMs  float64
+	WriteLatencyMeanMs float64
+	ReadLatencyP95Ms   float64
+	WriteLatencyP95Ms  float64
 }
 
 func parseFioBandwidthMBps(output []byte, direction string) (float64, error) {
-	result, err := parseFioJSON(output)
+	stats, err := parseFioDirectionStats(output, direction)
 	if err != nil {
 		return 0, err
+	}
+	return stats.BandwidthMBps, nil
+}
+
+func parseFioDirectionStats(output []byte, direction string) (fioDirectionStats, error) {
+	result, err := parseFioJSON(output)
+	if err != nil {
+		return fioDirectionStats{}, err
 	}
 
 	var totalBytesPerSecond int64
+	totalIOPS := 0.0
+	latencyMeanWeighted := 0.0
+	latencyWeight := 0.0
+	p95 := 0.0
 	for _, job := range result.Jobs {
+		var stats fioJobStats
 		switch direction {
 		case "read":
-			totalBytesPerSecond += job.Read.BwBytes
+			stats = job.Read
 		case "write":
-			totalBytesPerSecond += job.Write.BwBytes
+			stats = job.Write
 		default:
-			return 0, fmt.Errorf("unsupported fio direction: %s", direction)
+			return fioDirectionStats{}, fmt.Errorf("unsupported fio direction: %s", direction)
+		}
+		totalBytesPerSecond += stats.BwBytes
+		totalIOPS += stats.IOPS
+		meanNs := fioMeanLatencyNs(stats)
+		if meanNs > 0 && stats.IOPS > 0 {
+			latencyMeanWeighted += meanNs * stats.IOPS
+			latencyWeight += stats.IOPS
+		}
+		if percentile := fioP95LatencyNs(stats); percentile > p95 {
+			p95 = percentile
 		}
 	}
 	if totalBytesPerSecond <= 0 {
-		return 0, fmt.Errorf("missing fio %s bw_bytes", direction)
+		return fioDirectionStats{}, fmt.Errorf("missing fio %s bw_bytes", direction)
 	}
-	return float64(totalBytesPerSecond) / 1024.0 / 1024.0, nil
+	meanMs := 0.0
+	if latencyWeight > 0 {
+		meanMs = latencyMeanWeighted / latencyWeight / 1000000.0
+	}
+	return fioDirectionStats{
+		BandwidthMBps: float64(totalBytesPerSecond) / 1024.0 / 1024.0,
+		IOPS:          totalIOPS,
+		LatencyMeanMs: meanMs,
+		LatencyP95Ms:  p95 / 1000000.0,
+	}, nil
 }
 
 func parseFioRandomIOPS(output []byte) (int, error) {
-	result, err := parseFioJSON(output)
+	stats, err := parseFioRandomStats(output)
 	if err != nil {
 		return 0, err
 	}
+	return int(math.Round(stats.ReadIOPS + stats.WriteIOPS)), nil
+}
 
-	totalIOPS := 0.0
+func parseFioRandomStats(output []byte) (fioRandomStats, error) {
+	result, err := parseFioJSON(output)
+	if err != nil {
+		return fioRandomStats{}, err
+	}
+
+	stats := fioRandomStats{}
 	for _, job := range result.Jobs {
-		totalIOPS += job.Read.IOPS + job.Write.IOPS
+		stats.ReadIOPS += job.Read.IOPS
+		stats.WriteIOPS += job.Write.IOPS
+		stats.ReadLatencyMeanMs = maxFloat(stats.ReadLatencyMeanMs, fioMeanLatencyNs(job.Read)/1000000.0)
+		stats.WriteLatencyMeanMs = maxFloat(stats.WriteLatencyMeanMs, fioMeanLatencyNs(job.Write)/1000000.0)
+		stats.ReadLatencyP95Ms = maxFloat(stats.ReadLatencyP95Ms, fioP95LatencyNs(job.Read)/1000000.0)
+		stats.WriteLatencyP95Ms = maxFloat(stats.WriteLatencyP95Ms, fioP95LatencyNs(job.Write)/1000000.0)
 	}
-	if totalIOPS <= 0 {
-		return 0, fmt.Errorf("missing fio random iops")
+	if stats.ReadIOPS+stats.WriteIOPS <= 0 {
+		return fioRandomStats{}, fmt.Errorf("missing fio random iops")
 	}
-	return int(math.Round(totalIOPS)), nil
+	return stats, nil
 }
 
 func parseFioJSON(output []byte) (*fioJSONResult, error) {
@@ -191,4 +298,31 @@ func parseFioJSON(output []byte) (*fioJSONResult, error) {
 		return nil, fmt.Errorf("missing fio jobs")
 	}
 	return &result, nil
+}
+
+func fioMeanLatencyNs(stats fioJobStats) float64 {
+	if stats.Latency.Mean > 0 {
+		return stats.Latency.Mean
+	}
+	return stats.Clat.Mean
+}
+
+func fioP95LatencyNs(stats fioJobStats) float64 {
+	if value := stats.Latency.Percentile["95.000000"]; value > 0 {
+		return value
+	}
+	if value := stats.Latency.Percentile["95.00"]; value > 0 {
+		return value
+	}
+	if value := stats.Clat.Percentile["95.000000"]; value > 0 {
+		return value
+	}
+	return stats.Clat.Percentile["95.00"]
+}
+
+func maxFloat(a float64, b float64) float64 {
+	if b > a {
+		return b
+	}
+	return a
 }

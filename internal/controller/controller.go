@@ -294,7 +294,7 @@ func (ac *AssessmentController) runPerformanceTests() (*models.TestResults, erro
 	for _, testType := range testTypes {
 		switch testType {
 		case "cpu":
-			testList = append(testList, tests.NewCPUTest(ac.logger))
+			testList = append(testList, ac.newCPUTest())
 		case "memory":
 			testList = append(testList, tests.NewMemoryTest(ac.logger))
 		case "disk":
@@ -311,6 +311,14 @@ func (ac *AssessmentController) runPerformanceTests() (*models.TestResults, erro
 	}
 
 	return results, nil
+}
+
+func (ac *AssessmentController) newCPUTest() tests.PerformanceTest {
+	if ac.config.CPUBackend == models.CPUBackendSysbench {
+		return tests.NewCPUTestWithBackend(ac.logger, tests.NewSysbenchCPUBackend(tests.SysbenchCPUConfig{}))
+	}
+
+	return tests.NewCPUTest(ac.logger)
 }
 
 func (ac *AssessmentController) newDiskTest() tests.PerformanceTest {

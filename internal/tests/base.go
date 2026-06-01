@@ -14,19 +14,19 @@ type PerformanceTest interface {
 	// Setup 测试前的准备工作
 	// 返回错误时测试将被跳过
 	Setup() error
-	
+
 	// Execute 执行测试
 	// 返回测试结果和可能的错误
 	Execute() (*models.TestResult, error)
-	
+
 	// Teardown 测试后的清理工作
 	// 无论测试成功或失败都会被调用
 	Teardown() error
-	
+
 	// GetTimeout 获取测试超时时间
 	// 返回测试的最大执行时间
 	GetTimeout() time.Duration
-	
+
 	// GetName 获取测试名称
 	// 返回测试的显示名称
 	GetName() string
@@ -37,16 +37,16 @@ type PerformanceTest interface {
 type BaseTest struct {
 	// name 测试名称
 	name string
-	
+
 	// timeout 测试超时时间
 	timeout time.Duration
-	
+
 	// logger 日志记录器
 	logger *logger.Logger
-	
+
 	// startTime 测试开始时间
 	startTime time.Time
-	
+
 	// endTime 测试结束时间
 	endTime time.Time
 }
@@ -56,6 +56,7 @@ type BaseTest struct {
 //   - name: 测试名称
 //   - timeout: 超时时间
 //   - logger: 日志记录器
+//
 // 返回:
 //   - *BaseTest: 基类实例
 func NewBaseTest(name string, timeout time.Duration, logger *logger.Logger) *BaseTest {
@@ -115,15 +116,21 @@ func (bt *BaseTest) GetDuration() time.Duration {
 //   - status: 测试状态
 //   - metrics: 测试指标
 //   - errorMsg: 错误消息
+//
 // 返回:
 //   - *models.TestResult: 测试结果
 func (bt *BaseTest) CreateResult(status string, metrics map[string]interface{}, errorMsg string) *models.TestResult {
+	endTime := bt.endTime
+	if endTime.IsZero() {
+		endTime = time.Now()
+	}
+
 	return &models.TestResult{
 		TestName:        bt.name,
 		Status:          status,
 		StartTime:       bt.startTime,
-		EndTime:         bt.endTime,
-		DurationSeconds: bt.GetDuration().Seconds(),
+		EndTime:         endTime,
+		DurationSeconds: endTime.Sub(bt.startTime).Seconds(),
 		Metrics:         metrics,
 		ErrorMessage:    errorMsg,
 	}

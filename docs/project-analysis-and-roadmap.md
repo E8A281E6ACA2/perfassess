@@ -117,18 +117,33 @@
 当前已落地的统一方向：
 
 - CPU:
+  - `backend`
+  - `single_core_source`
   - `single_core_score`
   - `single_core_score_samples`
   - `single_core_score_min`
   - `single_core_score_median`
   - `single_core_score_max`
   - `single_core_score_stddev`
+  - `single_core_events_per_sec`
+  - `single_core_events_per_sec_samples`
+  - `single_core_events_per_sec_min`
+  - `single_core_events_per_sec_median`
+  - `single_core_events_per_sec_max`
+  - `single_core_events_per_sec_stddev`
+  - `multi_core_source`
   - `multi_core_score`
   - `multi_core_score_samples`
   - `multi_core_score_min`
   - `multi_core_score_median`
   - `multi_core_score_max`
   - `multi_core_score_stddev`
+  - `multi_core_events_per_sec`
+  - `multi_core_events_per_sec_samples`
+  - `multi_core_events_per_sec_min`
+  - `multi_core_events_per_sec_median`
+  - `multi_core_events_per_sec_max`
+  - `multi_core_events_per_sec_stddev`
   - `total_score`
   - `cpu_cores`
 - Memory:
@@ -152,10 +167,22 @@
   - `write_speed_mbps`
   - `sequential_read_mbps`
   - `sequential_read_source`
+  - `sequential_read_iops`
+  - `sequential_read_latency_ms`
+  - `sequential_read_latency_p95_ms`
   - `sequential_write_mbps`
   - `sequential_write_source`
+  - `sequential_write_iops`
+  - `sequential_write_latency_ms`
+  - `sequential_write_latency_p95_ms`
   - `random_iops`
   - `random_iops_source`
+  - `random_read_iops`
+  - `random_write_iops`
+  - `random_read_latency_ms`
+  - `random_write_latency_ms`
+  - `random_read_latency_p95_ms`
+  - `random_write_latency_p95_ms`
   - `score`
 - Network:
   - `latency_ms`
@@ -304,6 +331,71 @@
 - 如果服务端包含端口，程序会转换为 `iperf3 -c <host> -p <port>`，避免把 `host:port` 错传给 `-c`
 - 被测机器需要预先安装 `iperf3`
 - 程序只负责检测并提示安装方式，不静默修改系统环境
+
+## 下一批对标设计：主流基准后端增强
+
+目标：把 CPU 和磁盘从“项目内置经验测试”进一步对齐到主流服务器测评常用工具链。
+
+### CPU 后端设计
+
+- 新增 `CPUBackend` 配置，可选值为 `builtin` 与 `sysbench`
+- 默认继续使用 `builtin`，确保无依赖一把梭可运行
+- `--full` 预设优先使用 `sysbench`，用于更接近主流测评的 CPU 吞吐结果
+- `sysbench` 后端执行两类测试：
+  - 单线程：`sysbench cpu --threads=1 --time=10 run`
+  - 多线程：`sysbench cpu --threads=<runtime.NumCPU()> --time=10 run`
+- 解析 `events per second` 作为原始吞吐指标
+- 继续输出兼容字段：
+  - `single_core_score`
+  - `multi_core_score`
+  - `total_score`
+- 新增 CPU 来源字段：
+  - `backend`
+  - `single_core_events_per_sec`
+  - `single_core_events_per_sec_samples`
+  - `single_core_events_per_sec_min`
+  - `single_core_events_per_sec_median`
+  - `single_core_events_per_sec_max`
+  - `single_core_events_per_sec_stddev`
+  - `multi_core_events_per_sec`
+  - `multi_core_events_per_sec_samples`
+  - `multi_core_events_per_sec_min`
+  - `multi_core_events_per_sec_median`
+  - `multi_core_events_per_sec_max`
+  - `multi_core_events_per_sec_stddev`
+  - `single_core_source`
+  - `multi_core_source`
+
+### 磁盘 fio 详细指标设计
+
+- 保持 `DiskBenchmarkBackend` 接口兼容，不破坏现有报告与评分
+- `FioDiskBackend` 在执行顺序读、顺序写、随机读写时缓存完整解析结果
+- 除现有兼容字段外，补充：
+  - `sequential_read_iops`
+  - `sequential_read_latency_ms`
+  - `sequential_read_latency_p95_ms`
+  - `sequential_write_iops`
+  - `sequential_write_latency_ms`
+  - `sequential_write_latency_p95_ms`
+  - `random_read_iops`
+  - `random_write_iops`
+  - `random_read_latency_ms`
+  - `random_write_latency_ms`
+  - `random_read_latency_p95_ms`
+  - `random_write_latency_p95_ms`
+- 报告层优先展示兼容关键指标，质量提示中说明 fio 后端可提供更高可信度
+- 解析失败时必须返回明确错误，不静默降级为 0
+
+### 验证要求
+
+- 新增配置校验与 CLI 参数测试
+- 新增 `sysbench` 输出解析测试
+- 新增 `fio` 详细 JSON 解析测试
+- 必须通过：
+  - `go test ./...`
+  - `go build ./...`
+  - `go run ./cmd --help`
+  - `go run ./cmd check-deps`
 
 ## 文档维护约定
 

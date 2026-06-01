@@ -19,6 +19,46 @@ const cpuSampleRuns = 3
 // 测试单核和多核CPU的计算性能
 type CPUTest struct {
 	*BaseTest
+	backend CPUBenchmarkBackend
+}
+
+type CPUBenchmarkBackend interface {
+	Name() string
+	SingleCoreSource() string
+	MultiCoreSource() string
+	MeasureSingleCore() (CPUBackendResult, error)
+	MeasureMultiCore() (CPUBackendResult, error)
+}
+
+type CPUBackendResult struct {
+	Score        float64
+	EventsPerSec float64
+}
+
+type BuiltinCPUBackend struct {
+	test *CPUTest
+}
+
+func (b *BuiltinCPUBackend) Name() string {
+	return models.CPUBackendBuiltin
+}
+
+func (b *BuiltinCPUBackend) SingleCoreSource() string {
+	return models.CPUSourceBuiltin
+}
+
+func (b *BuiltinCPUBackend) MultiCoreSource() string {
+	return models.CPUSourceBuiltin
+}
+
+func (b *BuiltinCPUBackend) MeasureSingleCore() (CPUBackendResult, error) {
+	score, err := b.test.TestSingleCore()
+	return CPUBackendResult{Score: score}, err
+}
+
+func (b *BuiltinCPUBackend) MeasureMultiCore() (CPUBackendResult, error) {
+	score, err := b.test.TestMultiCore()
+	return CPUBackendResult{Score: score}, err
 }
 
 // NewCPUTest 创建CPU性能测试
@@ -28,9 +68,19 @@ type CPUTest struct {
 // 返回:
 //   - *CPUTest: CPU测试实例
 func NewCPUTest(logger *logger.Logger) *CPUTest {
-	return &CPUTest{
+	return NewCPUTestWithBackend(logger, nil)
+}
+
+func NewCPUTestWithBackend(logger *logger.Logger, backend CPUBenchmarkBackend) *CPUTest {
+	test := &CPUTest{
 		BaseTest: NewBaseTest("CPU性能测试", 60*time.Second, logger),
 	}
+	if backend != nil {
+		test.backend = backend
+	} else {
+		test.backend = &BuiltinCPUBackend{test: test}
+	}
+	return test
 }
 
 // Execute 执行CPU性能测试
@@ -44,29 +94,34 @@ func (ct *CPUTest) Execute() (*models.TestResult, error) {
 	}()
 
 	metrics := make(map[string]interface{})
+	metrics["backend"] = ct.backend.Name()
 
 	// 测试单核性能
 	ct.GetLogger().Info("开始单核CPU测试...")
-	singleCoreSamples, err := ct.collectSamples(cpuSampleRuns, ct.TestSingleCore)
+	singleCoreSamples, err := ct.collectSamples(cpuSampleRuns, ct.backend.MeasureSingleCore)
 	if err != nil {
 		return ct.CreateResult("failed", nil, fmt.Sprintf("单核测试失败: %v", err)), err
 	}
-	singleCoreStats := calculateSampleStats(singleCoreSamples)
+	singleCoreStats := calculateScoreStats(singleCoreSamples)
 	singleCoreScore := singleCoreStats.Median
 	metrics["single_core_score"] = singleCoreScore
+	metrics["single_core_source"] = ct.backend.SingleCoreSource()
 	addSampleStatsMetrics(metrics, "single_core_score", singleCoreStats)
+	addEventsPerSecondMetrics(metrics, "single_core_events_per_sec", singleCoreSamples)
 	ct.GetLogger().Info(fmt.Sprintf("单核测试完成，评分: %.2f", singleCoreScore))
 
 	// 测试多核性能
 	ct.GetLogger().Info("开始多核CPU测试...")
-	multiCoreSamples, err := ct.collectSamples(cpuSampleRuns, ct.TestMultiCore)
+	multiCoreSamples, err := ct.collectSamples(cpuSampleRuns, ct.backend.MeasureMultiCore)
 	if err != nil {
 		return ct.CreateResult("failed", nil, fmt.Sprintf("多核测试失败: %v", err)), err
 	}
-	multiCoreStats := calculateSampleStats(multiCoreSamples)
+	multiCoreStats := calculateScoreStats(multiCoreSamples)
 	multiCoreScore := multiCoreStats.Median
 	metrics["multi_core_score"] = multiCoreScore
+	metrics["multi_core_source"] = ct.backend.MultiCoreSource()
 	addSampleStatsMetrics(metrics, "multi_core_score", multiCoreStats)
+	addEventsPerSecondMetrics(metrics, "multi_core_events_per_sec", multiCoreSamples)
 	ct.GetLogger().Info(fmt.Sprintf("多核测试完成，评分: %.2f", multiCoreScore))
 
 	// 计算总体评分
@@ -79,16 +134,39 @@ func (ct *CPUTest) Execute() (*models.TestResult, error) {
 	return ct.CreateResult("success", metrics, ""), nil
 }
 
-func (ct *CPUTest) collectSamples(runs int, measure func() (float64, error)) ([]float64, error) {
-	samples := make([]float64, 0, runs)
+func (ct *CPUTest) collectSamples(runs int, measure func() (CPUBackendResult, error)) ([]CPUBackendResult, error) {
+	samples := make([]CPUBackendResult, 0, runs)
 	for i := 0; i < runs; i++ {
-		score, err := measure()
+		result, err := measure()
 		if err != nil {
 			return nil, err
 		}
-		samples = append(samples, score)
+		samples = append(samples, result)
 	}
 	return samples, nil
+}
+
+func calculateScoreStats(samples []CPUBackendResult) sampleStats {
+	scores := make([]float64, 0, len(samples))
+	for _, sample := range samples {
+		scores = append(scores, sample.Score)
+	}
+	return calculateSampleStats(scores)
+}
+
+func addEventsPerSecondMetrics(metrics map[string]interface{}, prefix string, samples []CPUBackendResult) {
+	events := make([]float64, 0, len(samples))
+	for _, sample := range samples {
+		if sample.EventsPerSec > 0 {
+			events = append(events, sample.EventsPerSec)
+		}
+	}
+	if len(events) == 0 {
+		return
+	}
+	stats := calculateSampleStats(events)
+	metrics[prefix] = stats.Median
+	addSampleStatsMetrics(metrics, prefix, stats)
 }
 
 // TestSingleCore 测试单核性能

@@ -176,11 +176,20 @@ func (rg *ReportGenerator) formatSingleTestResult(testName string, result *model
 		// 根据不同测试类型格式化指标
 		switch result.TestName {
 		case "cpu", "CPU性能测试":
+			if backend := getCPUBackend(result); backend != "" {
+				sb.WriteString(fmt.Sprintf("  测试后端:     %s\n", backend))
+			}
 			if score, ok := metricFloat64(result.Metrics, "single_core_score"); ok {
 				sb.WriteString(fmt.Sprintf("  单核评分:     %.2f\n", score))
 			}
+			if events, ok := getCPUSingleCoreEvents(result); ok {
+				sb.WriteString(fmt.Sprintf("  单核吞吐:     %.2f events/s\n", events))
+			}
 			if score, ok := metricFloat64(result.Metrics, "multi_core_score"); ok {
 				sb.WriteString(fmt.Sprintf("  多核评分:     %.2f\n", score))
+			}
+			if events, ok := getCPUMultiCoreEvents(result); ok {
+				sb.WriteString(fmt.Sprintf("  多核吞吐:     %.2f events/s\n", events))
 			}
 			if score, ok := getCPUScore(result); ok {
 				sb.WriteString(fmt.Sprintf("  总体评分:     %.2f\n", score))
@@ -221,6 +230,18 @@ func (rg *ReportGenerator) formatSingleTestResult(testName string, result *model
 			}
 			if iops, ok := getDiskRandomIOPS(result); ok {
 				sb.WriteString(fmt.Sprintf("  随机IOPS:     %d\n", iops))
+			}
+			if readIOPS, ok := getDiskRandomReadIOPS(result); ok {
+				sb.WriteString(fmt.Sprintf("  随机读IOPS:   %.2f\n", readIOPS))
+			}
+			if writeIOPS, ok := getDiskRandomWriteIOPS(result); ok {
+				sb.WriteString(fmt.Sprintf("  随机写IOPS:   %.2f\n", writeIOPS))
+			}
+			if readP95, ok := getDiskRandomReadP95Latency(result); ok {
+				sb.WriteString(fmt.Sprintf("  随机读P95:    %.2f ms\n", readP95))
+			}
+			if writeP95, ok := getDiskRandomWriteP95Latency(result); ok {
+				sb.WriteString(fmt.Sprintf("  随机写P95:    %.2f ms\n", writeP95))
 			}
 			if score, ok := metricFloat64(result.Metrics, "score"); ok {
 				sb.WriteString(fmt.Sprintf("  测试评分:     %.2f\n", score))
@@ -365,6 +386,9 @@ func (rg *ReportGenerator) buildQualityNotes(testResults *models.TestResults) []
 	}
 
 	if testResults.CPUResult != nil && testResults.CPUResult.Status == "success" {
+		if getCPUBackend(testResults.CPUResult) == "builtin" {
+			notes = append(notes, "CPU 测试使用内置后端，结果适合快速参考；如需主流 CPU 基准建议使用 --cpu-backend sysbench。")
+		}
 		if stddev, ok := getCPUScoreStdDev(testResults.CPUResult); ok && stddev > 10 {
 			notes = append(notes, fmt.Sprintf("CPU 多轮采样波动较大（stddev %.2f），建议复测。", stddev))
 		}

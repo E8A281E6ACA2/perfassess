@@ -191,10 +191,17 @@ func (ws *WebServer) getKeyMetrics(result *models.TestResult) string {
 	switch result.TestName {
 	case "cpu", "CPU性能测试":
 		if score, ok := getCPUScore(result); ok {
-			if stddev, ok := getCPUScoreStdDev(result); ok {
-				return fmt.Sprintf("总分: %.2f (stddev %.2f)", score, stddev)
+			prefix := ""
+			if backend := getCPUBackend(result); backend != "" {
+				prefix = backend + " | "
 			}
-			return fmt.Sprintf("总分: %.2f", score)
+			if events, ok := getCPUMultiCoreEvents(result); ok {
+				return fmt.Sprintf("%s总分: %.2f | 多核 %.2f events/s", prefix, score, events)
+			}
+			if stddev, ok := getCPUScoreStdDev(result); ok {
+				return fmt.Sprintf("%s总分: %.2f (stddev %.2f)", prefix, score, stddev)
+			}
+			return fmt.Sprintf("%s总分: %.2f", prefix, score)
 		}
 	case "memory", "内存性能测试":
 		readSpeed, readOK := getMemoryReadSpeed(result)
@@ -213,6 +220,9 @@ func (ws *WebServer) getKeyMetrics(result *models.TestResult) string {
 	case "disk", "磁盘性能测试":
 		if speed, ok := getDiskReadSpeed(result); ok {
 			if backend := getDiskBackend(result); backend != "" {
+				if readIOPS, ok := getDiskRandomReadIOPS(result); ok {
+					return fmt.Sprintf("%s | 顺序读: %.2f MB/s | 随机读 %.0f IOPS", backend, speed, readIOPS)
+				}
 				return fmt.Sprintf("%s | 顺序读: %.2f MB/s", backend, speed)
 			}
 			return fmt.Sprintf("顺序读: %.2f MB/s", speed)

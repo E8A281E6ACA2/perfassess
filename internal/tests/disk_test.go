@@ -94,6 +94,90 @@ func TestFioDiskBackendParsesRandomIOPS(t *testing.T) {
 	}
 }
 
+func TestFioParsesDetailedLatencyMetrics(t *testing.T) {
+	output := []byte(`{
+		"jobs": [{
+			"read": {
+				"bw_bytes": 104857600,
+				"iops": 101.5,
+				"clat_ns": {
+					"mean": 1200000,
+					"percentile": {"95.000000": 2400000}
+				}
+			},
+			"write": {
+				"bw_bytes": 52428800,
+				"iops": 202.5,
+				"clat_ns": {
+					"mean": 2200000,
+					"percentile": {"95.000000": 4400000}
+				}
+			}
+		}]
+	}`)
+
+	readStats, err := parseFioDirectionStats(output, "read")
+	if err != nil {
+		t.Fatalf("expected read stats to parse, got %v", err)
+	}
+	if readStats.BandwidthMBps != 100.0 {
+		t.Fatalf("expected read bandwidth 100, got %.2f", readStats.BandwidthMBps)
+	}
+	if readStats.IOPS != 101.5 {
+		t.Fatalf("expected read iops 101.5, got %.2f", readStats.IOPS)
+	}
+	if readStats.LatencyMeanMs != 1.2 {
+		t.Fatalf("expected read latency mean 1.2ms, got %.2f", readStats.LatencyMeanMs)
+	}
+	if readStats.LatencyP95Ms != 2.4 {
+		t.Fatalf("expected read p95 2.4ms, got %.2f", readStats.LatencyP95Ms)
+	}
+
+	randomStats, err := parseFioRandomStats(output)
+	if err != nil {
+		t.Fatalf("expected random stats to parse, got %v", err)
+	}
+	if randomStats.ReadIOPS != 101.5 || randomStats.WriteIOPS != 202.5 {
+		t.Fatalf("expected detailed random iops, got read %.2f write %.2f", randomStats.ReadIOPS, randomStats.WriteIOPS)
+	}
+	if randomStats.WriteLatencyP95Ms != 4.4 {
+		t.Fatalf("expected write p95 4.4ms, got %.2f", randomStats.WriteLatencyP95Ms)
+	}
+}
+
+func TestFioDiskBackendAppendsDetailedMetrics(t *testing.T) {
+	backend := &FioDiskBackend{
+		seqReadStats: fioDirectionStats{
+			BandwidthMBps: 100,
+			IOPS:          101.5,
+			LatencyMeanMs: 1.2,
+			LatencyP95Ms:  2.4,
+		},
+		seqWriteStats: fioDirectionStats{
+			BandwidthMBps: 50,
+			IOPS:          50.5,
+			LatencyMeanMs: 2.2,
+			LatencyP95Ms:  4.4,
+		},
+		randomStats: fioRandomStats{
+			ReadIOPS:           300,
+			WriteIOPS:          200,
+			ReadLatencyMeanMs:  1.1,
+			WriteLatencyMeanMs: 1.5,
+			ReadLatencyP95Ms:   2.1,
+			WriteLatencyP95Ms:  2.5,
+		},
+	}
+
+	metrics := map[string]interface{}{}
+	backend.AppendMetrics(metrics)
+
+	assertMetricFloat(t, metrics, "sequential_read_iops", 101.5)
+	assertMetricFloat(t, metrics, "sequential_write_latency_p95_ms", 4.4)
+	assertMetricFloat(t, metrics, "random_read_iops", 300)
+	assertMetricFloat(t, metrics, "random_write_latency_ms", 1.5)
+}
+
 func TestParseFioRejectsMissingJobs(t *testing.T) {
 	if _, err := parseFioBandwidthMBps([]byte(`{"jobs":[]}`), "read"); err == nil {
 		t.Fatal("expected missing fio jobs to fail")
@@ -153,6 +237,8 @@ func (b *fakeDiskBackend) MeasureSequentialRead(fileSizeMB int) (float64, error)
 func (b *fakeDiskBackend) MeasureRandomIOPS(durationSec int) (int, error) {
 	return b.iops, nil
 }
+
+func (b *fakeDiskBackend) AppendMetrics(metrics map[string]interface{}) {}
 
 func (b *fakeDiskBackend) Cleanup() error {
 	return nil

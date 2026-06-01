@@ -40,6 +40,9 @@ type Config struct {
 	// 默认包含常用的公共服务器地址
 	RouteTraceTargets []string `mapstructure:"route_trace_targets"`
 
+	// CPUBackend CPU 测试后端，可选值: builtin, sysbench
+	CPUBackend string `mapstructure:"cpu_backend"`
+
 	// NetworkBackend 网络测试后端，可选值: builtin, iperf3
 	NetworkBackend string `mapstructure:"network_backend"`
 
@@ -77,6 +80,7 @@ func DefaultConfig() *Config {
 		EnableStressTest:   false,
 		EnableSecurityScan: false,
 		RouteTraceTargets:  []string{"8.8.8.8", "1.1.1.1", "cloudflare.com"},
+		CPUBackend:         "builtin",
 		NetworkBackend:     "builtin",
 		Iperf3Server:       "",
 		DiskBackend:        "builtin",
@@ -131,6 +135,17 @@ func (c *Config) Validate() error {
 		return &ConfigError{
 			Field:   "output_format",
 			Message: "无效的输出格式: " + c.OutputFormat,
+		}
+	}
+
+	validCPUBackends := map[string]bool{
+		"builtin":  true,
+		"sysbench": true,
+	}
+	if !validCPUBackends[c.CPUBackend] {
+		return &ConfigError{
+			Field:   "cpu_backend",
+			Message: "无效的 CPU 测试后端: " + c.CPUBackend,
 		}
 	}
 

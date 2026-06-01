@@ -133,6 +133,21 @@ func getCPUScore(result *models.TestResult) (float64, bool) {
 	return metricFloat64(result.Metrics, "total_score")
 }
 
+func getCPUBackend(result *models.TestResult) string {
+	if backend, ok := metricString(result.Metrics, "backend"); ok {
+		return backend
+	}
+	return ""
+}
+
+func getCPUSingleCoreEvents(result *models.TestResult) (float64, bool) {
+	return metricFloat64(result.Metrics, "single_core_events_per_sec")
+}
+
+func getCPUMultiCoreEvents(result *models.TestResult) (float64, bool) {
+	return metricFloat64(result.Metrics, "multi_core_events_per_sec")
+}
+
 func getCPUScoreStdDev(result *models.TestResult) (float64, bool) {
 	singleStdDev, singleOK := metricFloat64(result.Metrics, "single_core_score_stddev")
 	multiStdDev, multiOK := metricFloat64(result.Metrics, "multi_core_score_stddev")
@@ -174,6 +189,22 @@ func getDiskWriteSpeed(result *models.TestResult) (float64, bool) {
 
 func getDiskRandomIOPS(result *models.TestResult) (int, bool) {
 	return metricInt(result.Metrics, "random_iops")
+}
+
+func getDiskRandomReadIOPS(result *models.TestResult) (float64, bool) {
+	return metricFloat64(result.Metrics, "random_read_iops")
+}
+
+func getDiskRandomWriteIOPS(result *models.TestResult) (float64, bool) {
+	return metricFloat64(result.Metrics, "random_write_iops")
+}
+
+func getDiskRandomReadP95Latency(result *models.TestResult) (float64, bool) {
+	return metricFloat64(result.Metrics, "random_read_latency_p95_ms")
+}
+
+func getDiskRandomWriteP95Latency(result *models.TestResult) (float64, bool) {
+	return metricFloat64(result.Metrics, "random_write_latency_p95_ms")
 }
 
 func getDiskBackend(result *models.TestResult) string {

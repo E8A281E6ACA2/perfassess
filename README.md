@@ -230,7 +230,7 @@ sudo rm /usr/local/bin/perfassess
 #### 基础用法
 
 ```bash
-# 检查外部依赖（fio、iperf3、traceroute/tracert）
+# 检查外部依赖（sysbench、fio、iperf3、traceroute/tracert）
 ./build/perfassess check-deps
 
 # 运行所有检测
@@ -255,13 +255,16 @@ make run
 ./build/perfassess --full --iperf3-server 1.2.3.4:5201
 ```
 
-`--full` 会优先使用 `fio` 磁盘后端；如果未安装 fio，程序会给出明确提示但不会自动安装。只有提供 `--iperf3-server` 时，`--full` 才会自动切换到 `iperf3` 网络后端。
+`--full` 会优先使用 `sysbench` CPU 后端和 `fio` 磁盘后端；如果未安装依赖，程序会给出明确提示但不会自动安装。只有提供 `--iperf3-server` 时，`--full` 才会自动切换到 `iperf3` 网络后端。
 
 #### 单项测试
 
 ```bash
 # 只测试 CPU
 ./build/perfassess -b cpu
+
+# 使用 sysbench 后端测试 CPU（需要预装 sysbench）
+./build/perfassess -b cpu --cpu-backend sysbench
 
 # 只测试内存
 ./build/perfassess -b memory
@@ -370,6 +373,7 @@ Flags:
       --network-backend string
                               网络测试后端 (builtin,iperf3) (default "builtin")
       --iperf3-server string  iperf3 服务端地址（仅 network-backend=iperf3 时使用）
+      --cpu-backend string    CPU 测试后端 (builtin,sysbench) (default "builtin")
       --disk-backend string   磁盘测试后端 (builtin,fio) (default "builtin")
       --web                  启用 Web 报告服务器（新功能）
       --port int             Web 服务器端口 (default 8080)
@@ -378,6 +382,7 @@ Flags:
 注：--tests 参数仍然支持，但推荐使用 --benchmarks
 
 提示：使用 `--route-trace` 时，请确保系统已安装 traceroute（Linux/macOS）或 tracert（Windows），否则将提示缺少依赖。
+提示：使用 `--cpu-backend sysbench` 时，请提前安装 sysbench。程序只检测并提示，不会自动安装依赖。
 提示：使用 `--disk-backend fio` 时，请提前安装 fio。程序只检测并提示，不会自动安装依赖。
 提示：使用 `--network-backend iperf3` 时，请提前安装 iperf3，并提供可访问的 `--iperf3-server`。服务端可写为 `host` 或 `host:port`，程序会把端口转换为 iperf3 的 `-p` 参数。程序只检测并提示，不会自动安装依赖。
 ```
@@ -757,6 +762,7 @@ A: 使用 `--port` 参数指定其他端口：
 | `--verbose` | `-v` | 详细输出 | `-v` |
 | `--web` | - | Web 报告 | `--web` |
 | `--port` | - | Web 端口 | `--port 9090` |
+| `--cpu-backend` | - | CPU 测试后端 | `--cpu-backend sysbench` |
 | `--disk-backend` | - | 磁盘测试后端 | `--disk-backend fio` |
 | `--network-backend` | - | 网络测试后端 | `--network-backend iperf3` |
 | `--route-trace` | - | 路由追踪 | `--route-trace` |
