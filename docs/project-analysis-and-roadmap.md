@@ -272,8 +272,12 @@
 - 已为 `internal/reporter` 补充第一批单元测试
 - 已为 `internal/tests/network.go` 补充第一批行为测试
 - 已增加 GitHub Actions CI，覆盖 `go test ./...` 与 `go build ./...`
+- CI 已补充 CLI help、依赖检查和 JSON 示例报告契约 smoke
+- 已建立文本报告快照测试，防止核心输出格式无意回归
+- 已建立 JSON 示例报告契约测试，保护 `benchmark_profile`、`confidence_level` 和 `score_breakdown`
 - 报告摘要已增加 `quality_notes`，用于记录估算、降级、未执行和波动风险
 - 输出层已支持 `--output-format json`，便于自动化采集和批量对比
+- 已增加 JSON 示例契约测试和文本报告快照测试，防止报告字段、评分说明和质量提示静默回归
 - 首批覆盖重点为：
   - 网络评分在“真实上传”和“估算上传”场景下的差异
   - 终端报告对网络来源和估算标记的展示
@@ -284,6 +288,8 @@
   - `NetworkTest.Execute()` 在成功与降级场景下的结果字段写入
   - JSON 报告输出结构
   - 报告质量提示生成逻辑
+  - JSON 示例报告关键字段契约
+  - 文本报告完整输出快照
 
 ## 推荐近期执行顺序
 

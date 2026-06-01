@@ -177,6 +177,7 @@ func TestFormatSingleTestResultShowsMemoryBackendAndSources(t *testing.T) {
 		"测试后端:     sysbench",
 		"读取速度:     3200.00 MB/s (sysbench)",
 		"写入速度:     2800.00 MB/s (sysbench)",
+		"测试评分:     78.67",
 	}
 	for _, snippet := range expectedSnippets {
 		if !strings.Contains(formatted, snippet) {

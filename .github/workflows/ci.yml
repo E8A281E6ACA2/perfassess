@@ -22,8 +22,16 @@ jobs:
           cache: true
 
       - name: Run tests
-        run: go test ./...
+        run: go test ./... -count=1
 
       - name: Build
         run: go build ./...
 
+      - name: CLI help smoke
+        run: go run ./cmd --help
+
+      - name: Dependency check smoke
+        run: go run ./cmd check-deps
+
+      - name: Validate sample JSON report
+        run: go test ./internal/reporter -run TestReportJSONSampleContract -count=1

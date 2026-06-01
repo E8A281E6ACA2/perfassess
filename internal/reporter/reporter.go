@@ -231,7 +231,9 @@ func (rg *ReportGenerator) formatSingleTestResult(testName string, result *model
 			if stddev, ok := getMemoryWriteStdDev(result); ok {
 				sb.WriteString(fmt.Sprintf("  写入波动:     %.2f MB/s stddev\n", stddev))
 			}
-			if score, ok := metricFloat64(result.Metrics, "score"); ok {
+			if score := NewScoreCalculator().CalculateMemoryScore(result); score > 0 {
+				sb.WriteString(fmt.Sprintf("  测试评分:     %.2f\n", score))
+			} else if score, ok := metricFloat64(result.Metrics, "score"); ok {
 				sb.WriteString(fmt.Sprintf("  测试评分:     %.2f\n", score))
 			}
 
