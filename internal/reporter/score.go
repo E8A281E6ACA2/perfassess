@@ -2,6 +2,8 @@
 package reporter
 
 import (
+	"fmt"
+
 	"performance-assessment-system/internal/config"
 	"performance-assessment-system/internal/models"
 )
@@ -12,23 +14,82 @@ type ScoreCalculator struct {
 	// weights 各项测试的权重配置
 	// 默认: CPU 30%, Memory 20%, Disk 25%, Network 25%
 	weights map[string]float64
+
+	profile ScoreProfile
+}
+
+type ScoreProfile struct {
+	Name                    string
+	MemoryReadBaseMBps      float64
+	MemoryWriteBaseMBps     float64
+	DiskSequentialReadMBps  float64
+	DiskSequentialWriteMBps float64
+	DiskRandomIOPS          float64
+	NetworkLatencyBaseMs    float64
+	NetworkDownloadMbps     float64
+	NetworkUploadMbps       float64
 }
 
 // NewScoreCalculator 创建新的评分计算器
 // 使用默认权重配置
 func NewScoreCalculator() *ScoreCalculator {
-	return &ScoreCalculator{
-		weights: config.DefaultScoreWeights(),
-	}
+	return NewScoreCalculatorWithWeightsAndProfile(config.DefaultScoreWeights(), config.DefaultScoreProfile)
 }
 
 // NewScoreCalculatorWithWeights 创建带自定义权重的评分计算器
 func NewScoreCalculatorWithWeights(weights map[string]float64) *ScoreCalculator {
+	return NewScoreCalculatorWithWeightsAndProfile(weights, config.DefaultScoreProfile)
+}
+
+func NewScoreCalculatorWithWeightsAndProfile(weights map[string]float64, profileName string) *ScoreCalculator {
 	if err := config.ValidateScoreWeights(weights); err != nil {
 		weights = config.DefaultScoreWeights()
 	}
+	profile := scoreProfileByName(profileName)
 	return &ScoreCalculator{
 		weights: cloneWeights(weights),
+		profile: profile,
+	}
+}
+
+func scoreProfileByName(name string) ScoreProfile {
+	switch name {
+	case "vps":
+		return ScoreProfile{
+			Name:                    "vps",
+			MemoryReadBaseMBps:      3000,
+			MemoryWriteBaseMBps:     2000,
+			DiskSequentialReadMBps:  300,
+			DiskSequentialWriteMBps: 200,
+			DiskRandomIOPS:          3000,
+			NetworkLatencyBaseMs:    80,
+			NetworkDownloadMbps:     50,
+			NetworkUploadMbps:       25,
+		}
+	case "workstation":
+		return ScoreProfile{
+			Name:                    "workstation",
+			MemoryReadBaseMBps:      8000,
+			MemoryWriteBaseMBps:     6000,
+			DiskSequentialReadMBps:  1500,
+			DiskSequentialWriteMBps: 1000,
+			DiskRandomIOPS:          20000,
+			NetworkLatencyBaseMs:    30,
+			NetworkDownloadMbps:     300,
+			NetworkUploadMbps:       100,
+		}
+	default:
+		return ScoreProfile{
+			Name:                    "server",
+			MemoryReadBaseMBps:      5000,
+			MemoryWriteBaseMBps:     3000,
+			DiskSequentialReadMBps:  500,
+			DiskSequentialWriteMBps: 300,
+			DiskRandomIOPS:          5000,
+			NetworkLatencyBaseMs:    50,
+			NetworkDownloadMbps:     100,
+			NetworkUploadMbps:       50,
+		}
 	}
 }
 
@@ -81,12 +142,8 @@ func (sc *ScoreCalculator) CalculateMemoryScore(result *models.TestResult) float
 		return 0.0
 	}
 
-	// 基准值：读取5000 MB/s，写入3000 MB/s为60分
-	readBase := 5000.0
-	writeBase := 3000.0
-
-	readScore := (readSpeed / readBase) * 50.0
-	writeScore := (writeSpeed / writeBase) * 50.0
+	readScore := (readSpeed / sc.profile.MemoryReadBaseMBps) * 50.0
+	writeScore := (writeSpeed / sc.profile.MemoryWriteBaseMBps) * 50.0
 
 	score := readScore + writeScore
 
@@ -117,14 +174,9 @@ func (sc *ScoreCalculator) CalculateDiskScore(result *models.TestResult) float64
 		return 0.0
 	}
 
-	// 基准值：顺序读500 MB/s，顺序写300 MB/s，随机IOPS 5000为60分
-	seqReadBase := 500.0
-	seqWriteBase := 300.0
-	iopsBase := 5000.0
-
-	seqReadScore := (seqRead / seqReadBase) * 35.0
-	seqWriteScore := (seqWrite / seqWriteBase) * 35.0
-	iopsScore := (float64(randomIOPS) / iopsBase) * 30.0
+	seqReadScore := (seqRead / sc.profile.DiskSequentialReadMBps) * 35.0
+	seqWriteScore := (seqWrite / sc.profile.DiskSequentialWriteMBps) * 35.0
+	iopsScore := (float64(randomIOPS) / sc.profile.DiskRandomIOPS) * 30.0
 
 	score := seqReadScore + seqWriteScore + iopsScore
 
@@ -159,22 +211,17 @@ func (sc *ScoreCalculator) CalculateNetworkScore(result *models.TestResult) floa
 		return 0.0
 	}
 
-	// 延迟评分：延迟越低分数越高（50ms为60分，反比例）
-	latencyBase := 50.0
-	latencyScore := (latencyBase / avgLatency) * 30.0
+	latencyScore := (sc.profile.NetworkLatencyBaseMs / avgLatency) * 30.0
 	if latencyScore > 30.0 {
 		latencyScore = 30.0
 	}
 
-	// 下载速度评分：100 Mbps为60分
-	downloadBase := 100.0
-	downloadScore := (downloadSpeed / downloadBase) * 40.0
+	downloadScore := (downloadSpeed / sc.profile.NetworkDownloadMbps) * 40.0
 
 	score := latencyScore + downloadScore
 	maxScore := 70.0
 	if ok3 && uploadSpeed >= 0 && !uploadEstimated {
-		uploadBase := 50.0
-		uploadScore := (uploadSpeed / uploadBase) * 30.0
+		uploadScore := (uploadSpeed / sc.profile.NetworkUploadMbps) * 30.0
 		score += uploadScore
 		maxScore = 100.0
 	}
@@ -266,10 +313,11 @@ func (sc *ScoreCalculator) BuildScoreBreakdown(results *models.TestResults, over
 	}
 
 	breakdown := map[string]interface{}{
-		"cpu":     sc.buildCPUScoreBreakdown(results.CPUResult),
-		"memory":  sc.buildMemoryScoreBreakdown(results.MemoryResult),
-		"disk":    sc.buildDiskScoreBreakdown(results.DiskResult),
-		"network": sc.buildNetworkScoreBreakdown(results.NetworkResult),
+		"score_profile": sc.profile.Name,
+		"cpu":           sc.buildCPUScoreBreakdown(results.CPUResult),
+		"memory":        sc.buildMemoryScoreBreakdown(results.MemoryResult),
+		"disk":          sc.buildDiskScoreBreakdown(results.DiskResult),
+		"network":       sc.buildNetworkScoreBreakdown(results.NetworkResult),
 	}
 
 	activeWeight := 0.0
@@ -298,6 +346,7 @@ func (sc *ScoreCalculator) BuildScoreBreakdown(results *models.TestResults, over
 		"score":         totalScore,
 		"active_weight": activeWeight,
 		"weighted_sum":  weightedSum,
+		"score_profile": sc.profile.Name,
 		"formula":       "总分 = 已成功测试分项加权和 / 已成功测试权重和。",
 	}
 	return breakdown
@@ -322,17 +371,17 @@ func (sc *ScoreCalculator) buildCPUScoreBreakdown(result *models.TestResult) map
 
 func (sc *ScoreCalculator) buildMemoryScoreBreakdown(result *models.TestResult) map[string]interface{} {
 	score := sc.CalculateMemoryScore(result)
-	item := baseBreakdown(result, score, "内存分数 = 读取相对 5000 MB/s 最高 50 分 + 写入相对 3000 MB/s 最高 50 分。")
-	item["read_base_mbps"] = 5000.0
-	item["write_base_mbps"] = 3000.0
+	item := baseBreakdown(result, score, fmt.Sprintf("内存分数 = 读取相对 %.0f MB/s 最高 50 分 + 写入相对 %.0f MB/s 最高 50 分。", sc.profile.MemoryReadBaseMBps, sc.profile.MemoryWriteBaseMBps))
+	item["read_base_mbps"] = sc.profile.MemoryReadBaseMBps
+	item["write_base_mbps"] = sc.profile.MemoryWriteBaseMBps
 	if result != nil && result.Metrics != nil {
 		if read, ok := getMemoryReadSpeed(result); ok {
 			item["read_speed_mbps"] = read
-			item["read_score"] = clampMax(read/5000.0*50.0, 50.0)
+			item["read_score"] = clampMax(read/sc.profile.MemoryReadBaseMBps*50.0, 50.0)
 		}
 		if write, ok := getMemoryWriteSpeed(result); ok {
 			item["write_speed_mbps"] = write
-			item["write_score"] = clampMax(write/3000.0*50.0, 50.0)
+			item["write_score"] = clampMax(write/sc.profile.MemoryWriteBaseMBps*50.0, 50.0)
 		}
 	}
 	return item
@@ -340,22 +389,22 @@ func (sc *ScoreCalculator) buildMemoryScoreBreakdown(result *models.TestResult) 
 
 func (sc *ScoreCalculator) buildDiskScoreBreakdown(result *models.TestResult) map[string]interface{} {
 	score := sc.CalculateDiskScore(result)
-	item := baseBreakdown(result, score, "磁盘分数 = 顺序读相对 500 MB/s 最高 35 分 + 顺序写相对 300 MB/s 最高 35 分 + 随机 IOPS 相对 5000 最高 30 分。")
-	item["sequential_read_base_mbps"] = 500.0
-	item["sequential_write_base_mbps"] = 300.0
-	item["random_iops_base"] = 5000.0
+	item := baseBreakdown(result, score, fmt.Sprintf("磁盘分数 = 顺序读相对 %.0f MB/s 最高 35 分 + 顺序写相对 %.0f MB/s 最高 35 分 + 随机 IOPS 相对 %.0f 最高 30 分。", sc.profile.DiskSequentialReadMBps, sc.profile.DiskSequentialWriteMBps, sc.profile.DiskRandomIOPS))
+	item["sequential_read_base_mbps"] = sc.profile.DiskSequentialReadMBps
+	item["sequential_write_base_mbps"] = sc.profile.DiskSequentialWriteMBps
+	item["random_iops_base"] = sc.profile.DiskRandomIOPS
 	if result != nil && result.Metrics != nil {
 		if read, ok := getDiskReadSpeed(result); ok {
 			item["sequential_read_mbps"] = read
-			item["sequential_read_score"] = clampMax(read/500.0*35.0, 35.0)
+			item["sequential_read_score"] = clampMax(read/sc.profile.DiskSequentialReadMBps*35.0, 35.0)
 		}
 		if write, ok := getDiskWriteSpeed(result); ok {
 			item["sequential_write_mbps"] = write
-			item["sequential_write_score"] = clampMax(write/300.0*35.0, 35.0)
+			item["sequential_write_score"] = clampMax(write/sc.profile.DiskSequentialWriteMBps*35.0, 35.0)
 		}
 		if iops, ok := getDiskRandomIOPS(result); ok {
 			item["random_iops"] = iops
-			item["random_iops_score"] = clampMax(float64(iops)/5000.0*30.0, 30.0)
+			item["random_iops_score"] = clampMax(float64(iops)/sc.profile.DiskRandomIOPS*30.0, 30.0)
 		}
 	}
 	return item
@@ -364,23 +413,23 @@ func (sc *ScoreCalculator) buildDiskScoreBreakdown(result *models.TestResult) ma
 func (sc *ScoreCalculator) buildNetworkScoreBreakdown(result *models.TestResult) map[string]interface{} {
 	score := sc.CalculateNetworkScore(result)
 	item := baseBreakdown(result, score, "网络分数 = 延迟、下载、真实上传归一化计算；估算上传不参与真实上传评分且网络评分上限为 85。")
-	item["latency_base_ms"] = 50.0
-	item["download_base_mbps"] = 100.0
-	item["upload_base_mbps"] = 50.0
+	item["latency_base_ms"] = sc.profile.NetworkLatencyBaseMs
+	item["download_base_mbps"] = sc.profile.NetworkDownloadMbps
+	item["upload_base_mbps"] = sc.profile.NetworkUploadMbps
 	if result != nil && result.Metrics != nil {
 		if latency, ok := getNetworkLatency(result); ok {
 			item["average_latency_ms"] = latency
 			if latency > 0 {
-				item["latency_score"] = minFloat(50.0/latency*30.0, 30.0)
+				item["latency_score"] = minFloat(sc.profile.NetworkLatencyBaseMs/latency*30.0, 30.0)
 			}
 		}
 		if download, ok := getNetworkDownloadSpeed(result); ok {
 			item["download_speed_mbps"] = download
-			item["download_score"] = download / 100.0 * 40.0
+			item["download_score"] = download / sc.profile.NetworkDownloadMbps * 40.0
 		}
 		if upload, ok := getNetworkUploadSpeed(result); ok {
 			item["upload_speed_mbps"] = upload
-			item["upload_score"] = upload / 50.0 * 30.0
+			item["upload_score"] = upload / sc.profile.NetworkUploadMbps * 30.0
 		}
 		item["upload_estimated"] = isNetworkUploadEstimated(result)
 	}

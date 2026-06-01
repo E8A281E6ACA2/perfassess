@@ -314,6 +314,37 @@ func TestCalculateOverallScoreUsesCustomWeights(t *testing.T) {
 	}
 }
 
+func TestScoreProfileChangesMetricBaselines(t *testing.T) {
+	result := &models.TestResult{
+		TestName: "内存性能测试",
+		Status:   "success",
+		Metrics: map[string]interface{}{
+			"read_speed_mbps":  3000.0,
+			"write_speed_mbps": 2000.0,
+		},
+	}
+
+	vps := NewScoreCalculatorWithWeightsAndProfile(map[string]float64{
+		"cpu":     0.30,
+		"memory":  0.20,
+		"disk":    0.25,
+		"network": 0.25,
+	}, "vps")
+	server := NewScoreCalculatorWithWeightsAndProfile(map[string]float64{
+		"cpu":     0.30,
+		"memory":  0.20,
+		"disk":    0.25,
+		"network": 0.25,
+	}, "server")
+
+	if vps.CalculateMemoryScore(result) != 100.0 {
+		t.Fatalf("expected vps memory score 100, got %.2f", vps.CalculateMemoryScore(result))
+	}
+	if server.CalculateMemoryScore(result) <= 0 || server.CalculateMemoryScore(result) >= 100 {
+		t.Fatalf("expected server score to be lower but positive, got %.2f", server.CalculateMemoryScore(result))
+	}
+}
+
 func TestBuildScoreBreakdownIncludesFormulaAndActiveWeight(t *testing.T) {
 	calculator := NewScoreCalculator()
 	results := &models.TestResults{
@@ -345,6 +376,9 @@ func TestBuildScoreBreakdownIncludesFormulaAndActiveWeight(t *testing.T) {
 	}
 	if normalized["active_weight"] != 0.20 {
 		t.Fatalf("expected active weight 0.20, got %#v", normalized["active_weight"])
+	}
+	if breakdown["score_profile"] != "server" {
+		t.Fatalf("expected server score profile, got %#v", breakdown["score_profile"])
 	}
 }
 

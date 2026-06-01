@@ -1,6 +1,6 @@
 # 报告 JSON Schema 说明
 
-本文档记录 `--output-format json` 的核心字段契约。当前 schema 以兼容现有报告为前提，不强制使用 JSON Schema draft 文件格式。
+本文档记录 `--output-format json` 的核心字段契约。机器可读 JSON Schema 见 [docs/report.schema.json](report.schema.json)，CI 会校验示例报告和生成报告是否符合该 schema。
 
 示例报告见 [docs/examples/report-json-sample.json](examples/report-json-sample.json)。
 
@@ -102,6 +102,7 @@
 - `quality_notes`: 质量提示列表
 - `benchmark_profile`: 本次评测档位和实际后端组合
 - `confidence_level`: 本次报告置信等级和原因
+- `score_profile`: 评分基准档位，当前为 `vps`、`server` 或 `workstation`
 - `score_breakdown`: 评分计算依据和分项权重
 
 ## Benchmark Profile
@@ -126,6 +127,7 @@
 
 ## Score Breakdown
 
+- `score_profile`: 本次评分使用的基准档位
 - `cpu`: CPU 评分依据
 - `memory`: 内存评分依据
 - `disk`: 磁盘评分依据
@@ -140,6 +142,8 @@
 - `weight`: 该分项权重
 - `formula`: 计算说明
 - 原始指标字段，例如 `read_speed_mbps`、`random_iops`、`download_speed_mbps`
+- 基准线字段，例如 `read_base_mbps`、`sequential_read_base_mbps`、`download_base_mbps`
+- 基准字段，例如 `read_base_mbps`、`random_iops_base`、`download_base_mbps`
 
 总分规则：
 

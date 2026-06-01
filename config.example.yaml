@@ -14,6 +14,10 @@ score_weights:
   disk: 0.25
   network: 0.25
 
+# 评分基准档位：vps, server, workstation
+# vps 更适合小型云服务器；server 为默认通用服务器基准；workstation 更适合本地工作站/高性能桌面。
+score_profile: server
+
 # 数据采集间隔（秒）
 collection_interval: 60
 

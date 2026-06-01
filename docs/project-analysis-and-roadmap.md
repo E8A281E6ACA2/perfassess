@@ -246,7 +246,9 @@
 当前已落地的评分解释方向：
 
 - 新增 `score_weights` 配置和 `--score-weights` CLI 参数
+- 新增 `score_profile` 配置和 `--score-profile` CLI 参数，当前支持 `vps`、`server`、`workstation`
 - 权重包括 `cpu`、`memory`、`disk`、`network`，未执行或失败的测试不参与总分归一化
+- 评分基准线从硬编码迁移到 profile，内存、磁盘、网络会按不同设备场景使用不同基准
 - 报告摘要新增 `score_breakdown`
 - `score_breakdown` 记录每个分项的原始指标、基准线、子项分、权重和计算说明
 - 文本报告会展示简明评分说明，JSON 报告保留结构化计算依据
@@ -275,6 +277,9 @@
 - CI 已补充 CLI help、依赖检查和 JSON 示例报告契约 smoke
 - 已建立文本报告快照测试，防止核心输出格式无意回归
 - 已建立 JSON 示例报告契约测试，保护 `benchmark_profile`、`confidence_level` 和 `score_breakdown`
+- 已新增机器可读 `docs/report.schema.json`，并用测试校验示例报告与生成报告
+- CI 和 Release workflow 已改为读取 `go.mod` 中的 Go 版本，避免发布构建环境与源码版本脱节
+- README 与安装脚本已修正为当前 GitHub 仓库地址，避免一键安装继续指向旧仓库或占位地址
 - 报告摘要已增加 `quality_notes`，用于记录估算、降级、未执行和波动风险
 - 输出层已支持 `--output-format json`，便于自动化采集和批量对比
 - 已增加 JSON 示例契约测试和文本报告快照测试，防止报告字段、评分说明和质量提示静默回归

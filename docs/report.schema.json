@@ -1,0 +1,603 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/E8A281E6ACA2/high-performance-multi-terminal-automated-performance-evaluation-system/docs/report.schema.json",
+  "title": "Performance Assessment Report",
+  "type": "object",
+  "required": [
+    "session_id",
+    "timestamp",
+    "system_info",
+    "test_results",
+    "summary"
+  ],
+  "properties": {
+    "session_id": {
+      "type": "string"
+    },
+    "timestamp": {
+      "type": "string"
+    },
+    "system_info": {
+      "type": "object",
+      "required": [
+        "cpu",
+        "memory",
+        "disk",
+        "os"
+      ],
+      "properties": {
+        "cpu": {
+          "type": "object",
+          "required": [
+            "model",
+            "cores",
+            "threads",
+            "frequency_mhz"
+          ],
+          "properties": {
+            "model": {
+              "type": "string"
+            },
+            "cores": {
+              "type": "number"
+            },
+            "threads": {
+              "type": "number"
+            },
+            "frequency_mhz": {
+              "type": "number"
+            }
+          }
+        },
+        "memory": {
+          "type": "object",
+          "required": [
+            "total_mb",
+            "available_mb"
+          ],
+          "properties": {
+            "total_mb": {
+              "type": "number"
+            },
+            "available_mb": {
+              "type": "number"
+            },
+            "memory_type": {
+              "type": "string"
+            }
+          }
+        },
+        "disk": {
+          "type": "object",
+          "required": [
+            "total_gb",
+            "available_gb"
+          ],
+          "properties": {
+            "total_gb": {
+              "type": "number"
+            },
+            "available_gb": {
+              "type": "number"
+            },
+            "disk_type": {
+              "type": "string"
+            }
+          }
+        },
+        "os": {
+          "type": "object",
+          "required": [
+            "name",
+            "version",
+            "architecture"
+          ],
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "version": {
+              "type": "string"
+            },
+            "architecture": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "test_results": {
+      "type": "object",
+      "properties": {
+        "cpu_result": {
+          "type": "object",
+          "required": [
+            "test_name",
+            "status",
+            "duration_seconds",
+            "metrics"
+          ],
+          "properties": {
+            "test_name": {
+              "type": "string"
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "success",
+                "failed",
+                "skipped"
+              ]
+            },
+            "duration_seconds": {
+              "type": "number"
+            },
+            "metrics": {
+              "type": "object",
+              "required": [
+                "backend",
+                "single_core_score",
+                "multi_core_score",
+                "total_score",
+                "cpu_cores"
+              ],
+              "properties": {
+                "backend": {
+                  "type": "string",
+                  "enum": [
+                    "builtin",
+                    "sysbench"
+                  ]
+                },
+                "single_core_source": {
+                  "type": "string"
+                },
+                "single_core_score": {
+                  "type": "number"
+                },
+                "single_core_events_per_sec": {
+                  "type": "number"
+                },
+                "multi_core_source": {
+                  "type": "string"
+                },
+                "multi_core_score": {
+                  "type": "number"
+                },
+                "multi_core_events_per_sec": {
+                  "type": "number"
+                },
+                "total_score": {
+                  "type": "number"
+                },
+                "cpu_cores": {
+                  "type": "number"
+                }
+              }
+            }
+          }
+        },
+        "memory_result": {
+          "type": "object",
+          "required": [
+            "test_name",
+            "status",
+            "duration_seconds",
+            "metrics"
+          ],
+          "properties": {
+            "test_name": {
+              "type": "string"
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "success",
+                "failed",
+                "skipped"
+              ]
+            },
+            "duration_seconds": {
+              "type": "number"
+            },
+            "metrics": {
+              "type": "object",
+              "required": [
+                "backend",
+                "read_speed_mbps",
+                "write_speed_mbps",
+                "score"
+              ],
+              "properties": {
+                "backend": {
+                  "type": "string",
+                  "enum": [
+                    "builtin",
+                    "sysbench"
+                  ]
+                },
+                "read_speed_mbps": {
+                  "type": "number"
+                },
+                "read_speed_source": {
+                  "type": "string"
+                },
+                "write_speed_mbps": {
+                  "type": "number"
+                },
+                "write_speed_source": {
+                  "type": "string"
+                },
+                "score": {
+                  "type": "number"
+                },
+                "test_size_mb": {
+                  "type": "number"
+                }
+              }
+            }
+          }
+        },
+        "disk_result": {
+          "type": "object",
+          "required": [
+            "test_name",
+            "status",
+            "duration_seconds",
+            "metrics"
+          ],
+          "properties": {
+            "test_name": {
+              "type": "string"
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "success",
+                "failed",
+                "skipped"
+              ]
+            },
+            "duration_seconds": {
+              "type": "number"
+            },
+            "metrics": {
+              "type": "object",
+              "required": [
+                "backend",
+                "random_iops",
+                "score"
+              ],
+              "properties": {
+                "backend": {
+                  "type": "string",
+                  "enum": [
+                    "builtin",
+                    "fio"
+                  ]
+                },
+                "sequential_read_mbps": {
+                  "type": "number"
+                },
+                "read_speed_mbps": {
+                  "type": "number"
+                },
+                "sequential_read_source": {
+                  "type": "string"
+                },
+                "sequential_write_mbps": {
+                  "type": "number"
+                },
+                "write_speed_mbps": {
+                  "type": "number"
+                },
+                "sequential_write_source": {
+                  "type": "string"
+                },
+                "random_iops": {
+                  "type": "number"
+                },
+                "random_iops_source": {
+                  "type": "string"
+                },
+                "random_read_iops": {
+                  "type": "number"
+                },
+                "random_write_iops": {
+                  "type": "number"
+                },
+                "random_read_latency_p95_ms": {
+                  "type": "number"
+                },
+                "random_write_latency_p95_ms": {
+                  "type": "number"
+                },
+                "score": {
+                  "type": "number"
+                }
+              }
+            }
+          }
+        },
+        "network_result": {
+          "type": "object",
+          "required": [
+            "test_name",
+            "status",
+            "duration_seconds",
+            "metrics"
+          ],
+          "properties": {
+            "test_name": {
+              "type": "string"
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "success",
+                "failed",
+                "skipped"
+              ]
+            },
+            "duration_seconds": {
+              "type": "number"
+            },
+            "metrics": {
+              "type": "object",
+              "required": [
+                "backend",
+                "average_latency_ms",
+                "download_speed_mbps",
+                "upload_speed_mbps",
+                "upload_speed_estimated",
+                "score"
+              ],
+              "properties": {
+                "backend": {
+                  "type": "string",
+                  "enum": [
+                    "builtin",
+                    "iperf3"
+                  ]
+                },
+                "backend_server": {
+                  "type": "string"
+                },
+                "average_latency_ms": {
+                  "type": "number"
+                },
+                "latency_source": {
+                  "type": "string"
+                },
+                "download_speed_mbps": {
+                  "type": "number"
+                },
+                "download_speed_source": {
+                  "type": "string"
+                },
+                "upload_speed_mbps": {
+                  "type": "number"
+                },
+                "upload_speed_source": {
+                  "type": "string"
+                },
+                "upload_speed_estimated": {
+                  "type": "boolean"
+                },
+                "network_error": {
+                  "type": "string"
+                },
+                "score": {
+                  "type": "number"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "required": [
+        "total_score",
+        "grade",
+        "tests_success",
+        "tests_failed",
+        "tests_skipped",
+        "quality_notes",
+        "benchmark_profile",
+        "confidence_level",
+        "score_profile",
+        "score_breakdown"
+      ],
+      "properties": {
+        "total_score": {
+          "type": "number"
+        },
+        "grade": {
+          "type": "string"
+        },
+        "tests_success": {
+          "type": "number"
+        },
+        "tests_failed": {
+          "type": "number"
+        },
+        "tests_skipped": {
+          "type": "number"
+        },
+        "performance_note": {
+          "type": "string"
+        },
+        "quality_notes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "benchmark_profile": {
+          "type": "object",
+          "required": [
+            "name",
+            "cpu_backend",
+            "memory_backend",
+            "disk_backend",
+            "network_backend",
+            "mainstream_count"
+          ],
+          "properties": {
+            "name": {
+              "type": "string",
+              "enum": [
+                "quick",
+                "default",
+                "full",
+                "full_iperf3",
+                "custom"
+              ]
+            },
+            "cpu_backend": {
+              "type": "string"
+            },
+            "memory_backend": {
+              "type": "string"
+            },
+            "disk_backend": {
+              "type": "string"
+            },
+            "network_backend": {
+              "type": "string"
+            },
+            "mainstream_count": {
+              "type": "number"
+            }
+          }
+        },
+        "confidence_level": {
+          "type": "object",
+          "required": [
+            "level",
+            "reasons"
+          ],
+          "properties": {
+            "level": {
+              "type": "string",
+              "enum": [
+                "high",
+                "medium",
+                "low"
+              ]
+            },
+            "reasons": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "score_profile": {
+          "type": "string",
+          "enum": [
+            "vps",
+            "server",
+            "workstation"
+          ]
+        },
+        "score_breakdown": {
+          "type": "object",
+          "required": [
+            "score_profile",
+            "cpu",
+            "memory",
+            "disk",
+            "network",
+            "normalized_total"
+          ],
+          "properties": {
+            "score_profile": {
+              "type": "string",
+              "enum": [
+                "vps",
+                "server",
+                "workstation"
+              ]
+            },
+            "cpu": {
+              "$ref": "#/$defs/score_item"
+            },
+            "memory": {
+              "$ref": "#/$defs/score_item"
+            },
+            "disk": {
+              "$ref": "#/$defs/score_item"
+            },
+            "network": {
+              "$ref": "#/$defs/score_item"
+            },
+            "normalized_total": {
+              "type": "object",
+              "required": [
+                "score",
+                "active_weight",
+                "weighted_sum",
+                "formula"
+              ],
+              "properties": {
+                "score": {
+                  "type": "number"
+                },
+                "active_weight": {
+                  "type": "number"
+                },
+                "weighted_sum": {
+                  "type": "number"
+                },
+                "formula": {
+                  "type": "string"
+                },
+                "score_profile": {
+                  "type": "string",
+                  "enum": [
+                    "vps",
+                    "server",
+                    "workstation"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "score_item": {
+      "type": "object",
+      "required": [
+        "active",
+        "status",
+        "score",
+        "weight",
+        "formula"
+      ],
+      "properties": {
+        "active": {
+          "type": "boolean"
+        },
+        "status": {
+          "type": "string"
+        },
+        "score": {
+          "type": "number"
+        },
+        "weight": {
+          "type": "number"
+        },
+        "formula": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

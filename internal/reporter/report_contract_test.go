@@ -2,6 +2,7 @@ package reporter
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -16,10 +17,21 @@ func TestReportJSONSampleContract(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to read sample report: %v", err)
 	}
+	schemaContent, err := os.ReadFile(filepath.Join("..", "..", "docs", "report.schema.json"))
+	if err != nil {
+		t.Fatalf("failed to read report schema: %v", err)
+	}
 
 	var sample map[string]interface{}
 	if err := json.Unmarshal(content, &sample); err != nil {
 		t.Fatalf("sample report is not valid JSON: %v", err)
+	}
+	var schema map[string]interface{}
+	if err := json.Unmarshal(schemaContent, &schema); err != nil {
+		t.Fatalf("report schema is not valid JSON: %v", err)
+	}
+	if err := validateJSONSchemaSubset(sample, schema, schema, "$"); err != nil {
+		t.Fatalf("sample report does not match schema: %v", err)
 	}
 
 	requiredTopLevel := []string{"session_id", "timestamp", "system_info", "test_results", "summary"}
@@ -34,6 +46,9 @@ func TestReportJSONSampleContract(t *testing.T) {
 		if _, ok := summary[key]; !ok {
 			t.Fatalf("sample summary missing key %q", key)
 		}
+	}
+	if summary["score_profile"] != "server" {
+		t.Fatalf("expected sample score profile server, got %#v", summary["score_profile"])
 	}
 
 	profile := objectAt(t, summary, "benchmark_profile")
@@ -53,13 +68,48 @@ func TestReportJSONSampleContract(t *testing.T) {
 	}
 }
 
-func TestFormatReportSnapshot(t *testing.T) {
+func TestGeneratedReportJSONMatchesSchema(t *testing.T) {
 	generator := NewReportGeneratorWithWeights(map[string]float64{
 		"cpu":     0.30,
 		"memory":  0.20,
 		"disk":    0.25,
 		"network": 0.25,
 	})
+	report, err := generator.GenerateReport("schema_session", snapshotSystemInfo(), snapshotTestResults())
+	if err != nil {
+		t.Fatalf("expected report generation to succeed, got %v", err)
+	}
+	report.Timestamp = time.Date(2026, 6, 1, 10, 0, 0, 0, time.UTC)
+
+	content, err := json.Marshal(report)
+	if err != nil {
+		t.Fatalf("failed to marshal report: %v", err)
+	}
+	var actual map[string]interface{}
+	if err := json.Unmarshal(content, &actual); err != nil {
+		t.Fatalf("generated report is not valid JSON: %v", err)
+	}
+
+	schemaContent, err := os.ReadFile(filepath.Join("..", "..", "docs", "report.schema.json"))
+	if err != nil {
+		t.Fatalf("failed to read report schema: %v", err)
+	}
+	var schema map[string]interface{}
+	if err := json.Unmarshal(schemaContent, &schema); err != nil {
+		t.Fatalf("report schema is not valid JSON: %v", err)
+	}
+	if err := validateJSONSchemaSubset(actual, schema, schema, "$"); err != nil {
+		t.Fatalf("generated report does not match schema: %v", err)
+	}
+}
+
+func TestFormatReportSnapshot(t *testing.T) {
+	generator := NewReportGeneratorWithWeightsAndProfile(map[string]float64{
+		"cpu":     0.30,
+		"memory":  0.20,
+		"disk":    0.25,
+		"network": 0.25,
+	}, "server")
 	report, err := generator.GenerateReport("snapshot_session", snapshotSystemInfo(), snapshotTestResults())
 	if err != nil {
 		t.Fatalf("expected report generation to succeed, got %v", err)
@@ -90,6 +140,126 @@ func objectAt(t *testing.T, source map[string]interface{}, key string) map[strin
 		t.Fatalf("expected %q to be object, got %T", key, value)
 	}
 	return object
+}
+
+func validateJSONSchemaSubset(value interface{}, schema map[string]interface{}, root map[string]interface{}, path string) error {
+	if ref, ok := schema["$ref"].(string); ok {
+		refSchema, err := resolveLocalSchemaRef(root, ref)
+		if err != nil {
+			return fmt.Errorf("%s: %w", path, err)
+		}
+		return validateJSONSchemaSubset(value, refSchema, root, path)
+	}
+
+	if schemaType, ok := schema["type"].(string); ok {
+		if err := validateJSONType(value, schemaType, path); err != nil {
+			return err
+		}
+	}
+
+	if enumValues, ok := schema["enum"].([]interface{}); ok {
+		matched := false
+		for _, allowed := range enumValues {
+			if value == allowed {
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			return fmt.Errorf("%s: value %#v is not in enum %#v", path, value, enumValues)
+		}
+	}
+
+	if objectValue, ok := value.(map[string]interface{}); ok {
+		if required, ok := schema["required"].([]interface{}); ok {
+			for _, item := range required {
+				key, ok := item.(string)
+				if !ok {
+					return fmt.Errorf("%s: required entry must be string", path)
+				}
+				if _, exists := objectValue[key]; !exists {
+					return fmt.Errorf("%s: missing required key %q", path, key)
+				}
+			}
+		}
+		if properties, ok := schema["properties"].(map[string]interface{}); ok {
+			for key, propertySchema := range properties {
+				childValue, exists := objectValue[key]
+				if !exists {
+					continue
+				}
+				childSchema, ok := propertySchema.(map[string]interface{})
+				if !ok {
+					return fmt.Errorf("%s.%s: property schema must be object", path, key)
+				}
+				if err := validateJSONSchemaSubset(childValue, childSchema, root, path+"."+key); err != nil {
+					return err
+				}
+			}
+		}
+	}
+
+	if arrayValue, ok := value.([]interface{}); ok {
+		if itemSchema, ok := schema["items"].(map[string]interface{}); ok {
+			for i, item := range arrayValue {
+				if err := validateJSONSchemaSubset(item, itemSchema, root, fmt.Sprintf("%s[%d]", path, i)); err != nil {
+					return err
+				}
+			}
+		}
+	}
+
+	return nil
+}
+
+func validateJSONType(value interface{}, schemaType string, path string) error {
+	switch schemaType {
+	case "object":
+		if _, ok := value.(map[string]interface{}); !ok {
+			return fmt.Errorf("%s: expected object, got %T", path, value)
+		}
+	case "array":
+		if _, ok := value.([]interface{}); !ok {
+			return fmt.Errorf("%s: expected array, got %T", path, value)
+		}
+	case "string":
+		if _, ok := value.(string); !ok {
+			return fmt.Errorf("%s: expected string, got %T", path, value)
+		}
+	case "number":
+		if _, ok := value.(float64); !ok {
+			return fmt.Errorf("%s: expected number, got %T", path, value)
+		}
+	case "boolean":
+		if _, ok := value.(bool); !ok {
+			return fmt.Errorf("%s: expected boolean, got %T", path, value)
+		}
+	default:
+		return fmt.Errorf("%s: unsupported schema type %q", path, schemaType)
+	}
+	return nil
+}
+
+func resolveLocalSchemaRef(root map[string]interface{}, ref string) (map[string]interface{}, error) {
+	if !strings.HasPrefix(ref, "#/") {
+		return nil, fmt.Errorf("unsupported schema ref %q", ref)
+	}
+	current := interface{}(root)
+	for _, part := range strings.Split(strings.TrimPrefix(ref, "#/"), "/") {
+		object, ok := current.(map[string]interface{})
+		if !ok {
+			return nil, fmt.Errorf("schema ref %q crosses non-object", ref)
+		}
+		current, ok = object[part]
+		if !ok {
+			return nil, fmt.Errorf("schema ref %q not found", ref)
+		}
+	}
+	refSchema, ok := current.(map[string]interface{})
+	if !ok {
+		return nil, fmt.Errorf("schema ref %q target is not object", ref)
+	}
+	return refSchema, nil
 }
 
 func snapshotSystemInfo() *models.SystemInfo {

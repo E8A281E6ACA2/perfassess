@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"performance-assessment-system/internal/config"
 	"performance-assessment-system/internal/models"
 )
 
@@ -23,8 +24,12 @@ func NewReportGenerator() *ReportGenerator {
 }
 
 func NewReportGeneratorWithWeights(weights map[string]float64) *ReportGenerator {
+	return NewReportGeneratorWithWeightsAndProfile(weights, config.DefaultScoreProfile)
+}
+
+func NewReportGeneratorWithWeightsAndProfile(weights map[string]float64, profile string) *ReportGenerator {
 	return &ReportGenerator{
-		scoreCalculator: NewScoreCalculatorWithWeights(weights),
+		scoreCalculator: NewScoreCalculatorWithWeightsAndProfile(weights, profile),
 	}
 }
 
@@ -231,9 +236,14 @@ func (rg *ReportGenerator) formatSingleTestResult(testName string, result *model
 			if stddev, ok := getMemoryWriteStdDev(result); ok {
 				sb.WriteString(fmt.Sprintf("  写入波动:     %.2f MB/s stddev\n", stddev))
 			}
-			if score := NewScoreCalculator().CalculateMemoryScore(result); score > 0 {
-				sb.WriteString(fmt.Sprintf("  测试评分:     %.2f\n", score))
-			} else if score, ok := metricFloat64(result.Metrics, "score"); ok {
+			if _, readOK := getMemoryReadSpeed(result); readOK {
+				if _, writeOK := getMemoryWriteSpeed(result); writeOK {
+					score := rg.scoreCalculator.CalculateMemoryScore(result)
+					sb.WriteString(fmt.Sprintf("  测试评分:     %.2f\n", score))
+					break
+				}
+			}
+			if score, ok := metricFloat64(result.Metrics, "score"); ok {
 				sb.WriteString(fmt.Sprintf("  测试评分:     %.2f\n", score))
 			}
 
@@ -261,6 +271,15 @@ func (rg *ReportGenerator) formatSingleTestResult(testName string, result *model
 			}
 			if writeP95, ok := getDiskRandomWriteP95Latency(result); ok {
 				sb.WriteString(fmt.Sprintf("  随机写P95:    %.2f ms\n", writeP95))
+			}
+			if _, readOK := getDiskReadSpeed(result); readOK {
+				if _, writeOK := getDiskWriteSpeed(result); writeOK {
+					if _, iopsOK := getDiskRandomIOPS(result); iopsOK {
+						score := rg.scoreCalculator.CalculateDiskScore(result)
+						sb.WriteString(fmt.Sprintf("  测试评分:     %.2f\n", score))
+						break
+					}
+				}
 			}
 			if score, ok := metricFloat64(result.Metrics, "score"); ok {
 				sb.WriteString(fmt.Sprintf("  测试评分:     %.2f\n", score))
@@ -303,6 +322,13 @@ func (rg *ReportGenerator) formatSingleTestResult(testName string, result *model
 					sb.WriteString("  上传说明:     当前结果为估算值，不参与真实上传评分，网络评分上限为 85\n")
 				}
 			}
+			if _, latencyOK := getNetworkLatency(result); latencyOK {
+				if _, downloadOK := getNetworkDownloadSpeed(result); downloadOK {
+					score := rg.scoreCalculator.CalculateNetworkScore(result)
+					sb.WriteString(fmt.Sprintf("  测试评分:     %.2f\n", score))
+					break
+				}
+			}
 			if score, ok := metricFloat64(result.Metrics, "score"); ok {
 				sb.WriteString(fmt.Sprintf("  测试评分:     %.2f\n", score))
 			}
@@ -335,6 +361,7 @@ func (rg *ReportGenerator) AddSummary(report *models.Report, overallScore *model
 	report.Summary["benchmark_profile"] = rg.buildBenchmarkProfile(report.TestResults)
 	report.Summary["confidence_level"] = rg.buildConfidenceLevel(report.TestResults)
 	report.Summary["score_breakdown"] = rg.scoreCalculator.BuildScoreBreakdown(report.TestResults, overallScore)
+	report.Summary["score_profile"] = rg.scoreCalculator.profile.Name
 
 	// 统计测试执行情况
 	successCount := 0
@@ -656,6 +683,9 @@ func (rg *ReportGenerator) FormatReport(report *models.Report) string {
 	}
 	if confidence, ok := report.Summary["confidence_level"].(map[string]interface{}); ok {
 		sb.WriteString(fmt.Sprintf("置信等级:       %v\n", confidence["level"]))
+	}
+	if profile, ok := report.Summary["score_profile"].(string); ok && profile != "" {
+		sb.WriteString(fmt.Sprintf("评分基准:       %s\n", profile))
 	}
 	if breakdown, ok := report.Summary["score_breakdown"].(map[string]interface{}); ok {
 		sb.WriteString("评分说明:\n")

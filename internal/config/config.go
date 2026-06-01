@@ -9,6 +9,7 @@ const (
 	DefaultMemoryWeight  = 0.20
 	DefaultDiskWeight    = 0.25
 	DefaultNetworkWeight = 0.25
+	DefaultScoreProfile  = "server"
 )
 
 // Config 表示应用程序的配置结构
@@ -28,6 +29,9 @@ type Config struct {
 
 	// ScoreWeights 综合评分权重，键为 cpu/memory/disk/network
 	ScoreWeights map[string]float64 `mapstructure:"score_weights"`
+
+	// ScoreProfile 评分基准档位，可选值: vps, server, workstation
+	ScoreProfile string `mapstructure:"score_profile"`
 
 	// Verbose 是否启用详细输出模式
 	// 启用后会显示更多调试信息
@@ -89,6 +93,7 @@ func DefaultConfig() *Config {
 		Output:             "",
 		OutputFormat:       "text",
 		ScoreWeights:       DefaultScoreWeights(),
+		ScoreProfile:       DefaultScoreProfile,
 		Verbose:            false,
 		EnableRouteTrace:   false,
 		EnableStreaming:    false,
@@ -168,6 +173,13 @@ func (c *Config) Validate() error {
 		return err
 	}
 
+	if !IsValidScoreProfile(c.ScoreProfile) {
+		return &ConfigError{
+			Field:   "score_profile",
+			Message: "无效的评分基准档位: " + c.ScoreProfile,
+		}
+	}
+
 	validCPUBackends := map[string]bool{
 		"builtin":  true,
 		"sysbench": true,
@@ -213,6 +225,15 @@ func (c *Config) Validate() error {
 	}
 
 	return nil
+}
+
+func IsValidScoreProfile(profile string) bool {
+	switch profile {
+	case "vps", "server", "workstation":
+		return true
+	default:
+		return false
+	}
 }
 
 func ValidateScoreWeights(weights map[string]float64) error {

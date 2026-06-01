@@ -11,7 +11,7 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 # 项目信息
-REPO="https://github.com/BinaryResearcher/high-performance-multi-terminal-automated-performance-evaluation-system"
+REPO="E8A281E6ACA2/high-performance-multi-terminal-automated-performance-evaluation-system"
 VERSION="latest"
 BINARY_NAME="perfassess"
 INSTALL_DIR="/usr/local/bin"

@@ -121,6 +121,10 @@ func (c *CLI) setupCommands() {
 	flags.String("score-weights", "",
 		"综合评分权重，如 cpu=0.3,memory=0.2,disk=0.25,network=0.25")
 
+	// --score-profile 参数：指定评分基准档位
+	flags.String("score-profile", config.DefaultScoreProfile,
+		"评分基准档位 (vps,server,workstation)")
+
 	// --verbose 参数：启用详细输出模式
 	flags.BoolP("verbose", "v", false,
 		"启用详细输出模式")
@@ -256,6 +260,11 @@ func (c *CLI) bindFlags(cmd *cobra.Command) error {
 			return err
 		}
 		c.config.ScoreWeights = weights
+	}
+
+	// 绑定 score-profile 参数
+	if scoreProfile, err := flags.GetString("score-profile"); err == nil {
+		c.config.ScoreProfile = scoreProfile
 	}
 
 	// 绑定 verbose 参数
@@ -445,6 +454,9 @@ func (c *CLI) validateFlags() error {
 	if err := config.ValidateScoreWeights(c.config.ScoreWeights); err != nil {
 		return err
 	}
+	if !config.IsValidScoreProfile(c.config.ScoreProfile) {
+		return fmt.Errorf("无效的评分基准档位: %s\n有效的评分基准档位: vps, server, workstation", c.config.ScoreProfile)
+	}
 
 	validCPUBackends := map[string]bool{
 		"builtin":  true,
@@ -501,6 +513,7 @@ func (c *CLI) printWelcome() {
 			c.config.ScoreWeights["disk"],
 			c.config.ScoreWeights["network"],
 		)
+		fmt.Printf("评分基准: %s\n", c.config.ScoreProfile)
 		fmt.Printf("CPU测试后端: %s\n", c.config.CPUBackend)
 		fmt.Printf("内存测试后端: %s\n", c.config.MemoryBackend)
 		fmt.Printf("磁盘测试后端: %s\n", c.config.DiskBackend)

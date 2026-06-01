@@ -109,23 +109,23 @@ make build
 
 **Linux / macOS**:
 ```bash
-curl -fsSL https://raw.githubusercontent.com/BinaryResearcher/high-performance-multi-terminal-automated-performance-evaluation-system/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/E8A281E6ACA2/high-performance-multi-terminal-automated-performance-evaluation-system/main/install.sh | bash
 ```
 
 或使用 wget:
 ```bash
-wget -qO- https://raw.githubusercontent.com/你的用户名/项目名/main/install.sh | bash
+wget -qO- https://raw.githubusercontent.com/E8A281E6ACA2/high-performance-multi-terminal-automated-performance-evaluation-system/main/install.sh | bash
 ```
 
 **Windows (PowerShell)**:
 ```powershell
 # 下载最新版本
-Invoke-WebRequest -Uri "https://github.com/你的用户名/项目名/releases/latest/download/perfassess.exe" -OutFile "perfassess.exe"
+Invoke-WebRequest -Uri "https://github.com/E8A281E6ACA2/high-performance-multi-terminal-automated-performance-evaluation-system/releases/latest/download/perfassess.exe" -OutFile "perfassess.exe"
 ```
 
 ### 📦 方式二：下载预编译二进制文件
 
-从 [Releases 页面](https://github.com/你的用户名/项目名/releases) 下载对应平台的文件：
+从 [Releases 页面](https://github.com/E8A281E6ACA2/high-performance-multi-terminal-automated-performance-evaluation-system/releases) 下载对应平台的文件：
 
 | 平台 | 文件名 |
 |------|--------|
@@ -150,12 +150,12 @@ perfassess --help
 
 ### 🔧 方式三：从源码构建
 
-确保已安装 Go 1.21 或更高版本。
+确保已安装 Go 1.25.3 或更高版本。
 
 ```bash
 # 克隆仓库
-git clone https://github.com/你的用户名/项目名.git
-cd 项目名
+git clone https://github.com/E8A281E6ACA2/high-performance-multi-terminal-automated-performance-evaluation-system.git
+cd high-performance-multi-terminal-automated-performance-evaluation-system
 
 # 下载依赖
 make deps
@@ -187,7 +187,7 @@ make install
 
 ```bash
 # 使用卸载脚本
-curl -fsSL https://raw.githubusercontent.com/你的用户名/项目名/main/uninstall.sh | bash
+curl -fsSL https://raw.githubusercontent.com/E8A281E6ACA2/high-performance-multi-terminal-automated-performance-evaluation-system/main/uninstall.sh | bash
 
 # 或手动删除
 sudo rm /usr/local/bin/perfassess
@@ -347,6 +347,9 @@ make run
 # 自定义综合评分权重
 ./build/perfassess -b all --score-weights cpu=0.4,memory=0.2,disk=0.2,network=0.2
 
+# 选择评分基准档位（vps/server/workstation，默认 server）
+./build/perfassess -b all --score-profile vps
+
 # 详细输出模式
 ./build/perfassess -b all -v
 
@@ -370,6 +373,7 @@ Flags:
   -o, --output string        指定输出文件路径（不指定则只输出到控制台）
       --output-format string 指定输出格式 (text,json) (default "text")
       --score-weights string 综合评分权重，如 cpu=0.3,memory=0.2,disk=0.25,network=0.25
+      --score-profile string 评分基准档位 (vps,server,workstation) (default "server")
   -v, --verbose              启用详细输出模式
       --log-level string     设置日志级别 (debug,info,warn,error) (default "info")
       --route-trace          启用路由追踪功能
@@ -595,7 +599,7 @@ make lint
 
 ## 技术栈
 
-- **语言**: Go 1.21+
+- **语言**: Go 1.25.3+
 - **CLI 框架**: [Cobra](https://github.com/spf13/cobra)
 - **日志库**: [Zap](https://github.com/uber-go/zap)
 - **系统信息**: [gopsutil](https://github.com/shirou/gopsutil)
@@ -630,6 +634,10 @@ make lint
 - 内存: 20%
 - 磁盘: 25%
 - 网络: 25%
+
+### 评分基准档位
+
+默认使用 `server` 基准。可以通过 `--score-profile vps|server|workstation` 切换不同设备类型的内存、磁盘和网络基准线，避免 VPS、通用服务器和工作站使用同一套阈值导致评分解释失真。
 
 ### 性能等级
 
@@ -772,6 +780,7 @@ A: 使用 `--port` 参数指定其他端口：
 | `--web` | - | Web 报告 | `--web` |
 | `--port` | - | Web 端口 | `--port 9090` |
 | `--score-weights` | - | 综合评分权重 | `--score-weights cpu=0.4,memory=0.2,disk=0.2,network=0.2` |
+| `--score-profile` | - | 评分基准档位 | `--score-profile vps` |
 | `--cpu-backend` | - | CPU 测试后端 | `--cpu-backend sysbench` |
 | `--memory-backend` | - | 内存测试后端 | `--memory-backend sysbench` |
 | `--disk-backend` | - | 磁盘测试后端 | `--disk-backend fio` |

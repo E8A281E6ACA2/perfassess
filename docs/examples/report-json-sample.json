@@ -51,7 +51,7 @@
         "read_speed_source": "sysbench",
         "write_speed_mbps": 2800,
         "write_speed_source": "sysbench",
-        "score": 33.5,
+        "score": 78.67,
         "test_size_mb": 1024
       }
     },
@@ -71,7 +71,7 @@
         "random_write_iops": 5000,
         "random_read_latency_p95_ms": 1.25,
         "random_write_latency_p95_ms": 2.5,
-        "score": 95
+        "score": 100
       }
     },
     "network_result": {
@@ -93,8 +93,8 @@
     }
   },
   "summary": {
-    "total_score": 79.6,
-    "grade": "良好",
+    "total_score": 92.13,
+    "grade": "优秀",
     "tests_success": 4,
     "tests_failed": 0,
     "tests_skipped": 0,
@@ -115,7 +115,9 @@
         "核心测试均使用主流或真实测量路径。"
       ]
     },
+    "score_profile": "server",
     "score_breakdown": {
+      "score_profile": "server",
       "cpu": {
         "active": true,
         "status": "success",
@@ -129,7 +131,7 @@
       "memory": {
         "active": true,
         "status": "success",
-        "score": 33.5,
+        "score": 78.67,
         "weight": 0.2,
         "formula": "内存分数 = 读取相对 5000 MB/s 最高 50 分 + 写入相对 3000 MB/s 最高 50 分。",
         "read_speed_mbps": 3200,
@@ -138,7 +140,7 @@
       "disk": {
         "active": true,
         "status": "success",
-        "score": 95,
+        "score": 100,
         "weight": 0.25,
         "formula": "磁盘分数 = 顺序读相对 500 MB/s 最高 35 分 + 顺序写相对 300 MB/s 最高 35 分 + 随机 IOPS 相对 5000 最高 30 分。"
       },
@@ -150,9 +152,10 @@
         "formula": "网络分数 = 延迟、下载、真实上传归一化计算；估算上传不参与真实上传评分且网络评分上限为 85。"
       },
       "normalized_total": {
-        "score": 79.6,
+        "score": 92.13,
         "active_weight": 1,
-        "weighted_sum": 79.6,
+        "weighted_sum": 92.13,
+        "score_profile": "server",
         "formula": "总分 = 已成功测试分项加权和 / 已成功测试权重和。"
       }
     }

@@ -17,6 +17,9 @@ func TestDefaultConfigUsesBuiltinNetworkBackend(t *testing.T) {
 	if cfg.ScoreWeights["cpu"] != DefaultCPUWeight || cfg.ScoreWeights["network"] != DefaultNetworkWeight {
 		t.Fatalf("expected default score weights, got %#v", cfg.ScoreWeights)
 	}
+	if cfg.ScoreProfile != DefaultScoreProfile {
+		t.Fatalf("expected default score profile %q, got %q", DefaultScoreProfile, cfg.ScoreProfile)
+	}
 	if cfg.CPUBackend != "builtin" {
 		t.Fatalf("expected default cpu backend builtin, got %q", cfg.CPUBackend)
 	}
@@ -65,6 +68,35 @@ func TestValidateRejectsNegativeScoreWeight(t *testing.T) {
 	}
 	if configErr.Field != "score_weights" {
 		t.Fatalf("expected field score_weights, got %q", configErr.Field)
+	}
+}
+
+func TestValidateRejectsUnknownScoreProfile(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.ScoreProfile = "unknown"
+
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("expected invalid score profile to fail validation")
+	}
+
+	configErr, ok := err.(*ConfigError)
+	if !ok {
+		t.Fatalf("expected ConfigError, got %T", err)
+	}
+	if configErr.Field != "score_profile" {
+		t.Fatalf("expected field score_profile, got %q", configErr.Field)
+	}
+}
+
+func TestValidateAcceptsKnownScoreProfiles(t *testing.T) {
+	for _, profile := range []string{"vps", "server", "workstation"} {
+		cfg := DefaultConfig()
+		cfg.ScoreProfile = profile
+
+		if err := cfg.Validate(); err != nil {
+			t.Fatalf("expected profile %q to validate, got %v", profile, err)
+		}
 	}
 }
 

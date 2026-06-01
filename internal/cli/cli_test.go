@@ -134,6 +134,32 @@ func TestBindFlagsScoreWeightsRejectsMissingComponent(t *testing.T) {
 	}
 }
 
+func TestBindFlagsScoreProfile(t *testing.T) {
+	app := NewCLI()
+	cmd := app.GetRootCmd()
+	args := []string{"--score-profile", "vps"}
+	if err := cmd.ParseFlags(args); err != nil {
+		t.Fatalf("failed to parse flags: %v", err)
+	}
+
+	if err := app.bindFlags(cmd); err != nil {
+		t.Fatalf("expected score profile bind to succeed, got %v", err)
+	}
+
+	if app.config.ScoreProfile != "vps" {
+		t.Fatalf("expected score profile vps, got %q", app.config.ScoreProfile)
+	}
+}
+
+func TestValidateFlagsRejectsUnknownScoreProfile(t *testing.T) {
+	app := NewCLI()
+	app.config.ScoreProfile = "unknown"
+
+	if err := app.validateFlags(); err == nil {
+		t.Fatal("expected invalid score profile to fail validation")
+	}
+}
+
 func assertStringSlice(t *testing.T, actual []string, expected []string) {
 	t.Helper()
 
