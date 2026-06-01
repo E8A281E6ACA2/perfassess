@@ -432,6 +432,10 @@ func (nt *NetworkTest) calculateScore(latency, downloadSpeed, uploadSpeed float6
 
 	totalScore := latencyScore*latencyWeight + downloadScore*downloadWeight + uploadScore*uploadWeight
 
-	return totalScore / totalWeight
+	score := totalScore / totalWeight
+	if uploadEstimated && score > 85 {
+		return 85
+	}
+	return score
 
 }

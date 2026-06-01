@@ -23,8 +23,8 @@ func TestCalculateNetworkScoreIgnoresEstimatedUpload(t *testing.T) {
 	}
 
 	score := calculator.CalculateNetworkScore(result)
-	if score != 100.0 {
-		t.Fatalf("expected estimated upload to be excluded and normalized to 100, got %.2f", score)
+	if score != 85.0 {
+		t.Fatalf("expected estimated upload to cap network score at 85, got %.2f", score)
 	}
 }
 
@@ -76,7 +76,7 @@ func TestFormatSingleTestResultMarksEstimatedUpload(t *testing.T) {
 		"平均延迟:     12.34 ms (tcp_connect)",
 		"下载速度:     321.00 Mbps (http_download)",
 		"上传速度:     200.00 Mbps (estimated_from_download)",
-		"上传说明:     当前结果为估算值，不参与真实上传评分",
+		"上传说明:     当前结果为估算值，不参与真实上传评分，网络评分上限为 85",
 	}
 
 	for _, snippet := range expectedSnippets {

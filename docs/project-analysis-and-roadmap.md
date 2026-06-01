@@ -177,7 +177,7 @@
   - 延迟为 TCP connect 近似值，使用 `latency_source=tcp_connect` 标记
   - 下载为 HTTP 下载测速，使用 `download_speed_source=http_download` 标记
   - 上传在缺乏可靠公共端点时使用估算值，使用 `upload_speed_estimated=true` 和 `upload_speed_source=estimated_from_download` 标记
-  - 估算上传值不应与真实上传测速等价对待，评分时应降权或排除
+  - 估算上传值不应与真实上传测速等价对待，评分时不参与真实上传分，且网络评分上限为 85
 
 ### 第二阶段：提升测试可信度
 

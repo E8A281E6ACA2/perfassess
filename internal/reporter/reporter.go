@@ -260,7 +260,7 @@ func (rg *ReportGenerator) formatSingleTestResult(testName string, result *model
 					sb.WriteString(fmt.Sprintf("  上传速度:     %.2f Mbps\n", speed))
 				}
 				if isNetworkUploadEstimated(result) {
-					sb.WriteString("  上传说明:     当前结果为估算值，不参与真实上传评分\n")
+					sb.WriteString("  上传说明:     当前结果为估算值，不参与真实上传评分，网络评分上限为 85\n")
 				}
 			}
 			if score, ok := metricFloat64(result.Metrics, "score"); ok {

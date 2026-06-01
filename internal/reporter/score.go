@@ -191,6 +191,9 @@ func (sc *ScoreCalculator) CalculateNetworkScore(result *models.TestResult) floa
 	if score < 0.0 {
 		score = 0.0
 	}
+	if uploadEstimated && score > 85.0 {
+		score = 85.0
+	}
 
 	return score
 }

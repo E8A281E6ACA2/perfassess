@@ -53,8 +53,8 @@ func TestCalculateScoreNormalizesWhenUploadIsEstimated(t *testing.T) {
 	networkTest := newTestNetworkTest(t)
 
 	score := networkTest.calculateScore(25.0, 200.0, 140.0, true)
-	if score != 100.0 {
-		t.Fatalf("expected estimated upload path to normalize score to 100, got %.2f", score)
+	if score != 85.0 {
+		t.Fatalf("expected estimated upload path to cap score at 85, got %.2f", score)
 	}
 }
 
@@ -101,8 +101,8 @@ func TestExecutePopulatesSourceMetricsForEstimatedUpload(t *testing.T) {
 	if !ok {
 		t.Fatal("expected score metric to be present")
 	}
-	if score != 100.0 {
-		t.Fatalf("expected normalized score 100.0, got %.2f", score)
+	if score != 85.0 {
+		t.Fatalf("expected estimated upload score cap 85.0, got %.2f", score)
 	}
 }
 
