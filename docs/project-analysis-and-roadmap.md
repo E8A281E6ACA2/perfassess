@@ -293,7 +293,8 @@
 `iperf3` 使用约定：
 
 - 用户需要显式选择 `--network-backend iperf3`
-- 用户需要提供 `--iperf3-server <host:port>`
+- 用户需要提供 `--iperf3-server <host>` 或 `--iperf3-server <host:port>`
+- 如果服务端包含端口，程序会转换为 `iperf3 -c <host> -p <port>`，避免把 `host:port` 错传给 `-c`
 - 被测机器需要预先安装 `iperf3`
 - 程序只负责检测并提示安装方式，不静默修改系统环境
 

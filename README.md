@@ -357,7 +357,7 @@ Flags:
 
 提示：使用 `--route-trace` 时，请确保系统已安装 traceroute（Linux/macOS）或 tracert（Windows），否则将提示缺少依赖。
 提示：使用 `--disk-backend fio` 时，请提前安装 fio。程序只检测并提示，不会自动安装依赖。
-提示：使用 `--network-backend iperf3` 时，请提前安装 iperf3，并提供可访问的 `--iperf3-server`。程序只检测并提示，不会自动安装依赖。
+提示：使用 `--network-backend iperf3` 时，请提前安装 iperf3，并提供可访问的 `--iperf3-server`。服务端可写为 `host` 或 `host:port`，程序会把端口转换为 iperf3 的 `-p` 参数。程序只检测并提示，不会自动安装依赖。
 ```
 
 ### 使用示例

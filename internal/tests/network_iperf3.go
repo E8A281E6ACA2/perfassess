@@ -4,7 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net"
 	"os/exec"
+	"strconv"
+	"strings"
 	"time"
 
 	"performance-assessment-system/internal/models"
@@ -36,6 +39,11 @@ type Iperf3Config struct {
 	Server  string
 	Timeout time.Duration
 	Runner  commandRunner
+}
+
+type iperf3Endpoint struct {
+	Host string
+	Port string
 }
 
 func NewIperf3NetworkBackend(cfg Iperf3Config) *Iperf3NetworkBackend {
@@ -76,14 +84,15 @@ func (b *Iperf3NetworkBackend) MeasureLatency(hosts []string) (float64, error) {
 }
 
 func (b *Iperf3NetworkBackend) MeasureDownload() (float64, error) {
-	if err := b.validateReady(); err != nil {
+	endpoint, err := b.validateReady()
+	if err != nil {
 		return 0, err
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), b.timeout)
 	defer cancel()
 
-	output, err := b.runner.Run(ctx, "iperf3", "-c", b.server, "--json")
+	output, err := b.runner.Run(ctx, "iperf3", b.commandArgs(endpoint, false)...)
 	if err != nil {
 		return 0, fmt.Errorf("iperf3 download failed: %w", err)
 	}
@@ -96,14 +105,15 @@ func (b *Iperf3NetworkBackend) MeasureDownload() (float64, error) {
 }
 
 func (b *Iperf3NetworkBackend) MeasureUpload(downloadSpeed float64) (float64, bool, error) {
-	if err := b.validateReady(); err != nil {
+	endpoint, err := b.validateReady()
+	if err != nil {
 		return 0, false, err
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), b.timeout)
 	defer cancel()
 
-	output, err := b.runner.Run(ctx, "iperf3", "-c", b.server, "--reverse", "--json")
+	output, err := b.runner.Run(ctx, "iperf3", b.commandArgs(endpoint, true)...)
 	if err != nil {
 		return 0, false, fmt.Errorf("iperf3 upload failed: %w", err)
 	}
@@ -115,12 +125,71 @@ func (b *Iperf3NetworkBackend) MeasureUpload(downloadSpeed float64) (float64, bo
 	return speed, false, nil
 }
 
-func (b *Iperf3NetworkBackend) validateReady() error {
-	if b.server == "" {
-		return fmt.Errorf("iperf3 server is required; example: --network-backend iperf3 --iperf3-server 1.2.3.4:5201")
+func (b *Iperf3NetworkBackend) validateReady() (iperf3Endpoint, error) {
+	endpoint, err := parseIperf3Endpoint(b.server)
+	if err != nil {
+		return iperf3Endpoint{}, err
 	}
 	if _, err := b.runner.LookPath("iperf3"); err != nil {
-		return fmt.Errorf("iperf3 is not installed; install it manually before using --network-backend iperf3. Ubuntu/Debian: sudo apt install iperf3; RHEL/CentOS: sudo yum install iperf3; macOS: brew install iperf3")
+		return iperf3Endpoint{}, fmt.Errorf("iperf3 is not installed; install it manually before using --network-backend iperf3. Ubuntu/Debian: sudo apt install iperf3; RHEL/CentOS: sudo yum install iperf3; macOS: brew install iperf3")
+	}
+	return endpoint, nil
+}
+
+func (b *Iperf3NetworkBackend) commandArgs(endpoint iperf3Endpoint, reverse bool) []string {
+	args := []string{"-c", endpoint.Host}
+	if endpoint.Port != "" {
+		args = append(args, "-p", endpoint.Port)
+	}
+	if reverse {
+		args = append(args, "--reverse")
+	}
+	return append(args, "--json")
+}
+
+func parseIperf3Endpoint(server string) (iperf3Endpoint, error) {
+	server = strings.TrimSpace(server)
+	if server == "" {
+		return iperf3Endpoint{}, fmt.Errorf("iperf3 server is required; example: --network-backend iperf3 --iperf3-server 1.2.3.4:5201")
+	}
+
+	host, port, err := net.SplitHostPort(server)
+	if err == nil {
+		if host == "" {
+			return iperf3Endpoint{}, fmt.Errorf("iperf3 server host is required")
+		}
+		if err := validateIperf3Port(port); err != nil {
+			return iperf3Endpoint{}, err
+		}
+		return iperf3Endpoint{Host: host, Port: port}, nil
+	}
+
+	if strings.Count(server, ":") > 1 {
+		return iperf3Endpoint{}, fmt.Errorf("invalid iperf3 server %q; use [ipv6]:port or host:port", server)
+	}
+	if strings.Contains(server, ":") {
+		lastColon := strings.LastIndex(server, ":")
+		host = strings.TrimSpace(server[:lastColon])
+		port = strings.TrimSpace(server[lastColon+1:])
+		if host == "" {
+			return iperf3Endpoint{}, fmt.Errorf("iperf3 server host is required")
+		}
+		if err := validateIperf3Port(port); err != nil {
+			return iperf3Endpoint{}, err
+		}
+		return iperf3Endpoint{Host: host, Port: port}, nil
+	}
+
+	return iperf3Endpoint{Host: server}, nil
+}
+
+func validateIperf3Port(port string) error {
+	if port == "" {
+		return fmt.Errorf("iperf3 server port is required when using host:port")
+	}
+	value, err := strconv.Atoi(port)
+	if err != nil || value < 1 || value > 65535 {
+		return fmt.Errorf("invalid iperf3 server port %q; expected 1-65535", port)
 	}
 	return nil
 }

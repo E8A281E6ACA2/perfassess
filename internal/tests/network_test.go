@@ -226,7 +226,58 @@ func TestIperf3NetworkBackendParsesDownloadMbps(t *testing.T) {
 	if runner.name != "iperf3" {
 		t.Fatalf("expected iperf3 command, got %q", runner.name)
 	}
-	assertStringSlice(t, runner.args, []string{"-c", "127.0.0.1:5201", "--json"})
+	assertStringSlice(t, runner.args, []string{"-c", "127.0.0.1", "-p", "5201", "--json"})
+}
+
+func TestIperf3NetworkBackendAllowsServerWithoutPort(t *testing.T) {
+	runner := &fakeCommandRunner{
+		output:     []byte(`{"end":{"sum_received":{"bits_per_second":125000000}}}`),
+		lookPathOK: true,
+	}
+	backend := NewIperf3NetworkBackend(Iperf3Config{
+		Server: "iperf.example",
+		Runner: runner,
+	})
+
+	_, err := backend.MeasureDownload()
+	if err != nil {
+		t.Fatalf("expected server without port to use iperf3 default port, got error: %v", err)
+	}
+	assertStringSlice(t, runner.args, []string{"-c", "iperf.example", "--json"})
+}
+
+func TestIperf3NetworkBackendParsesBracketIPv6Server(t *testing.T) {
+	runner := &fakeCommandRunner{
+		output:     []byte(`{"end":{"sum_received":{"bits_per_second":125000000}}}`),
+		lookPathOK: true,
+	}
+	backend := NewIperf3NetworkBackend(Iperf3Config{
+		Server: "[2001:db8::1]:5201",
+		Runner: runner,
+	})
+
+	_, err := backend.MeasureDownload()
+	if err != nil {
+		t.Fatalf("expected bracket IPv6 server to parse, got error: %v", err)
+	}
+	assertStringSlice(t, runner.args, []string{"-c", "2001:db8::1", "-p", "5201", "--json"})
+}
+
+func TestIperf3NetworkBackendRejectsInvalidPort(t *testing.T) {
+	backend := NewIperf3NetworkBackend(Iperf3Config{
+		Server: "127.0.0.1:not-a-port",
+		Runner: &fakeCommandRunner{
+			lookPathOK: true,
+		},
+	})
+
+	_, err := backend.MeasureDownload()
+	if err == nil {
+		t.Fatal("expected invalid port to fail")
+	}
+	if !strings.Contains(err.Error(), "invalid iperf3 server port") {
+		t.Fatalf("expected invalid port error, got %v", err)
+	}
 }
 
 func TestIperf3NetworkBackendParsesUploadMbps(t *testing.T) {
@@ -249,7 +300,7 @@ func TestIperf3NetworkBackendParsesUploadMbps(t *testing.T) {
 	if speed != 42.0 {
 		t.Fatalf("expected 42 Mbps, got %.2f", speed)
 	}
-	assertStringSlice(t, runner.args, []string{"-c", "iperf.example:5201", "--reverse", "--json"})
+	assertStringSlice(t, runner.args, []string{"-c", "iperf.example", "-p", "5201", "--reverse", "--json"})
 }
 
 func TestParseIperf3MbpsRejectsMissingThroughput(t *testing.T) {
