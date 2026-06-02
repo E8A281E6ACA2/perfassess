@@ -286,6 +286,52 @@ func TestFormatSingleTestResultShowsMemoryBackendAndSources(t *testing.T) {
 	}
 }
 
+func TestFormatSingleTestResultShowsFioMixedMatrix(t *testing.T) {
+	generator := NewReportGenerator()
+	result := &models.TestResult{
+		TestName:        "磁盘性能测试",
+		Status:          "success",
+		DurationSeconds: 20.2,
+		Metrics: map[string]interface{}{
+			"backend":                   "fio",
+			"sequential_read_mbps":      1000.0,
+			"sequential_write_mbps":     800.0,
+			"random_iops":               3000,
+			"fio_mixed_4k_read_mbps":    10.0,
+			"fio_mixed_4k_write_mbps":   20.0,
+			"fio_mixed_4k_total_mbps":   30.0,
+			"fio_mixed_4k_total_iops":   3000.0,
+			"fio_mixed_64k_read_mbps":   100.0,
+			"fio_mixed_64k_write_mbps":  120.0,
+			"fio_mixed_64k_total_mbps":  220.0,
+			"fio_mixed_64k_total_iops":  3400.0,
+			"fio_mixed_512k_read_mbps":  300.0,
+			"fio_mixed_512k_write_mbps": 320.0,
+			"fio_mixed_512k_total_mbps": 620.0,
+			"fio_mixed_512k_total_iops": 1210.0,
+			"fio_mixed_1m_read_mbps":    500.0,
+			"fio_mixed_1m_write_mbps":   550.0,
+			"fio_mixed_1m_total_mbps":   1050.0,
+			"fio_mixed_1m_total_iops":   1050.0,
+			"score":                     100.0,
+		},
+	}
+
+	formatted := generator.formatSingleTestResult("磁盘性能测试", result)
+
+	expectedSnippets := []string{
+		"测试后端:     fio",
+		"fio混合矩阵:  block | read MB/s | write MB/s | total MB/s | total IOPS",
+		"4k |",
+		"1m |",
+	}
+	for _, snippet := range expectedSnippets {
+		if !strings.Contains(formatted, snippet) {
+			t.Fatalf("expected formatted report to contain %q, got:\n%s", snippet, formatted)
+		}
+	}
+}
+
 func TestFormatSingleTestResultShowsNetworkError(t *testing.T) {
 	generator := NewReportGenerator()
 	result := &models.TestResult{
@@ -304,6 +350,26 @@ func TestFormatSingleTestResultShowsNetworkError(t *testing.T) {
 	formatted := generator.formatSingleTestResult("网络性能测试", result)
 	if !strings.Contains(formatted, "网络说明:     iperf3 is not installed") {
 		t.Fatalf("expected formatted report to include network error, got:\n%s", formatted)
+	}
+}
+
+func TestWebServerKeyMetricsShowsFioMixedMatrix(t *testing.T) {
+	server := &WebServer{}
+	result := &models.TestResult{
+		TestName: "磁盘性能测试",
+		Status:   "success",
+		Metrics: map[string]interface{}{
+			"backend":                 "fio",
+			"fio_mixed_4k_total_iops": 3000.0,
+			"fio_mixed_4k_total_mbps": 30.0,
+			"fio_mixed_1m_total_iops": 1050.0,
+			"fio_mixed_1m_total_mbps": 1050.0,
+		},
+	}
+
+	metrics := server.getKeyMetrics(result)
+	if !strings.Contains(metrics, "fio | fio mixed: 4k 3000 IOPS | 1m 1050.00 MB/s") {
+		t.Fatalf("expected web key metrics to show fio mixed matrix, got %q", metrics)
 	}
 }
 

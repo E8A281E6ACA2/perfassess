@@ -227,6 +227,15 @@ func (ws *WebServer) getKeyMetrics(result *models.TestResult) string {
 			return fmt.Sprintf("%s读取: %.2f MB/s", prefix, readSpeed)
 		}
 	case "disk", "磁盘性能测试":
+		if rows := getDiskFioMixedRows(result); len(rows) > 0 {
+			prefix := ""
+			if backend := getDiskBackend(result); backend != "" {
+				prefix = backend + " | "
+			}
+			first := rows[0]
+			last := rows[len(rows)-1]
+			return fmt.Sprintf("%sfio mixed: %s %.0f IOPS | %s %.2f MB/s", prefix, first.BlockSize, first.TotalIOPS, last.BlockSize, last.TotalMBps)
+		}
 		if speed, ok := getDiskReadSpeed(result); ok {
 			if backend := getDiskBackend(result); backend != "" {
 				if readIOPS, ok := getDiskRandomReadIOPS(result); ok {

@@ -278,6 +278,13 @@ func (rg *ReportGenerator) formatSingleTestResult(testName string, result *model
 			if writeP95, ok := getDiskRandomWriteP95Latency(result); ok {
 				sb.WriteString(fmt.Sprintf("  随机写P95:    %.2f ms\n", writeP95))
 			}
+			if rows := getDiskFioMixedRows(result); len(rows) > 0 {
+				sb.WriteString("  fio混合矩阵:  block | read MB/s | write MB/s | total MB/s | total IOPS\n")
+				for _, row := range rows {
+					sb.WriteString(fmt.Sprintf("                 %4s | %9.2f | %10.2f | %10.2f | %10.2f\n",
+						row.BlockSize, row.ReadMBps, row.WriteMBps, row.TotalMBps, row.TotalIOPS))
+				}
+			}
 			if _, readOK := getDiskReadSpeed(result); readOK {
 				if _, writeOK := getDiskWriteSpeed(result); writeOK {
 					if _, iopsOK := getDiskRandomIOPS(result); iopsOK {

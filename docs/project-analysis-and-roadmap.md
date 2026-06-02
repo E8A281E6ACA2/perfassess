@@ -435,6 +435,7 @@
 
 - 保持 `DiskBenchmarkBackend` 接口兼容，不破坏现有报告与评分
 - `FioDiskBackend` 在执行顺序读、顺序写、随机读写时缓存完整解析结果
+- `FioDiskBackend` 新增 YABS 对齐 mixed 矩阵，块大小为 `4k`、`64k`、`512k`、`1m`，口径为 `randrw` 50/50
 - 除现有兼容字段外，补充：
   - `sequential_read_iops`
   - `sequential_read_latency_ms`
@@ -444,10 +445,20 @@
   - `sequential_write_latency_p95_ms`
   - `random_read_iops`
   - `random_write_iops`
+  - `random_read_mbps`
+  - `random_write_mbps`
   - `random_read_latency_ms`
   - `random_write_latency_ms`
   - `random_read_latency_p95_ms`
   - `random_write_latency_p95_ms`
+  - `fio_mixed_profile`
+  - `fio_mixed_block_sizes`
+  - `fio_mixed_<block>_read_mbps`
+  - `fio_mixed_<block>_write_mbps`
+  - `fio_mixed_<block>_total_mbps`
+  - `fio_mixed_<block>_read_iops`
+  - `fio_mixed_<block>_write_iops`
+  - `fio_mixed_<block>_total_iops`
 - 报告层优先展示兼容关键指标，质量提示中说明 fio 后端可提供更高可信度
 - 解析失败时必须返回明确错误，不静默降级为 0
 

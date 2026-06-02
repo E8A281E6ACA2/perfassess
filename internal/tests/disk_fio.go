@@ -7,10 +7,13 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"runtime"
 	"time"
 
 	"performance-assessment-system/internal/models"
 )
+
+var fioYABSMixedBlocks = []string{"4k", "64k", "512k", "1m"}
 
 type FioDiskBackend struct {
 	workDir       string
@@ -19,6 +22,7 @@ type FioDiskBackend struct {
 	seqReadStats  fioDirectionStats
 	seqWriteStats fioDirectionStats
 	randomStats   fioRandomStats
+	mixedStats    map[string]fioRandomStats
 }
 
 type FioConfig struct {
@@ -91,16 +95,13 @@ func (b *FioDiskBackend) MeasureSequentialRead(fileSizeMB int) (float64, error) 
 }
 
 func (b *FioDiskBackend) MeasureRandomIOPS(durationSec int) (int, error) {
-	output, err := b.runFio("perfassess-randrw", "randrw", "4k", 128, durationSec)
+	mixedStats, err := b.runYABSMixedMatrix(durationSec)
 	if err != nil {
 		return 0, err
 	}
-	stats, err := parseFioRandomStats(output)
-	if err != nil {
-		return 0, err
-	}
-	b.randomStats = stats
-	return int(math.Round(stats.ReadIOPS + stats.WriteIOPS)), nil
+	b.mixedStats = mixedStats
+	b.randomStats = mixedStats["4k"]
+	return int(math.Round(b.randomStats.TotalIOPS())), nil
 }
 
 func (b *FioDiskBackend) AppendMetrics(metrics map[string]interface{}) {
@@ -115,12 +116,31 @@ func (b *FioDiskBackend) AppendMetrics(metrics map[string]interface{}) {
 		metrics["sequential_write_latency_p95_ms"] = b.seqWriteStats.LatencyP95Ms
 	}
 	if b.randomStats.ReadIOPS > 0 || b.randomStats.WriteIOPS > 0 {
+		metrics["random_read_mbps"] = b.randomStats.ReadBandwidthMBps
+		metrics["random_write_mbps"] = b.randomStats.WriteBandwidthMBps
 		metrics["random_read_iops"] = b.randomStats.ReadIOPS
 		metrics["random_write_iops"] = b.randomStats.WriteIOPS
 		metrics["random_read_latency_ms"] = b.randomStats.ReadLatencyMeanMs
 		metrics["random_write_latency_ms"] = b.randomStats.WriteLatencyMeanMs
 		metrics["random_read_latency_p95_ms"] = b.randomStats.ReadLatencyP95Ms
 		metrics["random_write_latency_p95_ms"] = b.randomStats.WriteLatencyP95Ms
+	}
+	if len(b.mixedStats) > 0 {
+		metrics["fio_mixed_profile"] = "yabs_randrw_50_50"
+		metrics["fio_mixed_block_sizes"] = append([]string(nil), fioYABSMixedBlocks...)
+		for _, blockSize := range fioYABSMixedBlocks {
+			stats, ok := b.mixedStats[blockSize]
+			if !ok || stats.TotalIOPS() <= 0 {
+				continue
+			}
+			prefix := "fio_mixed_" + blockSize
+			metrics[prefix+"_read_mbps"] = stats.ReadBandwidthMBps
+			metrics[prefix+"_write_mbps"] = stats.WriteBandwidthMBps
+			metrics[prefix+"_total_mbps"] = stats.TotalBandwidthMBps()
+			metrics[prefix+"_read_iops"] = stats.ReadIOPS
+			metrics[prefix+"_write_iops"] = stats.WriteIOPS
+			metrics[prefix+"_total_iops"] = stats.TotalIOPS()
+		}
 	}
 }
 
@@ -170,6 +190,62 @@ func (b *FioDiskBackend) runFio(name string, rw string, blockSize string, sizeMB
 	return output, nil
 }
 
+func (b *FioDiskBackend) runYABSMixedMatrix(durationSec int) (map[string]fioRandomStats, error) {
+	if durationSec <= 0 {
+		durationSec = 5
+	}
+
+	results := make(map[string]fioRandomStats, len(fioYABSMixedBlocks))
+	for _, blockSize := range fioYABSMixedBlocks {
+		output, err := b.runFioMixed("perfassess-yabs-"+blockSize, blockSize, 128, durationSec)
+		if err != nil {
+			return nil, err
+		}
+		stats, err := parseFioRandomStats(output)
+		if err != nil {
+			return nil, fmt.Errorf("parse fio mixed %s result: %w", blockSize, err)
+		}
+		results[blockSize] = stats
+	}
+	return results, nil
+}
+
+func (b *FioDiskBackend) runFioMixed(name string, blockSize string, sizeMB int, runtimeSec int) ([]byte, error) {
+	if _, err := b.runner.LookPath("fio"); err != nil {
+		return nil, fmt.Errorf("fio is not installed; install it manually before using --disk-backend fio. Ubuntu/Debian: sudo apt install fio; RHEL/CentOS: sudo yum install fio; macOS: brew install fio")
+	}
+
+	filename := filepath.Join(b.workDir, "perfassess-fio-"+name+".dat")
+	args := []string{
+		"--name=" + name,
+		"--filename=" + filename,
+		"--rw=randrw",
+		"--rwmixread=50",
+		"--bs=" + blockSize,
+		fmt.Sprintf("--size=%dM", sizeMB),
+		"--direct=1",
+		"--numjobs=2",
+		"--time_based",
+		fmt.Sprintf("--runtime=%d", runtimeSec),
+		"--group_reporting",
+		"--output-format=json",
+	}
+	if runtime.GOOS == "linux" {
+		args = append(args, "--ioengine=libaio", "--iodepth=64")
+	} else {
+		args = append(args, "--ioengine=sync")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), b.timeout)
+	defer cancel()
+
+	output, err := b.runner.Run(ctx, "fio", args...)
+	if err != nil {
+		return nil, fmt.Errorf("fio mixed %s failed: %w", blockSize, err)
+	}
+	return output, nil
+}
+
 type fioJSONResult struct {
 	Jobs []struct {
 		Read  fioJobStats `json:"read"`
@@ -197,12 +273,22 @@ type fioDirectionStats struct {
 }
 
 type fioRandomStats struct {
+	ReadBandwidthMBps  float64
+	WriteBandwidthMBps float64
 	ReadIOPS           float64
 	WriteIOPS          float64
 	ReadLatencyMeanMs  float64
 	WriteLatencyMeanMs float64
 	ReadLatencyP95Ms   float64
 	WriteLatencyP95Ms  float64
+}
+
+func (s fioRandomStats) TotalBandwidthMBps() float64 {
+	return s.ReadBandwidthMBps + s.WriteBandwidthMBps
+}
+
+func (s fioRandomStats) TotalIOPS() float64 {
+	return s.ReadIOPS + s.WriteIOPS
 }
 
 func parseFioBandwidthMBps(output []byte, direction string) (float64, error) {
@@ -276,6 +362,8 @@ func parseFioRandomStats(output []byte) (fioRandomStats, error) {
 
 	stats := fioRandomStats{}
 	for _, job := range result.Jobs {
+		stats.ReadBandwidthMBps += float64(job.Read.BwBytes) / 1024.0 / 1024.0
+		stats.WriteBandwidthMBps += float64(job.Write.BwBytes) / 1024.0 / 1024.0
 		stats.ReadIOPS += job.Read.IOPS
 		stats.WriteIOPS += job.Write.IOPS
 		stats.ReadLatencyMeanMs = maxFloat(stats.ReadLatencyMeanMs, fioMeanLatencyNs(job.Read)/1000000.0)

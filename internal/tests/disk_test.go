@@ -71,7 +71,7 @@ func TestFioDiskBackendParsesSequentialWriteMBps(t *testing.T) {
 
 func TestFioDiskBackendParsesRandomIOPS(t *testing.T) {
 	runner := &fakeCommandRunner{
-		output:     []byte(`{"jobs":[{"read":{"iops":1234.4},"write":{"iops":765.6}}]}`),
+		output:     []byte(`{"jobs":[{"read":{"bw_bytes":4194304,"iops":1234.4},"write":{"bw_bytes":2097152,"iops":765.6}}]}`),
 		lookPathOK: true,
 	}
 	backend := NewFioDiskBackend(FioConfig{Runner: runner})
@@ -86,11 +86,35 @@ func TestFioDiskBackendParsesRandomIOPS(t *testing.T) {
 	if !containsArgPrefix(runner.args, "--rw=randrw") {
 		t.Fatalf("expected fio randrw args, got %v", runner.args)
 	}
-	if !containsArgPrefix(runner.args, "--bs=4k") {
-		t.Fatalf("expected fio random block size arg, got %v", runner.args)
+	if !containsArgPrefix(runner.args, "--rwmixread=50") {
+		t.Fatalf("expected fio mixed 50/50 arg, got %v", runner.args)
 	}
 	if !containsArgPrefix(runner.args, "--runtime=5") {
 		t.Fatalf("expected fio runtime arg, got %v", runner.args)
+	}
+}
+
+func TestFioDiskBackendRunsYABSMixedMatrix(t *testing.T) {
+	runner := &fakeCommandRunner{
+		output:     []byte(`{"jobs":[{"read":{"bw_bytes":4194304,"iops":100},"write":{"bw_bytes":2097152,"iops":50}}]}`),
+		lookPathOK: true,
+	}
+	backend := NewFioDiskBackend(FioConfig{Runner: runner})
+
+	iops, err := backend.MeasureRandomIOPS(5)
+	if err != nil {
+		t.Fatalf("expected fio mixed matrix to run, got error: %v", err)
+	}
+	if iops != 150 {
+		t.Fatalf("expected 150 IOPS from first mixed result, got %d", iops)
+	}
+	if runner.calls != len(fioYABSMixedBlocks) {
+		t.Fatalf("expected %d fio calls, got %d", len(fioYABSMixedBlocks), runner.calls)
+	}
+	for _, blockSize := range fioYABSMixedBlocks {
+		if _, ok := backend.mixedStats[blockSize]; !ok {
+			t.Fatalf("expected mixed stats for %s", blockSize)
+		}
 	}
 }
 
@@ -140,6 +164,9 @@ func TestFioParsesDetailedLatencyMetrics(t *testing.T) {
 	if randomStats.ReadIOPS != 101.5 || randomStats.WriteIOPS != 202.5 {
 		t.Fatalf("expected detailed random iops, got read %.2f write %.2f", randomStats.ReadIOPS, randomStats.WriteIOPS)
 	}
+	if randomStats.ReadBandwidthMBps != 100.0 || randomStats.WriteBandwidthMBps != 50.0 {
+		t.Fatalf("expected detailed random bandwidth, got read %.2f write %.2f", randomStats.ReadBandwidthMBps, randomStats.WriteBandwidthMBps)
+	}
 	if randomStats.WriteLatencyP95Ms != 4.4 {
 		t.Fatalf("expected write p95 4.4ms, got %.2f", randomStats.WriteLatencyP95Ms)
 	}
@@ -160,12 +187,28 @@ func TestFioDiskBackendAppendsDetailedMetrics(t *testing.T) {
 			LatencyP95Ms:  4.4,
 		},
 		randomStats: fioRandomStats{
+			ReadBandwidthMBps:  100,
+			WriteBandwidthMBps: 50,
 			ReadIOPS:           300,
 			WriteIOPS:          200,
 			ReadLatencyMeanMs:  1.1,
 			WriteLatencyMeanMs: 1.5,
 			ReadLatencyP95Ms:   2.1,
 			WriteLatencyP95Ms:  2.5,
+		},
+		mixedStats: map[string]fioRandomStats{
+			"4k": {
+				ReadBandwidthMBps:  10,
+				WriteBandwidthMBps: 20,
+				ReadIOPS:           100,
+				WriteIOPS:          200,
+			},
+			"64k": {
+				ReadBandwidthMBps:  30,
+				WriteBandwidthMBps: 40,
+				ReadIOPS:           300,
+				WriteIOPS:          400,
+			},
 		},
 	}
 
@@ -174,8 +217,18 @@ func TestFioDiskBackendAppendsDetailedMetrics(t *testing.T) {
 
 	assertMetricFloat(t, metrics, "sequential_read_iops", 101.5)
 	assertMetricFloat(t, metrics, "sequential_write_latency_p95_ms", 4.4)
+	assertMetricFloat(t, metrics, "random_read_mbps", 100)
+	assertMetricFloat(t, metrics, "random_write_mbps", 50)
 	assertMetricFloat(t, metrics, "random_read_iops", 300)
 	assertMetricFloat(t, metrics, "random_write_latency_ms", 1.5)
+	assertMetricString(t, metrics, "fio_mixed_profile", "yabs_randrw_50_50")
+	assertMetricFloat(t, metrics, "fio_mixed_4k_read_mbps", 10)
+	assertMetricFloat(t, metrics, "fio_mixed_4k_write_mbps", 20)
+	assertMetricFloat(t, metrics, "fio_mixed_4k_total_mbps", 30)
+	assertMetricFloat(t, metrics, "fio_mixed_4k_read_iops", 100)
+	assertMetricFloat(t, metrics, "fio_mixed_4k_write_iops", 200)
+	assertMetricFloat(t, metrics, "fio_mixed_4k_total_iops", 300)
+	assertMetricFloat(t, metrics, "fio_mixed_64k_total_mbps", 70)
 }
 
 func TestParseFioRejectsMissingJobs(t *testing.T) {

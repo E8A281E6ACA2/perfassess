@@ -310,6 +310,12 @@
                 "random_iops_source": {
                   "type": "string"
                 },
+                "random_read_mbps": {
+                  "type": "number"
+                },
+                "random_write_mbps": {
+                  "type": "number"
+                },
                 "random_read_iops": {
                   "type": "number"
                 },
@@ -320,6 +326,90 @@
                   "type": "number"
                 },
                 "random_write_latency_p95_ms": {
+                  "type": "number"
+                },
+                "fio_mixed_profile": {
+                  "type": "string",
+                  "enum": [
+                    "yabs_randrw_50_50"
+                  ]
+                },
+                "fio_mixed_block_sizes": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "fio_mixed_4k_read_mbps": {
+                  "type": "number"
+                },
+                "fio_mixed_4k_write_mbps": {
+                  "type": "number"
+                },
+                "fio_mixed_4k_total_mbps": {
+                  "type": "number"
+                },
+                "fio_mixed_4k_read_iops": {
+                  "type": "number"
+                },
+                "fio_mixed_4k_write_iops": {
+                  "type": "number"
+                },
+                "fio_mixed_4k_total_iops": {
+                  "type": "number"
+                },
+                "fio_mixed_64k_read_mbps": {
+                  "type": "number"
+                },
+                "fio_mixed_64k_write_mbps": {
+                  "type": "number"
+                },
+                "fio_mixed_64k_total_mbps": {
+                  "type": "number"
+                },
+                "fio_mixed_64k_read_iops": {
+                  "type": "number"
+                },
+                "fio_mixed_64k_write_iops": {
+                  "type": "number"
+                },
+                "fio_mixed_64k_total_iops": {
+                  "type": "number"
+                },
+                "fio_mixed_512k_read_mbps": {
+                  "type": "number"
+                },
+                "fio_mixed_512k_write_mbps": {
+                  "type": "number"
+                },
+                "fio_mixed_512k_total_mbps": {
+                  "type": "number"
+                },
+                "fio_mixed_512k_read_iops": {
+                  "type": "number"
+                },
+                "fio_mixed_512k_write_iops": {
+                  "type": "number"
+                },
+                "fio_mixed_512k_total_iops": {
+                  "type": "number"
+                },
+                "fio_mixed_1m_read_mbps": {
+                  "type": "number"
+                },
+                "fio_mixed_1m_write_mbps": {
+                  "type": "number"
+                },
+                "fio_mixed_1m_total_mbps": {
+                  "type": "number"
+                },
+                "fio_mixed_1m_read_iops": {
+                  "type": "number"
+                },
+                "fio_mixed_1m_write_iops": {
+                  "type": "number"
+                },
+                "fio_mixed_1m_total_iops": {
                   "type": "number"
                 },
                 "score": {

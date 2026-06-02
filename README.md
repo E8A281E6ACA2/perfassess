@@ -291,6 +291,8 @@ make run
 ./build/perfassess -b network --network-backend speedtest
 ```
 
+`--disk-backend fio` 会保留顺序读写与随机 IOPS 兼容字段，并额外输出 YABS 对齐的 4k / 64k / 512k / 1m mixed randrw 50/50 矩阵，便于和主流 VPS 测评结果横向对比。
+
 #### 组合测试
 
 ```bash

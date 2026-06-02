@@ -65,12 +65,22 @@
 - `sequential_write_latency_p95_ms`: fio 顺序写入 P95 延迟，单位 ms
 - `random_iops`: 随机读写总 IOPS
 - `random_iops_source`: 随机 IOPS 来源
+- `random_read_mbps`: fio 4k mixed 随机读吞吐，单位 MiB/s
+- `random_write_mbps`: fio 4k mixed 随机写吞吐，单位 MiB/s
 - `random_read_iops`: fio 随机读 IOPS
 - `random_write_iops`: fio 随机写 IOPS
 - `random_read_latency_ms`: fio 随机读平均延迟，单位 ms
 - `random_write_latency_ms`: fio 随机写平均延迟，单位 ms
 - `random_read_latency_p95_ms`: fio 随机读 P95 延迟，单位 ms
 - `random_write_latency_p95_ms`: fio 随机写 P95 延迟，单位 ms
+- `fio_mixed_profile`: fio mixed 矩阵口径，当前为 `yabs_randrw_50_50`
+- `fio_mixed_block_sizes`: mixed 矩阵块大小列表，当前为 `4k`、`64k`、`512k`、`1m`
+- `fio_mixed_<block>_read_mbps`: 指定块大小 mixed 随机读吞吐，单位 MiB/s
+- `fio_mixed_<block>_write_mbps`: 指定块大小 mixed 随机写吞吐，单位 MiB/s
+- `fio_mixed_<block>_total_mbps`: 指定块大小 mixed 随机总吞吐，单位 MiB/s
+- `fio_mixed_<block>_read_iops`: 指定块大小 mixed 随机读 IOPS
+- `fio_mixed_<block>_write_iops`: 指定块大小 mixed 随机写 IOPS
+- `fio_mixed_<block>_total_iops`: 指定块大小 mixed 随机总 IOPS
 - `score`: 磁盘评分
 
 ## Network Metrics

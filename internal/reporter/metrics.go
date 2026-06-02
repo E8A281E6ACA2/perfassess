@@ -299,6 +299,48 @@ func getDiskRandomWriteP95Latency(result *models.TestResult) (float64, bool) {
 	return metricFloat64(result.Metrics, "random_write_latency_p95_ms")
 }
 
+type diskFioMixedRow struct {
+	BlockSize string
+	ReadMBps  float64
+	WriteMBps float64
+	TotalMBps float64
+	ReadIOPS  float64
+	WriteIOPS float64
+	TotalIOPS float64
+}
+
+func getDiskFioMixedRows(result *models.TestResult) []diskFioMixedRow {
+	if result == nil || result.Metrics == nil {
+		return nil
+	}
+
+	blockSizes := []string{"4k", "64k", "512k", "1m"}
+	rows := make([]diskFioMixedRow, 0, len(blockSizes))
+	for _, blockSize := range blockSizes {
+		prefix := "fio_mixed_" + blockSize
+		totalIOPS, iopsOK := metricFloat64(result.Metrics, prefix+"_total_iops")
+		totalMBps, mbpsOK := metricFloat64(result.Metrics, prefix+"_total_mbps")
+		if !iopsOK && !mbpsOK {
+			continue
+		}
+
+		readMBps, _ := metricFloat64(result.Metrics, prefix+"_read_mbps")
+		writeMBps, _ := metricFloat64(result.Metrics, prefix+"_write_mbps")
+		readIOPS, _ := metricFloat64(result.Metrics, prefix+"_read_iops")
+		writeIOPS, _ := metricFloat64(result.Metrics, prefix+"_write_iops")
+		rows = append(rows, diskFioMixedRow{
+			BlockSize: blockSize,
+			ReadMBps:  readMBps,
+			WriteMBps: writeMBps,
+			TotalMBps: totalMBps,
+			ReadIOPS:  readIOPS,
+			WriteIOPS: writeIOPS,
+			TotalIOPS: totalIOPS,
+		})
+	}
+	return rows
+}
+
 func getDiskBackend(result *models.TestResult) string {
 	if result == nil {
 		return ""
