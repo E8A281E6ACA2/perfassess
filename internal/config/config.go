@@ -62,7 +62,7 @@ type Config struct {
 	// MemoryBackend 内存测试后端，可选值: builtin, sysbench
 	MemoryBackend string `mapstructure:"memory_backend"`
 
-	// NetworkBackend 网络测试后端，可选值: builtin, iperf3
+	// NetworkBackend 网络测试后端，可选值: builtin, iperf3, speedtest
 	NetworkBackend string `mapstructure:"network_backend"`
 
 	// Iperf3Server iperf3 服务端地址，仅在 network_backend=iperf3 时使用
@@ -203,8 +203,9 @@ func (c *Config) Validate() error {
 	}
 
 	validNetworkBackends := map[string]bool{
-		"builtin": true,
-		"iperf3":  true,
+		"builtin":   true,
+		"iperf3":    true,
+		"speedtest": true,
 	}
 	if !validNetworkBackends[c.NetworkBackend] {
 		return &ConfigError{

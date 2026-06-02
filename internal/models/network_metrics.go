@@ -3,8 +3,9 @@ package models
 import "strings"
 
 const (
-	NetworkBackendBuiltin = "builtin"
-	NetworkBackendIperf3  = "iperf3"
+	NetworkBackendBuiltin   = "builtin"
+	NetworkBackendIperf3    = "iperf3"
+	NetworkBackendSpeedtest = "speedtest"
 )
 
 const (
@@ -15,6 +16,7 @@ const (
 	NetworkDownloadSourceHTTP       = "http_download"
 	NetworkDownloadSourceHTTPFailed = "http_download_failed"
 	NetworkDownloadSourceIperf3     = "iperf3_download"
+	NetworkDownloadSourceSpeedtest  = "speedtest_download"
 )
 
 const (
@@ -22,6 +24,7 @@ const (
 	NetworkUploadSourceUnavailable = "unavailable"
 	NetworkUploadSourceEstimated   = "estimated_from_download"
 	NetworkUploadSourceIperf3      = "iperf3_upload"
+	NetworkUploadSourceSpeedtest   = "speedtest_upload"
 )
 
 // NetworkMetrics 表示网络测试的结构化结果

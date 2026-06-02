@@ -19,6 +19,7 @@ func CheckDependencies() []DependencyStatus {
 	deps := []DependencyStatus{
 		checkDependency("sysbench", "sysbench CPU/内存基准测试", sysbenchInstallHint(), false),
 		checkDependency("iperf3", "iperf3 网络吞吐测试", iperf3InstallHint(), false),
+		checkDependency("speedtest", "Ookla Speedtest CLI 网络测速", speedtestInstallHint(), false),
 		checkDependency("fio", "fio 磁盘基准测试", fioInstallHint(), false),
 	}
 
@@ -64,6 +65,19 @@ func iperf3InstallHint() string {
 		return "Windows: 请通过 winget/choco 或 iperf.fr 安装 iperf3，并确认 PATH 可访问"
 	default:
 		return "请安装 iperf3，并确认 PATH 可访问"
+	}
+}
+
+func speedtestInstallHint() string {
+	switch runtime.GOOS {
+	case "linux":
+		return "请按 https://www.speedtest.net/apps/cli 安装 Ookla Speedtest CLI，并确认 PATH 可访问"
+	case "darwin":
+		return "macOS: brew install speedtest-cli 或按 https://www.speedtest.net/apps/cli 安装 Ookla Speedtest CLI"
+	case "windows":
+		return "Windows: 请通过 winget/choco 或 https://www.speedtest.net/apps/cli 安装 Ookla Speedtest CLI，并确认 PATH 可访问"
+	default:
+		return "请安装 Ookla Speedtest CLI，并确认 PATH 可访问"
 	}
 }
 

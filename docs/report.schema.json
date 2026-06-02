@@ -361,7 +361,8 @@
                   "type": "string",
                   "enum": [
                     "builtin",
-                    "iperf3"
+                    "iperf3",
+                    "speedtest"
                   ]
                 },
                 "backend_server": {
@@ -461,6 +462,7 @@
                 "default",
                 "full",
                 "full_iperf3",
+                "full_speedtest",
                 "custom"
               ]
             },

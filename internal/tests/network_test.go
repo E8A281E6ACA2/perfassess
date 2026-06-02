@@ -402,6 +402,70 @@ func TestIperf3NetworkBackendParsesUploadMbps(t *testing.T) {
 	assertStringSlice(t, runner.args, []string{"-c", "iperf.example", "-p", "5201", "--reverse", "--json"})
 }
 
+func TestSpeedtestNetworkBackendReportsMissingBinary(t *testing.T) {
+	backend := NewSpeedtestNetworkBackend(SpeedtestConfig{
+		Runner: &fakeCommandRunner{
+			lookPathErr: fmt.Errorf("not found"),
+		},
+	})
+
+	_, err := backend.MeasureDownload()
+	if err == nil {
+		t.Fatal("expected missing speedtest binary to fail")
+	}
+	if !strings.Contains(err.Error(), "speedtest CLI is not installed") {
+		t.Fatalf("expected install hint, got %v", err)
+	}
+}
+
+func TestSpeedtestNetworkBackendParsesMetricsAndCachesResult(t *testing.T) {
+	runner := &fakeCommandRunner{
+		output: []byte(`{
+			"type": "result",
+			"ping": {"latency": 12.5, "jitter": 1.1},
+			"download": {"bandwidth": 125000000},
+			"upload": {"bandwidth": 50000000},
+			"server": {"host": "speed.example:8080"}
+		}`),
+		lookPathOK: true,
+	}
+	backend := NewSpeedtestNetworkBackend(SpeedtestConfig{Runner: runner})
+
+	latency, err := backend.MeasureLatency(nil)
+	if err != nil {
+		t.Fatalf("expected latency to parse, got %v", err)
+	}
+	if latency != 12.5 {
+		t.Fatalf("expected latency 12.5, got %.2f", latency)
+	}
+
+	download, err := backend.MeasureDownload()
+	if err != nil {
+		t.Fatalf("expected download to parse, got %v", err)
+	}
+	if download.SpeedMbps != 1000 {
+		t.Fatalf("expected 1000 Mbps download, got %.2f", download.SpeedMbps)
+	}
+
+	upload, estimated, err := backend.MeasureUpload(download.SpeedMbps)
+	if err != nil {
+		t.Fatalf("expected upload to parse, got %v", err)
+	}
+	if estimated {
+		t.Fatal("expected speedtest upload to be real measurement")
+	}
+	if upload != 400 {
+		t.Fatalf("expected 400 Mbps upload, got %.2f", upload)
+	}
+	if backend.Server() != "speed.example:8080" {
+		t.Fatalf("expected server host, got %q", backend.Server())
+	}
+	if runner.calls != 1 {
+		t.Fatalf("expected speedtest to run once due to cache, got %d", runner.calls)
+	}
+	assertStringSlice(t, runner.args, []string{"--format=json", "--accept-license", "--accept-gdpr"})
+}
+
 func TestParseIperf3MbpsRejectsMissingThroughput(t *testing.T) {
 	if _, err := parseIperf3Mbps([]byte(`{"end":{}}`)); err == nil {
 		t.Fatal("expected missing throughput to fail")

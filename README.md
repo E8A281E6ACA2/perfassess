@@ -204,7 +204,7 @@ sudo rm /usr/local/bin/perfassess
 ./build/perfassess
 ```
 
-默认会执行 CPU、内存、磁盘、网络基础性能测试。外部依赖不会自动安装；如需使用 `fio`、`iperf3` 或路由追踪，请先运行 `check-deps` 查看提示。
+默认会执行 CPU、内存、磁盘、网络基础性能测试。外部依赖不会自动安装；如需使用 `fio`、`iperf3`、`speedtest` 或路由追踪，请先运行 `check-deps` 查看提示。
 
 ### 🧭 交互式模式（可选）
 
@@ -230,7 +230,7 @@ sudo rm /usr/local/bin/perfassess
 #### 基础用法
 
 ```bash
-# 检查外部依赖（sysbench、fio、iperf3、traceroute/tracert）
+# 检查外部依赖（sysbench、fio、iperf3、speedtest、traceroute/tracert）
 ./build/perfassess check-deps
 
 # 运行所有检测
@@ -283,6 +283,9 @@ make run
 
 # 使用 iperf3 后端测试网络吞吐（需要预装 iperf3，并准备服务端）
 ./build/perfassess -b network --network-backend iperf3 --iperf3-server 1.2.3.4:5201
+
+# 使用 Ookla Speedtest CLI 后端测试网络（需要预装 speedtest）
+./build/perfassess -b network --network-backend speedtest
 ```
 
 #### 组合测试
@@ -400,7 +403,7 @@ Flags:
       --stress               启用长时间压力测试
       --security             启用基础安全体检
       --network-backend string
-                              网络测试后端 (builtin,iperf3) (default "builtin")
+                              网络测试后端 (builtin,iperf3,speedtest) (default "builtin")
       --iperf3-server string  iperf3 服务端地址（仅 network-backend=iperf3 时使用）
       --cpu-backend string    CPU 测试后端 (builtin,sysbench) (default "builtin")
       --memory-backend string 内存测试后端 (builtin,sysbench) (default "builtin")

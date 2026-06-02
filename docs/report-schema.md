@@ -73,13 +73,13 @@
 
 ## Network Metrics
 
-- `backend`: `builtin` 或 `iperf3`
-- `backend_server`: iperf3 服务端，仅 iperf3 后端使用
+- `backend`: `builtin`、`iperf3` 或 `speedtest`
+- `backend_server`: 外部网络后端服务端信息，`iperf3` 为用户指定服务端，`speedtest` 为 CLI 自动选择的测速节点
 - `latency_ms`: 延迟，单位 ms
 - `average_latency_ms`: 平均延迟，单位 ms
 - `latency_source`: 延迟来源，当前主要为 `tcp_connect`
 - `download_speed_mbps`: 下载吞吐，单位 Mbps
-- `download_speed_source`: 下载测速来源；`iperf3` 后端为 `iperf3_download`，内置后端成功时记录实际 HTTP 下载源 URL，失败时为 `http_download_failed`
+- `download_speed_source`: 下载测速来源；`iperf3` 后端为 `iperf3_download`，`speedtest` 后端为 `speedtest_download`，内置后端成功时记录实际 HTTP 下载源 URL，失败时为 `http_download_failed`
 - `upload_speed_mbps`: 上传吞吐，单位 Mbps
 - `upload_speed_source`: 上传测速来源
 - `upload_speed_estimated`: 上传是否为估算值
@@ -108,7 +108,7 @@
 
 ## Benchmark Profile
 
-- `name`: `quick`、`default`、`full`、`full_iperf3` 或 `custom`
+- `name`: `quick`、`default`、`full`、`full_iperf3`、`full_speedtest` 或 `custom`
 - `cpu_backend`: CPU 实际后端
 - `memory_backend`: 内存实际后端
 - `disk_backend`: 磁盘实际后端

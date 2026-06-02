@@ -518,6 +518,9 @@ func (rg *ReportGenerator) buildBenchmarkProfile(testResults *models.TestResults
 		if getNetworkBackend(testResults.NetworkResult) == models.NetworkBackendIperf3 {
 			profile["name"] = "full_iperf3"
 		}
+		if getNetworkBackend(testResults.NetworkResult) == models.NetworkBackendSpeedtest {
+			profile["name"] = "full_speedtest"
+		}
 	}
 	return profile
 }
@@ -611,7 +614,8 @@ func countMainstreamBackends(testResults *models.TestResults) int {
 	if getDiskBackend(testResults.DiskResult) == models.DiskBackendFio {
 		count++
 	}
-	if getNetworkBackend(testResults.NetworkResult) == models.NetworkBackendIperf3 {
+	if getNetworkBackend(testResults.NetworkResult) == models.NetworkBackendIperf3 ||
+		getNetworkBackend(testResults.NetworkResult) == models.NetworkBackendSpeedtest {
 		count++
 	}
 	return count

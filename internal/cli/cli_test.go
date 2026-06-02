@@ -95,6 +95,23 @@ func TestBindFlagsFullPresetAllowsExplicitBackendOverride(t *testing.T) {
 	}
 }
 
+func TestBindFlagsAcceptsSpeedtestNetworkBackend(t *testing.T) {
+	app := NewCLI()
+	cmd := app.GetRootCmd()
+	args := []string{"--network-backend", "speedtest"}
+	if err := cmd.ParseFlags(args); err != nil {
+		t.Fatalf("failed to parse flags: %v", err)
+	}
+
+	if err := app.bindFlags(cmd); err != nil {
+		t.Fatalf("expected speedtest backend bind to succeed, got %v", err)
+	}
+
+	if app.config.NetworkBackend != "speedtest" {
+		t.Fatalf("expected speedtest backend, got %q", app.config.NetworkBackend)
+	}
+}
+
 func TestBindFlagsOutputFormat(t *testing.T) {
 	app := NewCLI()
 	cmd := app.GetRootCmd()

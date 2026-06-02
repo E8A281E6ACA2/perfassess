@@ -343,12 +343,14 @@
 - `NetworkBenchmarkBackend` 已作为网络评测后端接口
 - `BuiltinNetworkBackend` 继续承载当前内置测试逻辑
 - `Iperf3NetworkBackend` 已具备最小命令执行与 JSON 结果解析骨架
+- `SpeedtestNetworkBackend` 已接入 Ookla Speedtest CLI JSON 输出，用于更接近主流 VPS 脚本的公网测速口径
 - 配置层已预留 `network_backend` 与 `iperf3_server`
-- CLI 已预留 `--network-backend` 与 `--iperf3-server`
+- CLI 已支持 `--network-backend builtin|iperf3|speedtest` 与 `--iperf3-server`
 - `iperf3` 后端会检测本机是否安装 `iperf3`，缺失时返回安装提示，不自动安装
+- `speedtest` 后端会检测本机是否安装 Ookla Speedtest CLI，缺失时返回安装提示，不自动安装
 - 网络测试失败原因会写入 `network_error` 并展示在终端/Web 报告中
 - 网络报告会展示 `backend`，并在 `iperf3` 场景展示服务端地址
-- 网络测速来源字段会跟随 backend，例如 `iperf3_download` 与 `iperf3_upload`
+- 网络测速来源字段会跟随 backend，例如 `iperf3_download`、`iperf3_upload`、`speedtest_download` 与 `speedtest_upload`
 - 内置下载测速已支持多个 HTTP 下载源顺序重试，成功时 `download_speed_source` 记录实际 URL，避免单个公共测速源故障直接导致网络降级
 - `iperf3` 后端只负责吞吐测试，延迟继续回退到内置 TCP connect 测量并使用 `latency_source=tcp_connect`
 - 后续真正启用 `iperf3` 前，需要补充真实服务端验证和报告展示
@@ -467,7 +469,7 @@
 - 报告摘要新增 `confidence_level`
   - `level`: `high`、`medium`、`low`
   - `reasons`: 降级、估算、缺失或未执行原因
-- `name` 当前包括 `quick`、`default`、`full`、`full_iperf3` 和 `custom`
+- `name` 当前包括 `quick`、`default`、`full`、`full_iperf3`、`full_speedtest` 和 `custom`
 - 文本报告展示评测档位、后端组合和置信等级
 - JSON schema 文档记录关键字段、单位、来源和估算语义
 

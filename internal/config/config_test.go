@@ -145,6 +145,15 @@ func TestValidateRejectsUnknownNetworkBackend(t *testing.T) {
 	}
 }
 
+func TestValidateAcceptsSpeedtestNetworkBackend(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.NetworkBackend = "speedtest"
+
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("expected speedtest network backend to validate, got %v", err)
+	}
+}
+
 func TestValidateRejectsUnknownCPUBackend(t *testing.T) {
 	cfg := DefaultConfig()
 	cfg.CPUBackend = "unknown"

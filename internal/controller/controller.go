@@ -346,6 +346,9 @@ func (ac *AssessmentController) newNetworkTest() tests.PerformanceTest {
 		})
 		return tests.NewNetworkTestWithBackend(ac.logger, backend)
 	}
+	if ac.config.NetworkBackend == models.NetworkBackendSpeedtest {
+		return tests.NewNetworkTestWithBackend(ac.logger, tests.NewSpeedtestNetworkBackend(tests.SpeedtestConfig{}))
+	}
 
 	return tests.NewNetworkTest(ac.logger)
 }

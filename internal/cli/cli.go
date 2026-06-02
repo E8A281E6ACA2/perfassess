@@ -156,7 +156,7 @@ func (c *CLI) setupCommands() {
 
 	// --network-backend 参数：选择网络测试后端
 	flags.String("network-backend", "builtin",
-		"网络测试后端 (builtin,iperf3)")
+		"网络测试后端 (builtin,iperf3,speedtest)")
 
 	// --iperf3-server 参数：iperf3 服务端地址
 	flags.String("iperf3-server", "",
@@ -386,7 +386,7 @@ func (c *CLI) newCheckDepsCommand() *cobra.Command {
 			if missing > 0 {
 				fmt.Println()
 				fmt.Printf("发现 %d 个缺失依赖。程序不会自动安装，请按提示手动安装后重试。\n", missing)
-				fmt.Println("说明：缺失可选依赖不会影响默认一把梭，但会影响 --cpu-backend sysbench、--memory-backend sysbench、--disk-backend fio、--network-backend iperf3 或 --route-trace。")
+				fmt.Println("说明：缺失可选依赖不会影响默认一把梭，但会影响 --cpu-backend sysbench、--memory-backend sysbench、--disk-backend fio、--network-backend iperf3、--network-backend speedtest 或 --route-trace。")
 			}
 			return nil
 		},
@@ -654,11 +654,12 @@ func (c *CLI) validateFlags() error {
 	}
 
 	validNetworkBackends := map[string]bool{
-		"builtin": true,
-		"iperf3":  true,
+		"builtin":   true,
+		"iperf3":    true,
+		"speedtest": true,
 	}
 	if !validNetworkBackends[c.config.NetworkBackend] {
-		return fmt.Errorf("无效的网络测试后端: %s\n有效的网络测试后端: builtin, iperf3", c.config.NetworkBackend)
+		return fmt.Errorf("无效的网络测试后端: %s\n有效的网络测试后端: builtin, iperf3, speedtest", c.config.NetworkBackend)
 	}
 
 	return nil
