@@ -18,6 +18,7 @@ type DependencyStatus struct {
 func CheckDependencies() []DependencyStatus {
 	deps := []DependencyStatus{
 		checkDependency("sysbench", "sysbench CPU/内存基准测试", sysbenchInstallHint(), false),
+		checkDependency("geekbench6", "Geekbench 6 CPU 基准测试", geekbenchInstallHint(), false),
 		checkDependency("iperf3", "iperf3 网络吞吐测试", iperf3InstallHint(), false),
 		checkDependency("speedtest", "Ookla Speedtest CLI 网络测速", speedtestInstallHint(), false),
 		checkDependency("fio", "fio 磁盘基准测试", fioInstallHint(), false),
@@ -91,6 +92,19 @@ func sysbenchInstallHint() string {
 		return "Windows: 请通过 MSYS2/WSL 或 sysbench 官方发行方式安装，并确认 PATH 可访问"
 	default:
 		return "请安装 sysbench，并确认 PATH 可访问"
+	}
+}
+
+func geekbenchInstallHint() string {
+	switch runtime.GOOS {
+	case "linux":
+		return "请从 https://www.geekbench.com/download/ 下载 Geekbench 6 CLI，并确认 geekbench6 可通过 PATH 访问"
+	case "darwin":
+		return "macOS: 请从 https://www.geekbench.com/download/ 下载 Geekbench 6，或确认 geekbench6 可通过 PATH 访问"
+	case "windows":
+		return "Windows: 请从 https://www.geekbench.com/download/ 下载 Geekbench 6，并确认 geekbench6.exe 可通过 PATH 访问"
+	default:
+		return "请安装 Geekbench 6，并确认 geekbench6 可通过 PATH 访问"
 	}
 }
 

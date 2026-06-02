@@ -223,6 +223,38 @@ func TestFormatSingleTestResultShowsFioDetailedMetrics(t *testing.T) {
 	}
 }
 
+func TestFormatSingleTestResultShowsCPURawScores(t *testing.T) {
+	generator := NewReportGenerator()
+	result := &models.TestResult{
+		TestName:        "CPU性能测试",
+		Status:          "success",
+		DurationSeconds: 31.2,
+		Metrics: map[string]interface{}{
+			"backend":               "geekbench",
+			"single_core_score":     98.0,
+			"single_core_raw_score": 2450.0,
+			"multi_core_score":      95.0,
+			"multi_core_raw_score":  15200.0,
+			"total_score":           96.0,
+			"cpu_cores":             8,
+		},
+	}
+
+	formatted := generator.formatSingleTestResult("CPU性能测试", result)
+
+	expectedSnippets := []string{
+		"测试后端:     geekbench",
+		"单核原始分:   2450",
+		"多核原始分:   15200",
+		"总体评分:     96.00",
+	}
+	for _, snippet := range expectedSnippets {
+		if !strings.Contains(formatted, snippet) {
+			t.Fatalf("expected formatted report to contain %q, got:\n%s", snippet, formatted)
+		}
+	}
+}
+
 func TestFormatSingleTestResultShowsMemoryBackendAndSources(t *testing.T) {
 	generator := NewReportGenerator()
 	result := &models.TestResult{

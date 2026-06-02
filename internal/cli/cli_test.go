@@ -112,6 +112,23 @@ func TestBindFlagsAcceptsSpeedtestNetworkBackend(t *testing.T) {
 	}
 }
 
+func TestBindFlagsAcceptsGeekbenchCPUBackend(t *testing.T) {
+	app := NewCLI()
+	cmd := app.GetRootCmd()
+	args := []string{"--cpu-backend", "geekbench"}
+	if err := cmd.ParseFlags(args); err != nil {
+		t.Fatalf("failed to parse flags: %v", err)
+	}
+
+	if err := app.bindFlags(cmd); err != nil {
+		t.Fatalf("expected geekbench backend bind to succeed, got %v", err)
+	}
+
+	if app.config.CPUBackend != "geekbench" {
+		t.Fatalf("expected geekbench backend, got %q", app.config.CPUBackend)
+	}
+}
+
 func TestBindFlagsOutputFormat(t *testing.T) {
 	app := NewCLI()
 	cmd := app.GetRootCmd()

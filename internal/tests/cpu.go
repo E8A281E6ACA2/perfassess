@@ -32,6 +32,7 @@ type CPUBenchmarkBackend interface {
 
 type CPUBackendResult struct {
 	Score        float64
+	RawScore     float64
 	EventsPerSec float64
 }
 
@@ -109,6 +110,7 @@ func (ct *CPUTest) Execute() (*models.TestResult, error) {
 	metrics["single_core_score"] = singleCoreScore
 	metrics["single_core_source"] = ct.backend.SingleCoreSource()
 	addSampleStatsMetrics(metrics, "single_core_score", singleCoreStats)
+	addRawScoreMetrics(metrics, "single_core_raw_score", singleCoreSamples)
 	addEventsPerSecondMetrics(metrics, "single_core_events_per_sec", singleCoreSamples)
 	ct.GetLogger().Info(fmt.Sprintf("单核测试完成，评分: %.2f", singleCoreScore))
 
@@ -124,6 +126,7 @@ func (ct *CPUTest) Execute() (*models.TestResult, error) {
 	metrics["multi_core_score"] = multiCoreScore
 	metrics["multi_core_source"] = ct.backend.MultiCoreSource()
 	addSampleStatsMetrics(metrics, "multi_core_score", multiCoreStats)
+	addRawScoreMetrics(metrics, "multi_core_raw_score", multiCoreSamples)
 	addEventsPerSecondMetrics(metrics, "multi_core_events_per_sec", multiCoreSamples)
 	ct.GetLogger().Info(fmt.Sprintf("多核测试完成，评分: %.2f", multiCoreScore))
 
@@ -168,6 +171,21 @@ func addEventsPerSecondMetrics(metrics map[string]interface{}, prefix string, sa
 		return
 	}
 	stats := calculateSampleStats(events)
+	metrics[prefix] = stats.Median
+	addSampleStatsMetrics(metrics, prefix, stats)
+}
+
+func addRawScoreMetrics(metrics map[string]interface{}, prefix string, samples []CPUBackendResult) {
+	rawScores := make([]float64, 0, len(samples))
+	for _, sample := range samples {
+		if sample.RawScore > 0 {
+			rawScores = append(rawScores, sample.RawScore)
+		}
+	}
+	if len(rawScores) == 0 {
+		return
+	}
+	stats := calculateSampleStats(rawScores)
 	metrics[prefix] = stats.Median
 	addSampleStatsMetrics(metrics, prefix, stats)
 }

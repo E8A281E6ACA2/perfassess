@@ -147,13 +147,17 @@
                   "type": "string",
                   "enum": [
                     "builtin",
-                    "sysbench"
+                    "sysbench",
+                    "geekbench"
                   ]
                 },
                 "single_core_source": {
                   "type": "string"
                 },
                 "single_core_score": {
+                  "type": "number"
+                },
+                "single_core_raw_score": {
                   "type": "number"
                 },
                 "single_core_events_per_sec": {
@@ -163,6 +167,9 @@
                   "type": "string"
                 },
                 "multi_core_score": {
+                  "type": "number"
+                },
+                "multi_core_raw_score": {
                   "type": "number"
                 },
                 "multi_core_events_per_sec": {

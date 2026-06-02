@@ -198,6 +198,11 @@ func (ws *WebServer) getKeyMetrics(result *models.TestResult) string {
 			if events, ok := getCPUMultiCoreEvents(result); ok {
 				return fmt.Sprintf("%s总分: %.2f | 多核 %.2f events/s", prefix, score, events)
 			}
+			if singleRaw, singleOK := getCPUSingleCoreRawScore(result); singleOK {
+				if multiRaw, multiOK := getCPUMultiCoreRawScore(result); multiOK {
+					return fmt.Sprintf("%s总分: %.2f | Geekbench %.0f / %.0f", prefix, score, singleRaw, multiRaw)
+				}
+			}
 			if stddev, ok := getCPUScoreStdDev(result); ok {
 				return fmt.Sprintf("%s总分: %.2f (stddev %.2f)", prefix, score, stddev)
 			}

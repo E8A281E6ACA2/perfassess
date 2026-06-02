@@ -168,7 +168,7 @@ func (c *CLI) setupCommands() {
 
 	// --cpu-backend 参数：选择 CPU 测试后端
 	flags.String("cpu-backend", "builtin",
-		"CPU 测试后端 (builtin,sysbench)")
+		"CPU 测试后端 (builtin,sysbench,geekbench)")
 
 	// --memory-backend 参数：选择内存测试后端
 	flags.String("memory-backend", "builtin",
@@ -386,7 +386,7 @@ func (c *CLI) newCheckDepsCommand() *cobra.Command {
 			if missing > 0 {
 				fmt.Println()
 				fmt.Printf("发现 %d 个缺失依赖。程序不会自动安装，请按提示手动安装后重试。\n", missing)
-				fmt.Println("说明：缺失可选依赖不会影响默认一把梭，但会影响 --cpu-backend sysbench、--memory-backend sysbench、--disk-backend fio、--network-backend iperf3、--network-backend speedtest 或 --route-trace。")
+				fmt.Println("说明：缺失可选依赖不会影响默认一把梭，但会影响 --cpu-backend sysbench、--cpu-backend geekbench、--memory-backend sysbench、--disk-backend fio、--network-backend iperf3、--network-backend speedtest 或 --route-trace。")
 			}
 			return nil
 		},
@@ -630,11 +630,12 @@ func (c *CLI) validateFlags() error {
 	}
 
 	validCPUBackends := map[string]bool{
-		"builtin":  true,
-		"sysbench": true,
+		"builtin":   true,
+		"sysbench":  true,
+		"geekbench": true,
 	}
 	if !validCPUBackends[c.config.CPUBackend] {
-		return fmt.Errorf("无效的 CPU 测试后端: %s\n有效的 CPU 测试后端: builtin, sysbench", c.config.CPUBackend)
+		return fmt.Errorf("无效的 CPU 测试后端: %s\n有效的 CPU 测试后端: builtin, sysbench, geekbench", c.config.CPUBackend)
 	}
 
 	validMemoryBackends := map[string]bool{

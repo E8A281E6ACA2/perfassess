@@ -193,11 +193,17 @@ func (rg *ReportGenerator) formatSingleTestResult(testName string, result *model
 			if score, ok := metricFloat64(result.Metrics, "single_core_score"); ok {
 				sb.WriteString(fmt.Sprintf("  单核评分:     %.2f\n", score))
 			}
+			if rawScore, ok := getCPUSingleCoreRawScore(result); ok {
+				sb.WriteString(fmt.Sprintf("  单核原始分:   %.0f\n", rawScore))
+			}
 			if events, ok := getCPUSingleCoreEvents(result); ok {
 				sb.WriteString(fmt.Sprintf("  单核吞吐:     %.2f events/s\n", events))
 			}
 			if score, ok := metricFloat64(result.Metrics, "multi_core_score"); ok {
 				sb.WriteString(fmt.Sprintf("  多核评分:     %.2f\n", score))
+			}
+			if rawScore, ok := getCPUMultiCoreRawScore(result); ok {
+				sb.WriteString(fmt.Sprintf("  多核原始分:   %.0f\n", rawScore))
 			}
 			if events, ok := getCPUMultiCoreEvents(result); ok {
 				sb.WriteString(fmt.Sprintf("  多核吞吐:     %.2f events/s\n", events))

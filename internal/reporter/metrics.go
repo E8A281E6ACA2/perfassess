@@ -153,11 +153,25 @@ func getCPUSingleCoreEvents(result *models.TestResult) (float64, bool) {
 	return metricFloat64(result.Metrics, "single_core_events_per_sec")
 }
 
+func getCPUSingleCoreRawScore(result *models.TestResult) (float64, bool) {
+	if result == nil {
+		return 0, false
+	}
+	return metricFloat64(result.Metrics, "single_core_raw_score")
+}
+
 func getCPUMultiCoreEvents(result *models.TestResult) (float64, bool) {
 	if result == nil {
 		return 0, false
 	}
 	return metricFloat64(result.Metrics, "multi_core_events_per_sec")
+}
+
+func getCPUMultiCoreRawScore(result *models.TestResult) (float64, bool) {
+	if result == nil {
+		return 0, false
+	}
+	return metricFloat64(result.Metrics, "multi_core_raw_score")
 }
 
 func getCPUScoreStdDev(result *models.TestResult) (float64, bool) {

@@ -26,12 +26,14 @@
 
 ## CPU Metrics
 
-- `backend`: `builtin` 或 `sysbench`
+- `backend`: `builtin`、`sysbench` 或 `geekbench`
 - `single_core_source`: 单核指标来源
 - `single_core_score`: 单核评分
+- `single_core_raw_score`: Geekbench 单核原始分
 - `single_core_events_per_sec`: sysbench 单核吞吐，单位 events/s
 - `multi_core_source`: 多核指标来源
 - `multi_core_score`: 多核评分
+- `multi_core_raw_score`: Geekbench 多核原始分
 - `multi_core_events_per_sec`: sysbench 多核吞吐，单位 events/s
 - `total_score`: CPU 总分
 - `cpu_cores`: CPU 逻辑核心数

@@ -1,11 +1,13 @@
 package models
 
 const (
-	CPUBackendBuiltin  = "builtin"
-	CPUBackendSysbench = "sysbench"
+	CPUBackendBuiltin   = "builtin"
+	CPUBackendSysbench  = "sysbench"
+	CPUBackendGeekbench = "geekbench"
 )
 
 const (
-	CPUSourceBuiltin  = "builtin"
-	CPUSourceSysbench = "sysbench"
+	CPUSourceBuiltin   = "builtin"
+	CPUSourceSysbench  = "sysbench"
+	CPUSourceGeekbench = "geekbench6"
 )

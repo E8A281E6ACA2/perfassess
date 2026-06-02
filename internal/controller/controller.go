@@ -314,8 +314,11 @@ func (ac *AssessmentController) runPerformanceTests() (*models.TestResults, erro
 }
 
 func (ac *AssessmentController) newCPUTest() tests.PerformanceTest {
-	if ac.config.CPUBackend == models.CPUBackendSysbench {
+	switch ac.config.CPUBackend {
+	case models.CPUBackendSysbench:
 		return tests.NewCPUTestWithBackend(ac.logger, tests.NewSysbenchCPUBackend(tests.SysbenchCPUConfig{}))
+	case models.CPUBackendGeekbench:
+		return tests.NewCPUTestWithBackend(ac.logger, tests.NewGeekbenchCPUBackend(tests.GeekbenchCPUConfig{}))
 	}
 
 	return tests.NewCPUTest(ac.logger)

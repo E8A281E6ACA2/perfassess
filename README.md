@@ -204,7 +204,7 @@ sudo rm /usr/local/bin/perfassess
 ./build/perfassess
 ```
 
-默认会执行 CPU、内存、磁盘、网络基础性能测试。外部依赖不会自动安装；如需使用 `fio`、`iperf3`、`speedtest` 或路由追踪，请先运行 `check-deps` 查看提示。
+默认会执行 CPU、内存、磁盘、网络基础性能测试。外部依赖不会自动安装；如需使用 `sysbench`、`geekbench6`、`fio`、`iperf3`、`speedtest` 或路由追踪，请先运行 `check-deps` 查看提示。
 
 ### 🧭 交互式模式（可选）
 
@@ -230,7 +230,7 @@ sudo rm /usr/local/bin/perfassess
 #### 基础用法
 
 ```bash
-# 检查外部依赖（sysbench、fio、iperf3、speedtest、traceroute/tracert）
+# 检查外部依赖（sysbench、geekbench6、fio、iperf3、speedtest、traceroute/tracert）
 ./build/perfassess check-deps
 
 # 运行所有检测
@@ -265,6 +265,9 @@ make run
 
 # 使用 sysbench 后端测试 CPU（需要预装 sysbench）
 ./build/perfassess -b cpu --cpu-backend sysbench
+
+# 使用 Geekbench 6 后端测试 CPU（需要预装 geekbench6）
+./build/perfassess -b cpu --cpu-backend geekbench
 
 # 只测试内存
 ./build/perfassess -b memory
@@ -405,7 +408,7 @@ Flags:
       --network-backend string
                               网络测试后端 (builtin,iperf3,speedtest) (default "builtin")
       --iperf3-server string  iperf3 服务端地址（仅 network-backend=iperf3 时使用）
-      --cpu-backend string    CPU 测试后端 (builtin,sysbench) (default "builtin")
+      --cpu-backend string    CPU 测试后端 (builtin,sysbench,geekbench) (default "builtin")
       --memory-backend string 内存测试后端 (builtin,sysbench) (default "builtin")
       --disk-backend string   磁盘测试后端 (builtin,fio) (default "builtin")
       --web                  启用 Web 报告服务器（新功能）
@@ -416,6 +419,7 @@ Flags:
 
 提示：使用 `--route-trace` 时，请确保系统已安装 traceroute（Linux/macOS）或 tracert（Windows），否则将提示缺少依赖。
 提示：使用 `--cpu-backend sysbench` 时，请提前安装 sysbench。程序只检测并提示，不会自动安装依赖。
+提示：使用 `--cpu-backend geekbench` 时，请提前安装 Geekbench 6 并确认 `geekbench6` 可通过 PATH 访问。程序只检测并提示，不会自动安装依赖。
 提示：使用 `--memory-backend sysbench` 时，请提前安装 sysbench。程序只检测并提示，不会自动安装依赖。
 提示：使用 `--disk-backend fio` 时，请提前安装 fio。程序只检测并提示，不会自动安装依赖。
 提示：使用 `--network-backend iperf3` 时，请提前安装 iperf3，并提供可访问的 `--iperf3-server`。服务端可写为 `host` 或 `host:port`，程序会把端口转换为 iperf3 的 `-p` 参数。程序只检测并提示，不会自动安装依赖。
@@ -806,7 +810,7 @@ A: 使用 `--port` 参数指定其他端口：
 | `--port` | - | Web 端口 | `--port 9090` |
 | `--score-weights` | - | 综合评分权重 | `--score-weights cpu=0.4,memory=0.2,disk=0.2,network=0.2` |
 | `--score-profile` | - | 评分基准档位 | `--score-profile vps` |
-| `--cpu-backend` | - | CPU 测试后端 | `--cpu-backend sysbench` |
+| `--cpu-backend` | - | CPU 测试后端 | `--cpu-backend geekbench` |
 | `--memory-backend` | - | 内存测试后端 | `--memory-backend sysbench` |
 | `--disk-backend` | - | 磁盘测试后端 | `--disk-backend fio` |
 | `--network-backend` | - | 网络测试后端 | `--network-backend iperf3` |

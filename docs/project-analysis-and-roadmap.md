@@ -387,25 +387,41 @@
 
 ### CPU 后端设计
 
-- 新增 `CPUBackend` 配置，可选值为 `builtin` 与 `sysbench`
+- 新增 `CPUBackend` 配置，可选值为 `builtin`、`sysbench` 与 `geekbench`
 - 默认继续使用 `builtin`，确保无依赖一把梭可运行
 - `--full` 预设优先使用 `sysbench`，用于更接近主流测评的 CPU 吞吐结果
 - `sysbench` 后端执行两类测试：
   - 单线程：`sysbench cpu --threads=1 --time=10 run`
   - 多线程：`sysbench cpu --threads=<runtime.NumCPU()> --time=10 run`
 - 解析 `events per second` 作为原始吞吐指标
+- `geekbench` 后端执行 `geekbench6 --no-upload --export-json <path>`，一次运行同时解析单核与多核原始分
+- `geekbench` 后端会缓存一次运行结果，避免多轮采样把 Geekbench 重复执行多次
+- `geekbench` 原始分保存在 `single_core_raw_score` 与 `multi_core_raw_score`，`single_core_score` 与 `multi_core_score` 继续保持 0-100 归一化评分
+- `geekbench6` 属于可选外部依赖，程序只检测并提示安装，不自动安装
 - 继续输出兼容字段：
   - `single_core_score`
   - `multi_core_score`
   - `total_score`
 - 新增 CPU 来源字段：
   - `backend`
+  - `single_core_raw_score`
+  - `single_core_raw_score_samples`
+  - `single_core_raw_score_min`
+  - `single_core_raw_score_median`
+  - `single_core_raw_score_max`
+  - `single_core_raw_score_stddev`
   - `single_core_events_per_sec`
   - `single_core_events_per_sec_samples`
   - `single_core_events_per_sec_min`
   - `single_core_events_per_sec_median`
   - `single_core_events_per_sec_max`
   - `single_core_events_per_sec_stddev`
+  - `multi_core_raw_score`
+  - `multi_core_raw_score_samples`
+  - `multi_core_raw_score_min`
+  - `multi_core_raw_score_median`
+  - `multi_core_raw_score_max`
+  - `multi_core_raw_score_stddev`
   - `multi_core_events_per_sec`
   - `multi_core_events_per_sec_samples`
   - `multi_core_events_per_sec_min`
@@ -477,6 +493,7 @@
 
 - 新增配置校验与 CLI 参数测试
 - 新增 `sysbench` 输出解析测试
+- 新增 `geekbench6` JSON 解析、缺失依赖和缓存测试
 - 新增 `fio` 详细 JSON 解析测试
 - 必须通过：
   - `go test ./...`

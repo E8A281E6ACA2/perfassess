@@ -56,7 +56,7 @@ type Config struct {
 	// 默认包含常用的公共服务器地址
 	RouteTraceTargets []string `mapstructure:"route_trace_targets"`
 
-	// CPUBackend CPU 测试后端，可选值: builtin, sysbench
+	// CPUBackend CPU 测试后端，可选值: builtin, sysbench, geekbench
 	CPUBackend string `mapstructure:"cpu_backend"`
 
 	// MemoryBackend 内存测试后端，可选值: builtin, sysbench
@@ -181,8 +181,9 @@ func (c *Config) Validate() error {
 	}
 
 	validCPUBackends := map[string]bool{
-		"builtin":  true,
-		"sysbench": true,
+		"builtin":   true,
+		"sysbench":  true,
+		"geekbench": true,
 	}
 	if !validCPUBackends[c.CPUBackend] {
 		return &ConfigError{

@@ -154,6 +154,15 @@ func TestValidateAcceptsSpeedtestNetworkBackend(t *testing.T) {
 	}
 }
 
+func TestValidateAcceptsGeekbenchCPUBackend(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.CPUBackend = "geekbench"
+
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("expected geekbench cpu backend to validate, got %v", err)
+	}
+}
+
 func TestValidateRejectsUnknownCPUBackend(t *testing.T) {
 	cfg := DefaultConfig()
 	cfg.CPUBackend = "unknown"
