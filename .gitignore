@@ -23,6 +23,7 @@ vendor/
 # IDE 配置
 .idea/
 .vscode/
+*.code-workspace
 *.swp
 *.swo
 *~

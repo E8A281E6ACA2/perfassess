@@ -19,11 +19,11 @@ GOMOD=$(GOCMD) mod
 LDFLAGS=-ldflags "-X main.Version=$(VERSION) -s -w"
 
 # 平台相关
-BINARY_UNIX=$(APP_NAME)_unix
+BINARY_LINUX=$(APP_NAME)_linux
 BINARY_DARWIN=$(APP_NAME)_darwin
 BINARY_WINDOWS=$(APP_NAME).exe
 
-.PHONY: all build clean test deps help install run
+.PHONY: all build build-all build-linux build-darwin build-windows clean test test-coverage deps install run run-verbose run-cpu run-all fmt fmt-check lint schema-check cli-smoke json-smoke validate release-check help
 
 # 默认目标
 all: clean deps build
@@ -43,8 +43,8 @@ build-all: build-linux build-darwin build-windows
 build-linux:
 	@echo "构建 Linux 版本..."
 	@mkdir -p $(BUILD_DIR)
-	GOOS=linux GOARCH=amd64 $(GOBUILD) $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_UNIX)_amd64 $(MAIN_FILE)
-	GOOS=linux GOARCH=arm64 $(GOBUILD) $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_UNIX)_arm64 $(MAIN_FILE)
+	GOOS=linux GOARCH=amd64 $(GOBUILD) $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_LINUX)_amd64 $(MAIN_FILE)
+	GOOS=linux GOARCH=arm64 $(GOBUILD) $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_LINUX)_arm64 $(MAIN_FILE)
 	@echo "Linux 版本构建完成"
 
 # 构建 macOS 版本
@@ -73,7 +73,7 @@ clean:
 # 运行测试
 test:
 	@echo "运行测试..."
-	$(GOTEST) -v ./...
+	$(GOTEST) ./... -count=1
 
 # 运行测试并生成覆盖率报告
 test-coverage:
@@ -120,11 +120,42 @@ fmt:
 	@echo "格式化代码..."
 	$(GOCMD) fmt ./...
 
+# 检查 Go 代码格式
+fmt-check:
+	@echo "检查 Go 代码格式..."
+	@test -z "$$(gofmt -l $$(find . -name '*.go' -not -path './build/*'))" || (echo "存在未格式化的 Go 文件:" && gofmt -l $$(find . -name '*.go' -not -path './build/*') && exit 1)
+
 # 代码检查
 lint:
 	@echo "运行代码检查..."
 	@which golangci-lint > /dev/null || (echo "请先安装 golangci-lint" && exit 1)
 	golangci-lint run ./...
+
+# 检查 JSON 文档格式
+schema-check:
+	@echo "检查 JSON schema 和示例报告..."
+	@python3 -m json.tool docs/report.schema.json >/dev/null
+	@python3 -m json.tool docs/examples/report-json-sample.json >/dev/null
+
+# CLI 基础冒烟测试
+cli-smoke:
+	@echo "运行 CLI 冒烟测试..."
+	@$(GOCMD) run ./cmd --help >/dev/null
+	@$(GOCMD) run ./cmd check-deps >/dev/null
+
+# 生成一份快速 JSON 报告并校验格式
+json-smoke:
+	@echo "运行快速 JSON 报告冒烟测试..."
+	@$(GOCMD) run ./cmd --quick --output-format json -o /tmp/perfassess-release-smoke.json >/tmp/perfassess-release-smoke.stdout
+	@python3 -m json.tool /tmp/perfassess-release-smoke.json >/dev/null
+
+# 日常验证入口
+validate: fmt-check schema-check test build cli-smoke
+	@echo "日常验证通过"
+
+# 发布前验证入口
+release-check: validate build-all json-smoke
+	@echo "发布前验证通过"
 
 # 显示帮助信息
 help:
@@ -146,5 +177,11 @@ help:
 	@echo "  make run-cpu        - 运行 CPU 测试"
 	@echo "  make run-all        - 运行所有测试"
 	@echo "  make fmt            - 格式化代码"
+	@echo "  make fmt-check      - 检查 Go 代码格式"
 	@echo "  make lint           - 运行代码检查"
+	@echo "  make schema-check   - 检查 JSON schema 和示例报告"
+	@echo "  make cli-smoke      - 运行 CLI 基础冒烟测试"
+	@echo "  make json-smoke     - 生成快速 JSON 报告并校验格式"
+	@echo "  make validate       - 日常验证：格式、schema、测试、构建、CLI 冒烟"
+	@echo "  make release-check  - 发布前验证：validate、跨平台构建、JSON 冒烟"
 	@echo "  make help           - 显示此帮助信息"

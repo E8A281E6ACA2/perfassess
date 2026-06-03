@@ -19,7 +19,7 @@ import (
 type VirtualizationDetector struct {
 	// adapter 平台适配器
 	adapter platform.PlatformAdapter
-	
+
 	// timeout 检测超时时间
 	timeout time.Duration
 }
@@ -27,6 +27,7 @@ type VirtualizationDetector struct {
 // NewVirtualizationDetector 创建虚拟化检测器
 // 参数:
 //   - adapter: 平台适配器
+//
 // 返回:
 //   - *VirtualizationDetector: 虚拟化检测器实例
 func NewVirtualizationDetector(adapter platform.PlatformAdapter) *VirtualizationDetector {
@@ -43,7 +44,7 @@ func NewVirtualizationDetector(adapter platform.PlatformAdapter) *Virtualization
 //   - error: 检测错误
 func (vd *VirtualizationDetector) Detect() (*models.VirtualizationInfo, error) {
 	ctx := context.Background()
-	
+
 	result, err := utils.RunWithTimeoutAndResult(ctx, vd.timeout, func() (interface{}, error) {
 		switch runtime.GOOS {
 		case "linux":
@@ -60,7 +61,7 @@ func (vd *VirtualizationDetector) Detect() (*models.VirtualizationInfo, error) {
 			}, nil
 		}
 	})
-	
+
 	if err != nil {
 		// 检测失败时返回未知状态
 		return &models.VirtualizationInfo{
@@ -69,7 +70,7 @@ func (vd *VirtualizationDetector) Detect() (*models.VirtualizationInfo, error) {
 			Vendor:        "",
 		}, nil
 	}
-	
+
 	return result.(*models.VirtualizationInfo), nil
 }
 
@@ -93,14 +94,14 @@ func (vd *VirtualizationDetector) detectLinux() (*models.VirtualizationInfo, err
 			}, nil
 		}
 	}
-	
+
 	// 方法2: 检查 DMI 信息
 	productName, _ := os.ReadFile("/sys/class/dmi/id/product_name")
 	productNameStr := strings.ToLower(strings.TrimSpace(string(productName)))
-	
+
 	sysVendor, _ := os.ReadFile("/sys/class/dmi/id/sys_vendor")
 	sysVendorStr := strings.ToLower(strings.TrimSpace(string(sysVendor)))
-	
+
 	// 检测常见虚拟化标识
 	if strings.Contains(productNameStr, "kvm") || strings.Contains(sysVendorStr, "qemu") {
 		return &models.VirtualizationInfo{
@@ -109,7 +110,7 @@ func (vd *VirtualizationDetector) detectLinux() (*models.VirtualizationInfo, err
 			Vendor:        "QEMU/KVM",
 		}, nil
 	}
-	
+
 	if strings.Contains(productNameStr, "vmware") || strings.Contains(sysVendorStr, "vmware") {
 		return &models.VirtualizationInfo{
 			IsVirtualized: true,
@@ -117,7 +118,7 @@ func (vd *VirtualizationDetector) detectLinux() (*models.VirtualizationInfo, err
 			Vendor:        "VMware, Inc.",
 		}, nil
 	}
-	
+
 	if strings.Contains(productNameStr, "virtualbox") || strings.Contains(sysVendorStr, "virtualbox") {
 		return &models.VirtualizationInfo{
 			IsVirtualized: true,
@@ -125,7 +126,7 @@ func (vd *VirtualizationDetector) detectLinux() (*models.VirtualizationInfo, err
 			Vendor:        "Oracle Corporation",
 		}, nil
 	}
-	
+
 	if strings.Contains(productNameStr, "xen") || strings.Contains(sysVendorStr, "xen") {
 		return &models.VirtualizationInfo{
 			IsVirtualized: true,
@@ -133,7 +134,7 @@ func (vd *VirtualizationDetector) detectLinux() (*models.VirtualizationInfo, err
 			Vendor:        "Xen",
 		}, nil
 	}
-	
+
 	if strings.Contains(productNameStr, "microsoft") || strings.Contains(sysVendorStr, "microsoft") {
 		return &models.VirtualizationInfo{
 			IsVirtualized: true,
@@ -141,7 +142,7 @@ func (vd *VirtualizationDetector) detectLinux() (*models.VirtualizationInfo, err
 			Vendor:        "Microsoft Corporation",
 		}, nil
 	}
-	
+
 	// 方法3: 检查 /proc/cpuinfo
 	cpuinfo, err := os.ReadFile("/proc/cpuinfo")
 	if err == nil {
@@ -154,7 +155,7 @@ func (vd *VirtualizationDetector) detectLinux() (*models.VirtualizationInfo, err
 			}, nil
 		}
 	}
-	
+
 	// 未检测到虚拟化
 	return &models.VirtualizationInfo{
 		IsVirtualized: false,
@@ -179,9 +180,9 @@ func (vd *VirtualizationDetector) detectWindows() (*models.VirtualizationInfo, e
 			Vendor:        "",
 		}, nil
 	}
-	
+
 	outputStr := strings.ToLower(string(output))
-	
+
 	// 检测常见虚拟化标识
 	if strings.Contains(outputStr, "vmware") {
 		return &models.VirtualizationInfo{
@@ -190,7 +191,7 @@ func (vd *VirtualizationDetector) detectWindows() (*models.VirtualizationInfo, e
 			Vendor:        "VMware, Inc.",
 		}, nil
 	}
-	
+
 	if strings.Contains(outputStr, "virtualbox") {
 		return &models.VirtualizationInfo{
 			IsVirtualized: true,
@@ -198,7 +199,7 @@ func (vd *VirtualizationDetector) detectWindows() (*models.VirtualizationInfo, e
 			Vendor:        "Oracle Corporation",
 		}, nil
 	}
-	
+
 	if strings.Contains(outputStr, "microsoft") && strings.Contains(outputStr, "virtual") {
 		return &models.VirtualizationInfo{
 			IsVirtualized: true,
@@ -206,7 +207,7 @@ func (vd *VirtualizationDetector) detectWindows() (*models.VirtualizationInfo, e
 			Vendor:        "Microsoft Corporation",
 		}, nil
 	}
-	
+
 	if strings.Contains(outputStr, "qemu") || strings.Contains(outputStr, "kvm") {
 		return &models.VirtualizationInfo{
 			IsVirtualized: true,
@@ -214,7 +215,7 @@ func (vd *VirtualizationDetector) detectWindows() (*models.VirtualizationInfo, e
 			Vendor:        "QEMU/KVM",
 		}, nil
 	}
-	
+
 	if strings.Contains(outputStr, "xen") {
 		return &models.VirtualizationInfo{
 			IsVirtualized: true,
@@ -222,7 +223,7 @@ func (vd *VirtualizationDetector) detectWindows() (*models.VirtualizationInfo, e
 			Vendor:        "Xen",
 		}, nil
 	}
-	
+
 	// 未检测到虚拟化
 	return &models.VirtualizationInfo{
 		IsVirtualized: false,
@@ -251,13 +252,13 @@ func (vd *VirtualizationDetector) detectMacOS() (*models.VirtualizationInfo, err
 			}, nil
 		}
 	}
-	
+
 	// 检查硬件型号
 	cmd = exec.Command("sysctl", "-n", "hw.model")
 	output, err = cmd.Output()
 	if err == nil {
 		model := strings.ToLower(strings.TrimSpace(string(output)))
-		
+
 		if strings.Contains(model, "vmware") {
 			return &models.VirtualizationInfo{
 				IsVirtualized: true,
@@ -265,7 +266,7 @@ func (vd *VirtualizationDetector) detectMacOS() (*models.VirtualizationInfo, err
 				Vendor:        "VMware, Inc.",
 			}, nil
 		}
-		
+
 		if strings.Contains(model, "virtualbox") {
 			return &models.VirtualizationInfo{
 				IsVirtualized: true,
@@ -273,7 +274,7 @@ func (vd *VirtualizationDetector) detectMacOS() (*models.VirtualizationInfo, err
 				Vendor:        "Oracle Corporation",
 			}, nil
 		}
-		
+
 		if strings.Contains(model, "parallels") {
 			return &models.VirtualizationInfo{
 				IsVirtualized: true,
@@ -282,7 +283,7 @@ func (vd *VirtualizationDetector) detectMacOS() (*models.VirtualizationInfo, err
 			}, nil
 		}
 	}
-	
+
 	// 未检测到虚拟化
 	return &models.VirtualizationInfo{
 		IsVirtualized: false,
@@ -294,11 +295,12 @@ func (vd *VirtualizationDetector) detectMacOS() (*models.VirtualizationInfo, err
 // normalizeVirtType 标准化虚拟化类型名称
 // 参数:
 //   - virtType: 原始虚拟化类型字符串
+//
 // 返回:
 //   - string: 标准化后的类型名称
 func (vd *VirtualizationDetector) normalizeVirtType(virtType string) string {
 	virtType = strings.ToLower(virtType)
-	
+
 	switch {
 	case strings.Contains(virtType, "kvm"):
 		return "KVM"

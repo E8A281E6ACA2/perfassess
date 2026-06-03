@@ -4,7 +4,7 @@ package platform
 
 import (
 	"runtime"
-	
+
 	"performance-assessment-system/pkg/utils"
 )
 
@@ -14,13 +14,13 @@ type PlatformType string
 const (
 	// PlatformLinux Linux操作系统
 	PlatformLinux PlatformType = "linux"
-	
+
 	// PlatformWindows Windows操作系统
 	PlatformWindows PlatformType = "windows"
-	
+
 	// PlatformMacOS macOS操作系统
 	PlatformMacOS PlatformType = "darwin"
-	
+
 	// PlatformUnsupported 不支持的操作系统
 	PlatformUnsupported PlatformType = "unsupported"
 )
@@ -30,7 +30,7 @@ const (
 type PlatformDetector struct {
 	// platform 当前检测到的平台类型
 	platform PlatformType
-	
+
 	// arch 系统架构（amd64, arm64等）
 	arch string
 }
@@ -110,7 +110,7 @@ func (pd *PlatformDetector) GetPlatformAdapter() (PlatformAdapter, error) {
 	if err := pd.ValidatePlatform(); err != nil {
 		return nil, err
 	}
-	
+
 	switch pd.platform {
 	case PlatformLinux:
 		return NewLinuxAdapter(), nil

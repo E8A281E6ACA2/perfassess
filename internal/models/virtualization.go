@@ -7,11 +7,11 @@ type VirtualizationInfo struct {
 	// IsVirtualized 是否运行在虚拟化环境中
 	// true表示虚拟机，false表示物理机
 	IsVirtualized bool `json:"is_virtualized"`
-	
+
 	// Type 虚拟化类型
 	// 可选值: "KVM", "VMware", "Xen", "OpenVZ", "Hyper-V", "VirtualBox", "Physical", "Unknown"
 	Type string `json:"type"`
-	
+
 	// Vendor 虚拟化厂商名称
 	// 如 "QEMU", "VMware, Inc.", "Microsoft Corporation"
 	Vendor string `json:"vendor,omitempty"`

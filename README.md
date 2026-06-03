@@ -5,16 +5,17 @@
 ## 项目文档
 
 - 项目分析与优化路线图: [docs/project-analysis-and-roadmap.md](docs/project-analysis-and-roadmap.md)
+- 发布前检查清单: [docs/release-checklist.md](docs/release-checklist.md)
 
 ## 当前状态
 
-当前项目已经具备较完整的评估工具雏形，支持基础性能测试、系统信息采集、扩展检测和多种报告输出方式。
+当前项目已经具备可运行的 VPS 测评脚本雏形，支持一把梭性能测试、系统信息采集、扩展检测、多种报告输出和报告对比。
 
-现阶段的优化重点不是继续增加功能，而是优先提升以下三点：
+现阶段的目标是从“可运行 MVP”继续升级为成熟 VPS 测评脚本，重点提升以下三点：
 
-- 测试结果、评分结果、报告展示之间的一致性
-- CPU、内存、磁盘、网络基础测试的可信度与稳定性
-- 工程测试覆盖与持续迭代能力
+- 主流 VPS 测评口径对齐，例如 sysbench、fio、iperf3、speedtest 和 Geekbench
+- 默认一把梭的稳定性、可解释性和无依赖可运行能力
+- 发布前验证、报告 schema、快照测试和 CI 的回归保护
 
 更完整的分析和后续优化路线见 `docs/project-analysis-and-roadmap.md`。
 
@@ -622,6 +623,12 @@ CPU评分:        100.00 / 100
 # 运行所有单元测试
 make test
 
+# 日常开发验证：格式、schema、测试、构建、CLI 冒烟
+make validate
+
+# 发布前验证：validate、跨平台构建、快速 JSON 报告
+make release-check
+
 # 运行测试并生成覆盖率报告
 make test-coverage
 ```
@@ -642,7 +649,7 @@ make lint
 - **CLI 框架**: [Cobra](https://github.com/spf13/cobra)
 - **日志库**: [Zap](https://github.com/uber-go/zap)
 - **系统信息**: [gopsutil](https://github.com/shirou/gopsutil)
-- **配置管理**: [Viper](https://github.com/spf13/viper)
+- **配置管理**: 内置配置结构与 CLI 参数绑定
 
 ## 性能评分算法
 

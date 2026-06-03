@@ -141,7 +141,7 @@ func (st *StressTest) runMemory(ctx context.Context) *models.StressComponentResu
 
 	if st.memDuration.Seconds() > 0 {
 		result.Metrics["memory_mb"] = sizeMB
-		result.Metrics["processed_mb_per_sec"] = float64(bytesTouched)/1024/1024/st.memDuration.Seconds()
+		result.Metrics["processed_mb_per_sec"] = float64(bytesTouched) / 1024 / 1024 / st.memDuration.Seconds()
 	}
 
 	return result
@@ -205,7 +205,7 @@ func (st *StressTest) runDisk(ctx context.Context) *models.StressComponentResult
 	}
 
 	if st.diskDuration.Seconds() > 0 {
-		result.Metrics["write_mb_per_sec"] = float64(bytesWritten)/1024/1024/st.diskDuration.Seconds()
+		result.Metrics["write_mb_per_sec"] = float64(bytesWritten) / 1024 / 1024 / st.diskDuration.Seconds()
 	}
 
 	return result

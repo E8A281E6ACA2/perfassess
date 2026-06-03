@@ -14,7 +14,7 @@ type StressComponentResult struct {
 
 // StressTestReport 表示整体压力测试的结果
 type StressTestReport struct {
-	TotalDurationSeconds float64                   `json:"total_duration_seconds"`
-	Components           []*StressComponentResult  `json:"components"`
-	TemperatureAvailable bool                      `json:"temperature_available"`
+	TotalDurationSeconds float64                  `json:"total_duration_seconds"`
+	Components           []*StressComponentResult `json:"components"`
+	TemperatureAvailable bool                     `json:"temperature_available"`
 }
