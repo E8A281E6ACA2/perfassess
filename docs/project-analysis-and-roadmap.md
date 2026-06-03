@@ -353,6 +353,8 @@
 - 网络报告会展示 `backend`，并在 `iperf3` 场景展示服务端地址
 - 网络测速来源字段会跟随 backend，例如 `iperf3_download`、`iperf3_upload`、`speedtest_download` 与 `speedtest_upload`
 - 内置下载测速已支持多个 HTTP 下载源顺序重试，成功时 `download_speed_source` 记录实际 URL，避免单个公共测速源故障直接导致网络降级
+- 默认网络测试已增加 TCP connect 网络质量矩阵，输出 IPv4/IPv6 可用性、目标失败率、平均延迟和抖动
+- 网络质量矩阵作为诊断指标写入 `network_quality_*`，不会因为 IPv6 不通而单独拉低网络评分或测试状态
 - `iperf3` 后端只负责吞吐测试，延迟继续回退到内置 TCP connect 测量并使用 `latency_source=tcp_connect`
 - 后续真正启用 `iperf3` 前，需要补充真实服务端验证
 
@@ -381,6 +383,14 @@
 - 如果服务端包含端口，程序会转换为 `iperf3 -c <host> -p <port>`，避免把 `host:port` 错传给 `-c`
 - 被测机器需要预先安装 `iperf3`
 - 程序只负责检测并提示安装方式，不静默修改系统环境
+
+默认网络质量矩阵使用约定：
+
+- 默认随网络测试执行，不需要安装额外工具
+- 使用 TCP connect 采样，不依赖 ICMP 权限或 ping 工具
+- 默认覆盖 IPv4 与 IPv6 公共目标，每个目标采样多次
+- 输出字段包括 `network_quality_profile`、`network_quality_target_count`、`network_quality_ipv4_available`、`network_quality_ipv6_available`、`network_quality_failure_rate`、`network_quality_avg_latency_ms`、`network_quality_jitter_ms` 和 `network_quality_<n>_*`
+- 该矩阵用于辅助判断连通性、抖动和失败率，不替代 `iperf3` 或 `speedtest` 的真实吞吐测试
 
 ## 下一批对标设计：主流基准后端增强
 

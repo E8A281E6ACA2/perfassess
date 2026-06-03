@@ -345,6 +345,13 @@ func (rg *ReportGenerator) formatSingleTestResult(testName string, result *model
 					}
 				}
 			}
+			if rows := getNetworkQualityRows(result); len(rows) > 0 {
+				sb.WriteString("  网络质量矩阵: target | proto | available | avg ms | jitter ms | fail %\n")
+				for _, row := range rows {
+					sb.WriteString(fmt.Sprintf("                 %s | %s | %t | %.2f | %.2f | %.2f%%\n",
+						row.Target, row.Protocol, row.Available, row.AvgLatencyMs, row.JitterMs, row.FailureRate*100))
+				}
+			}
 			if _, latencyOK := getNetworkLatency(result); latencyOK {
 				if _, downloadOK := getNetworkDownloadSpeed(result); downloadOK {
 					score := rg.scoreCalculator.CalculateNetworkScore(result)

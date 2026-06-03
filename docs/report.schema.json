@@ -489,6 +489,36 @@
                 "network_error": {
                   "type": "string"
                 },
+                "network_quality_profile": {
+                  "type": "string",
+                  "enum": [
+                    "tcp_connect_matrix"
+                  ]
+                },
+                "network_quality_target_count": {
+                  "type": "number"
+                },
+                "network_quality_ipv4_available": {
+                  "type": "boolean"
+                },
+                "network_quality_ipv6_available": {
+                  "type": "boolean"
+                },
+                "network_quality_ipv4_failure_rate": {
+                  "type": "number"
+                },
+                "network_quality_ipv6_failure_rate": {
+                  "type": "number"
+                },
+                "network_quality_failure_rate": {
+                  "type": "number"
+                },
+                "network_quality_avg_latency_ms": {
+                  "type": "number"
+                },
+                "network_quality_jitter_ms": {
+                  "type": "number"
+                },
                 "iperf3_matrix_profile": {
                   "type": "string",
                   "enum": [
@@ -522,6 +552,18 @@
                   "type": "string"
                 },
                 "^iperf3_matrix_[0-9]+_(download_mbps|upload_mbps|latency_ms)$": {
+                  "type": "number"
+                },
+                "^network_quality_[0-9]+_(target|address|protocol)$": {
+                  "type": "string"
+                },
+                "^network_quality_[0-9]+_available$": {
+                  "type": "boolean"
+                },
+                "^network_quality_[0-9]+_(success_count|failure_count)$": {
+                  "type": "number"
+                },
+                "^network_quality_[0-9]+_(failure_rate|avg_latency_ms|min_latency_ms|max_latency_ms|jitter_ms)$": {
                   "type": "number"
                 }
               }

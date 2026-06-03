@@ -391,6 +391,21 @@ type networkIperf3MatrixRow struct {
 	Error        string
 }
 
+type networkQualityRow struct {
+	Index        int
+	Target       string
+	Address      string
+	Protocol     string
+	Available    bool
+	SuccessCount int
+	FailureCount int
+	FailureRate  float64
+	AvgLatencyMs float64
+	MinLatencyMs float64
+	MaxLatencyMs float64
+	JitterMs     float64
+}
+
 func getNetworkIperf3MatrixRows(result *models.TestResult) []networkIperf3MatrixRow {
 	if result == nil || result.Metrics == nil {
 		return nil
@@ -417,6 +432,47 @@ func getNetworkIperf3MatrixRows(result *models.TestResult) []networkIperf3Matrix
 			UploadMbps:   upload,
 			LatencyMs:    latency,
 			Error:        errorMessage,
+		})
+	}
+	return rows
+}
+
+func getNetworkQualityRows(result *models.TestResult) []networkQualityRow {
+	if result == nil || result.Metrics == nil {
+		return nil
+	}
+
+	count, ok := metricInt(result.Metrics, "network_quality_target_count")
+	if !ok || count <= 0 {
+		return nil
+	}
+	rows := make([]networkQualityRow, 0, count)
+	for i := 1; i <= count; i++ {
+		prefix := fmt.Sprintf("network_quality_%d", i)
+		target, _ := metricString(result.Metrics, prefix+"_target")
+		address, _ := metricString(result.Metrics, prefix+"_address")
+		protocol, _ := metricString(result.Metrics, prefix+"_protocol")
+		available, _ := metricBool(result.Metrics, prefix+"_available")
+		successCount, _ := metricInt(result.Metrics, prefix+"_success_count")
+		failureCount, _ := metricInt(result.Metrics, prefix+"_failure_count")
+		failureRate, _ := metricFloat64(result.Metrics, prefix+"_failure_rate")
+		avgLatency, _ := metricFloat64(result.Metrics, prefix+"_avg_latency_ms")
+		minLatency, _ := metricFloat64(result.Metrics, prefix+"_min_latency_ms")
+		maxLatency, _ := metricFloat64(result.Metrics, prefix+"_max_latency_ms")
+		jitter, _ := metricFloat64(result.Metrics, prefix+"_jitter_ms")
+		rows = append(rows, networkQualityRow{
+			Index:        i,
+			Target:       target,
+			Address:      address,
+			Protocol:     protocol,
+			Available:    available,
+			SuccessCount: successCount,
+			FailureCount: failureCount,
+			FailureRate:  failureRate,
+			AvgLatencyMs: avgLatency,
+			MinLatencyMs: minLatency,
+			MaxLatencyMs: maxLatency,
+			JitterMs:     jitter,
 		})
 	}
 	return rows

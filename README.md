@@ -69,6 +69,7 @@ make build
   - 内存读写速度测试
   - 磁盘 I/O 性能测试
   - 网络延迟和带宽测试
+  - 网络质量矩阵（IPv4/IPv6 可用性、TCP connect 延迟、抖动、失败率）
   - 路由追踪测试（可选）
   - 流媒体解锁检测（可选）
 
@@ -204,7 +205,7 @@ sudo rm /usr/local/bin/perfassess
 ./build/perfassess
 ```
 
-默认会执行 CPU、内存、磁盘、网络基础性能测试。外部依赖不会自动安装；如需使用 `sysbench`、`geekbench6`、`fio`、`iperf3`、`speedtest` 或路由追踪，请先运行 `check-deps` 查看提示。
+默认会执行 CPU、内存、磁盘、网络基础性能测试。网络基础测试会额外输出无外部依赖的 TCP connect 质量矩阵，用于判断 IPv4/IPv6 可用性、延迟、抖动和失败率。外部依赖不会自动安装；如需使用 `sysbench`、`geekbench6`、`fio`、`iperf3`、`speedtest` 或路由追踪，请先运行 `check-deps` 查看提示。
 
 ### 🧭 交互式模式（可选）
 
@@ -286,6 +287,8 @@ make run
 
 # 只测试网络
 ./build/perfassess -b network
+
+# 默认网络测试会输出网络质量矩阵，无需安装额外工具
 
 # 使用 iperf3 后端测试网络吞吐（需要预装 iperf3，并准备服务端）
 ./build/perfassess -b network --network-backend iperf3 --iperf3-server 1.2.3.4:5201
@@ -567,6 +570,7 @@ ISP:            China Telecom
   平均延迟:     15.50 ms
   下载速度:     500.00 Mbps
   上传速度:     200.00 Mbps
+  网络质量矩阵: target | proto | available | avg ms | jitter ms | fail %
 
 === 综合性能评分 ===
 
@@ -711,6 +715,8 @@ make lint
 # 重点测试网络性能
 ./build/perfassess -b network --route-trace --streaming --web
 ```
+
+默认网络测试已包含 TCP connect 质量矩阵，可直接观察 IPv4/IPv6 可用性、目标失败率和抖动；如需真实上传吞吐或多节点吞吐对比，再使用 `--network-backend iperf3` 或 `--network-backend speedtest`。
 
 ### 场景4：CI/CD 集成
 

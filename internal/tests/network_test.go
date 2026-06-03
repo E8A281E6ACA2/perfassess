@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"performance-assessment-system/internal/models"
 	"performance-assessment-system/pkg/logger"
@@ -21,7 +22,9 @@ func newTestNetworkTest(t *testing.T) *NetworkTest {
 		t.Fatalf("failed to create logger: %v", err)
 	}
 
-	return NewNetworkTest(log)
+	networkTest := NewNetworkTest(log)
+	networkTest.qualityTargets = nil
+	return networkTest
 }
 
 func TestUploadSpeedReturnsEstimateFromDownload(t *testing.T) {
@@ -106,6 +109,107 @@ func TestExecutePopulatesSourceMetricsForEstimatedUpload(t *testing.T) {
 	if score != 85.0 {
 		t.Fatalf("expected estimated upload score cap 85.0, got %.2f", score)
 	}
+}
+
+func TestMeasureNetworkQualityTracksAvailabilityAndJitter(t *testing.T) {
+	networkTest := newTestNetworkTest(t)
+	networkTest.qualityTargets = []networkQualityTarget{
+		{Name: "ipv4-test", Address: "1.1.1.1:443", Protocol: "ipv4"},
+		{Name: "ipv6-test", Address: "[2001:db8::1]:443", Protocol: "ipv6"},
+	}
+	networkTest.qualitySamples = 3
+
+	calls := map[string]int{}
+	networkTest.qualityDialFn = func(address string, timeout time.Duration) (time.Duration, error) {
+		if timeout != 2*time.Second {
+			t.Fatalf("expected default quality timeout 2s, got %s", timeout)
+		}
+		calls[address]++
+		switch address {
+		case "1.1.1.1:443":
+			switch calls[address] {
+			case 1:
+				return 10 * time.Millisecond, nil
+			case 2:
+				return 20 * time.Millisecond, nil
+			default:
+				return 0, fmt.Errorf("sample failed")
+			}
+		case "[2001:db8::1]:443":
+			return 0, fmt.Errorf("ipv6 unavailable")
+		default:
+			t.Fatalf("unexpected quality target %q", address)
+			return 0, nil
+		}
+	}
+
+	results := networkTest.MeasureNetworkQuality()
+	if len(results) != 2 {
+		t.Fatalf("expected two quality results, got %d", len(results))
+	}
+
+	ipv4 := results[0]
+	if !ipv4.Available {
+		t.Fatal("expected ipv4 target to be available")
+	}
+	if ipv4.SuccessCount != 2 || ipv4.FailureCount != 1 {
+		t.Fatalf("expected ipv4 success/failure 2/1, got %d/%d", ipv4.SuccessCount, ipv4.FailureCount)
+	}
+	if math.Abs(ipv4.FailureRate-(1.0/3.0)) > 0.0001 {
+		t.Fatalf("expected ipv4 failure rate 1/3, got %.4f", ipv4.FailureRate)
+	}
+	if ipv4.AvgLatencyMs != 15 || ipv4.MinLatencyMs != 10 || ipv4.MaxLatencyMs != 20 || ipv4.JitterMs != 5 {
+		t.Fatalf("unexpected ipv4 latency stats: %#v", ipv4)
+	}
+
+	ipv6 := results[1]
+	if ipv6.Available {
+		t.Fatal("expected ipv6 target to be unavailable")
+	}
+	if ipv6.SuccessCount != 0 || ipv6.FailureCount != 3 || ipv6.FailureRate != 1 {
+		t.Fatalf("unexpected ipv6 stats: %#v", ipv6)
+	}
+}
+
+func TestExecuteIncludesNetworkQualityMetrics(t *testing.T) {
+	networkTest := newTestNetworkTest(t)
+	networkTest.latencyFn = func(_ []string) (float64, error) {
+		return 12.5, nil
+	}
+	networkTest.downloadFn = func() (NetworkDownloadResult, error) {
+		return NetworkDownloadResult{SpeedMbps: 200.0}, nil
+	}
+	networkTest.uploadFn = func(downloadSpeed float64) (float64, bool, error) {
+		return 140.0, true, nil
+	}
+	networkTest.qualityTargets = []networkQualityTarget{
+		{Name: "ipv4-test", Address: "1.1.1.1:443", Protocol: "ipv4"},
+		{Name: "ipv6-test", Address: "[2001:db8::1]:443", Protocol: "ipv6"},
+	}
+	networkTest.qualitySamples = 2
+	networkTest.qualityDialFn = func(address string, timeout time.Duration) (time.Duration, error) {
+		if address == "1.1.1.1:443" {
+			return 10 * time.Millisecond, nil
+		}
+		return 0, fmt.Errorf("unavailable")
+	}
+
+	result, err := networkTest.Execute()
+	if err != nil {
+		t.Fatalf("expected execute to succeed, got error: %v", err)
+	}
+
+	assertMetricString(t, result.Metrics, "network_quality_profile", networkQualityProfile)
+	assertMetricInt(t, result.Metrics, "network_quality_target_count", 2)
+	assertMetricBool(t, result.Metrics, "network_quality_ipv4_available", true)
+	assertMetricBool(t, result.Metrics, "network_quality_ipv6_available", false)
+	assertMetricFloat(t, result.Metrics, "network_quality_ipv4_failure_rate", 0)
+	assertMetricFloat(t, result.Metrics, "network_quality_ipv6_failure_rate", 1)
+	assertMetricFloat(t, result.Metrics, "network_quality_avg_latency_ms", 10)
+	assertMetricString(t, result.Metrics, "network_quality_1_target", "ipv4-test")
+	assertMetricString(t, result.Metrics, "network_quality_2_protocol", "ipv6")
+	assertMetricBool(t, result.Metrics, "network_quality_2_available", false)
+	assertMetricInt(t, result.Metrics, "network_quality_2_failure_count", 2)
 }
 
 func TestDownloadSpeedFallsBackAcrossMultipleSources(t *testing.T) {

@@ -96,6 +96,26 @@
 - `upload_speed_source`: 上传测速来源
 - `upload_speed_estimated`: 上传是否为估算值
 - `network_error`: 网络部分失败说明
+- `network_quality_profile`: 网络质量矩阵口径，当前为 `tcp_connect_matrix`
+- `network_quality_target_count`: 网络质量目标数量
+- `network_quality_ipv4_available`: IPv4 TCP connect 至少一个目标成功
+- `network_quality_ipv6_available`: IPv6 TCP connect 至少一个目标成功
+- `network_quality_ipv4_failure_rate`: IPv4 目标整体失败率，范围 0-1
+- `network_quality_ipv6_failure_rate`: IPv6 目标整体失败率，范围 0-1
+- `network_quality_failure_rate`: 全部质量目标整体失败率，范围 0-1
+- `network_quality_avg_latency_ms`: 全部成功样本加权平均 TCP connect 延迟，单位 ms
+- `network_quality_jitter_ms`: 全部成功样本加权平均抖动，单位 ms
+- `network_quality_<n>_target`: 第 n 个质量目标名称
+- `network_quality_<n>_address`: 第 n 个质量目标地址
+- `network_quality_<n>_protocol`: 第 n 个质量目标协议族，`ipv4` 或 `ipv6`
+- `network_quality_<n>_available`: 第 n 个质量目标是否有成功样本
+- `network_quality_<n>_success_count`: 第 n 个质量目标成功采样次数
+- `network_quality_<n>_failure_count`: 第 n 个质量目标失败采样次数
+- `network_quality_<n>_failure_rate`: 第 n 个质量目标失败率，范围 0-1
+- `network_quality_<n>_avg_latency_ms`: 第 n 个质量目标平均 TCP connect 延迟，单位 ms
+- `network_quality_<n>_min_latency_ms`: 第 n 个质量目标最小 TCP connect 延迟，单位 ms
+- `network_quality_<n>_max_latency_ms`: 第 n 个质量目标最大 TCP connect 延迟，单位 ms
+- `network_quality_<n>_jitter_ms`: 第 n 个质量目标 TCP connect 抖动，单位 ms
 - `iperf3_matrix_profile`: iperf3 多节点矩阵口径，当前为 `multi_server`
 - `iperf3_matrix_server_count`: iperf3 矩阵服务端数量
 - `iperf3_matrix_success_count`: 至少完成下载或上传的服务端数量

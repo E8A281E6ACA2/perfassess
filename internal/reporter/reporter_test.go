@@ -397,6 +397,49 @@ func TestFormatSingleTestResultShowsIperf3Matrix(t *testing.T) {
 	}
 }
 
+func TestFormatSingleTestResultShowsNetworkQualityMatrix(t *testing.T) {
+	generator := NewReportGenerator()
+	result := &models.TestResult{
+		TestName:        "网络性能测试",
+		Status:          "success",
+		DurationSeconds: 4.2,
+		Metrics: map[string]interface{}{
+			"backend":                          "builtin",
+			"average_latency_ms":               12.0,
+			"download_speed_mbps":              200.0,
+			"upload_speed_mbps":                140.0,
+			"upload_speed_estimated":           true,
+			"network_quality_target_count":     2,
+			"network_quality_1_target":         "cloudflare_ipv4_https",
+			"network_quality_1_protocol":       "ipv4",
+			"network_quality_1_available":      true,
+			"network_quality_1_avg_latency_ms": 10.0,
+			"network_quality_1_jitter_ms":      1.5,
+			"network_quality_1_failure_rate":   0.0,
+			"network_quality_2_target":         "google_ipv6_dns",
+			"network_quality_2_protocol":       "ipv6",
+			"network_quality_2_available":      false,
+			"network_quality_2_avg_latency_ms": 0.0,
+			"network_quality_2_jitter_ms":      0.0,
+			"network_quality_2_failure_rate":   1.0,
+			"score":                            85.0,
+		},
+	}
+
+	formatted := generator.formatSingleTestResult("网络性能测试", result)
+
+	expectedSnippets := []string{
+		"网络质量矩阵: target | proto | available | avg ms | jitter ms | fail %",
+		"cloudflare_ipv4_https | ipv4 | true | 10.00 | 1.50 | 0.00%",
+		"google_ipv6_dns | ipv6 | false | 0.00 | 0.00 | 100.00%",
+	}
+	for _, snippet := range expectedSnippets {
+		if !strings.Contains(formatted, snippet) {
+			t.Fatalf("expected formatted report to contain %q, got:\n%s", snippet, formatted)
+		}
+	}
+}
+
 func TestWebServerKeyMetricsShowsFioMixedMatrix(t *testing.T) {
 	server := &WebServer{}
 	result := &models.TestResult{
@@ -441,6 +484,34 @@ func TestWebServerKeyMetricsShowsIperf3Matrix(t *testing.T) {
 	metrics := server.getKeyMetrics(result)
 	if !strings.Contains(metrics, "iperf3 | iperf3 matrix: 2 nodes | 下载 200.00 Mbps | 上传 100.00 Mbps") {
 		t.Fatalf("expected web key metrics to show iperf3 matrix, got %q", metrics)
+	}
+}
+
+func TestWebServerKeyMetricsShowsNetworkQualityMatrix(t *testing.T) {
+	server := &WebServer{}
+	result := &models.TestResult{
+		TestName: "网络性能测试",
+		Status:   "success",
+		Metrics: map[string]interface{}{
+			"backend":                          "builtin",
+			"network_quality_target_count":     2,
+			"network_quality_ipv4_available":   true,
+			"network_quality_ipv6_available":   false,
+			"network_quality_avg_latency_ms":   10.0,
+			"network_quality_jitter_ms":        1.5,
+			"network_quality_1_target":         "cloudflare_ipv4_https",
+			"network_quality_1_protocol":       "ipv4",
+			"network_quality_1_available":      true,
+			"network_quality_1_avg_latency_ms": 10.0,
+			"network_quality_2_target":         "google_ipv6_dns",
+			"network_quality_2_protocol":       "ipv6",
+			"network_quality_2_available":      false,
+		},
+	}
+
+	metrics := server.getKeyMetrics(result)
+	if !strings.Contains(metrics, "builtin | 网络质量: IPv4 可用 | IPv6 不可用 | 延迟 10.00 ms | 抖动 1.50 ms") {
+		t.Fatalf("expected web key metrics to show network quality matrix, got %q", metrics)
 	}
 }
 

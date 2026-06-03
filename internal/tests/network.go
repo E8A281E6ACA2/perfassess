@@ -78,13 +78,17 @@ func (b *BuiltinNetworkBackend) MeasureUpload(downloadSpeed float64) (float64, b
 // 测试网络延迟、下载和上传速度
 type NetworkTest struct {
 	*BaseTest
-	httpClient   *http.Client
-	testHosts    []string // 测试主机列表
-	downloadURLs []string
-	backend      NetworkBenchmarkBackend
-	latencyFn    func([]string) (float64, error)
-	downloadFn   func() (NetworkDownloadResult, error)
-	uploadFn     func(float64) (float64, bool, error)
+	httpClient         *http.Client
+	testHosts          []string // 测试主机列表
+	downloadURLs       []string
+	qualityTargets     []networkQualityTarget
+	qualitySamples     int
+	qualityDialTimeout time.Duration
+	qualityDialFn      func(address string, timeout time.Duration) (time.Duration, error)
+	backend            NetworkBenchmarkBackend
+	latencyFn          func([]string) (float64, error)
+	downloadFn         func() (NetworkDownloadResult, error)
+	uploadFn           func(float64) (float64, bool, error)
 }
 
 // NewNetworkTest 创建网络性能测试
@@ -108,7 +112,10 @@ func NewNetworkTestWithBackend(logger *logger.Logger, backend NetworkBenchmarkBa
 			"1.1.1.1:53",         // Cloudflare DNS
 			"114.114.114.114:53", // 114 DNS
 		},
-		downloadURLs: defaultNetworkDownloadURLs(),
+		downloadURLs:       defaultNetworkDownloadURLs(),
+		qualityTargets:     defaultNetworkQualityTargets(),
+		qualitySamples:     3,
+		qualityDialTimeout: 2 * time.Second,
 	}
 	if backend != nil {
 		test.backend = backend
@@ -256,6 +263,7 @@ func (nt *NetworkTest) Execute() (*models.TestResult, error) {
 	nt.GetLogger().Info(fmt.Sprintf("网络测试完成，评分: %.2f", score))
 
 	metricsMap := metrics.ToMetricsMap()
+	nt.appendNetworkQualityMetrics(metricsMap)
 	if appender, ok := nt.backend.(NetworkMetricsAppender); ok {
 		appender.AppendMetrics(metricsMap)
 	}

@@ -260,6 +260,18 @@ func (ws *WebServer) getKeyMetrics(result *models.TestResult) string {
 			}
 			return fmt.Sprintf("%siperf3 matrix: %d nodes | 下载 %.2f Mbps | 上传 %.2f Mbps", prefix, len(rows), download, upload)
 		}
+		if rows := getNetworkQualityRows(result); len(rows) > 0 {
+			avgLatency, _ := metricFloat64(result.Metrics, "network_quality_avg_latency_ms")
+			jitter, _ := metricFloat64(result.Metrics, "network_quality_jitter_ms")
+			ipv4Available, _ := metricBool(result.Metrics, "network_quality_ipv4_available")
+			ipv6Available, _ := metricBool(result.Metrics, "network_quality_ipv6_available")
+			prefix := ""
+			if backend != "" {
+				prefix = backend + " | "
+			}
+			return fmt.Sprintf("%s网络质量: IPv4 %s | IPv6 %s | 延迟 %.2f ms | 抖动 %.2f ms",
+				prefix, availabilityLabel(ipv4Available), availabilityLabel(ipv6Available), avgLatency, jitter)
+		}
 		if latency, ok := getNetworkLatency(result); ok {
 			prefix := ""
 			if backend != "" {
@@ -276,6 +288,13 @@ func (ws *WebServer) getKeyMetrics(result *models.TestResult) string {
 	}
 
 	return "-"
+}
+
+func availabilityLabel(available bool) string {
+	if available {
+		return "可用"
+	}
+	return "不可用"
 }
 
 // getScoreColor 获取评分颜色
