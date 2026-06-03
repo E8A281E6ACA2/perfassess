@@ -42,7 +42,7 @@ func TestReportJSONSampleContract(t *testing.T) {
 	}
 
 	summary := objectAt(t, sample, "summary")
-	for _, key := range []string{"benchmark_profile", "confidence_level", "score_breakdown"} {
+	for _, key := range []string{"benchmark_profile", "confidence_level", "score_breakdown", "vps_benchmark_summary"} {
 		if _, ok := summary[key]; !ok {
 			t.Fatalf("sample summary missing key %q", key)
 		}
@@ -65,6 +65,16 @@ func TestReportJSONSampleContract(t *testing.T) {
 	normalized := objectAt(t, breakdown, "normalized_total")
 	if _, ok := normalized["active_weight"].(float64); !ok {
 		t.Fatalf("expected normalized active_weight number, got %#v", normalized["active_weight"])
+	}
+
+	vpsSummary := objectAt(t, summary, "vps_benchmark_summary")
+	cpu := objectAt(t, vpsSummary, "cpu")
+	if cpu["backend"] != "sysbench" {
+		t.Fatalf("expected VPS summary CPU backend sysbench, got %#v", cpu["backend"])
+	}
+	network := objectAt(t, vpsSummary, "network")
+	if network["backend"] != "iperf3" {
+		t.Fatalf("expected VPS summary network backend iperf3, got %#v", network["backend"])
 	}
 }
 
@@ -285,6 +295,11 @@ func snapshotSystemInfo() *models.SystemInfo {
 			Version:      "snapshot",
 			Architecture: "x86_64",
 		},
+		Virtualization: &models.VirtualizationInfo{
+			IsVirtualized: true,
+			Type:          "KVM",
+			Vendor:        "kvm",
+		},
 	}
 }
 
@@ -364,6 +379,21 @@ func snapshotTestResults() *models.TestResults {
 				"iperf3_matrix_2_latency_ms":       18.0,
 				"iperf3_matrix_2_download_mbps":    800.0,
 				"iperf3_matrix_2_upload_mbps":      750.0,
+				"network_quality_profile":          "tcp_connect_matrix",
+				"network_quality_target_count":     2,
+				"network_quality_ipv4_available":   true,
+				"network_quality_ipv6_available":   true,
+				"network_quality_failure_rate":     0.0,
+				"network_quality_avg_latency_ms":   8.0,
+				"network_quality_jitter_ms":        0.8,
+				"network_quality_1_target":         "cloudflare_ipv4_https",
+				"network_quality_1_protocol":       "ipv4",
+				"network_quality_1_available":      true,
+				"network_quality_1_avg_latency_ms": 7.0,
+				"network_quality_2_target":         "cloudflare_ipv6_https",
+				"network_quality_2_protocol":       "ipv6",
+				"network_quality_2_available":      true,
+				"network_quality_2_avg_latency_ms": 9.0,
 				"score":                            100.0,
 			},
 		},

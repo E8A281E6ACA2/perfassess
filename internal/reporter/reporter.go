@@ -438,6 +438,7 @@ func (rg *ReportGenerator) AddSummary(report *models.Report, overallScore *model
 		report.Summary["grade"] = "未完成"
 		overallScore.Grade = "未完成"
 	}
+	report.Summary["vps_benchmark_summary"] = rg.buildVPSBenchmarkSummary(report, overallScore)
 }
 
 func (rg *ReportGenerator) buildQualityNotes(testResults *models.TestResults) []string {
@@ -688,6 +689,10 @@ func (rg *ReportGenerator) FormatReport(report *models.Report) string {
 	// 会话信息
 	sb.WriteString(fmt.Sprintf("会话ID:         %s\n", report.SessionID))
 	sb.WriteString(fmt.Sprintf("报告时间:       %s\n\n", report.Timestamp.Format("2006-01-02 15:04:05")))
+
+	if vpsSummary := rg.FormatVPSBenchmarkSummary(report); vpsSummary != "" {
+		sb.WriteString(vpsSummary)
+	}
 
 	// 系统信息
 	sb.WriteString(rg.FormatSystemInfo(report.SystemInfo))

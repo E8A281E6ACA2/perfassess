@@ -148,8 +148,23 @@
 - `quality_notes`: 质量提示列表
 - `benchmark_profile`: 本次评测档位和实际后端组合
 - `confidence_level`: 本次报告置信等级和原因
+- `vps_benchmark_summary`: 面向 VPS 测评分享的核心摘要
 - `score_profile`: 评分基准档位，当前为 `vps`、`server` 或 `workstation`
 - `score_breakdown`: 评分计算依据和分项权重
+
+## VPS Benchmark Summary
+
+`vps_benchmark_summary` 是对完整报告的压缩摘要，便于复制分享和脚本快速读取。它不替代完整 `test_results`，只保留 VPS 测评最常用的核心指标。
+
+- `benchmark_profile`: 本次后端组合档位，例如 `full_iperf3`
+- `mainstream_backend_count`: 使用主流后端数量
+- `system`: CPU 型号、核心线程、内存、磁盘、OS、虚拟化、IP/ISP/位置等系统摘要
+- `cpu`: CPU 后端、状态、单核/多核/总分、sysbench events/s 或 Geekbench 原始分
+- `memory`: 内存后端、状态、读写吞吐和评分
+- `disk`: 磁盘后端、状态、顺序读写、随机 IOPS、P95 延迟和 fio mixed 关键值
+- `network`: 网络后端、状态、延迟、下载、上传、上传估算标记、iperf3 聚合值、IPv4/IPv6 可用性、质量矩阵失败率和抖动
+- `scores`: 总分、等级、分项分和评分基准
+- `confidence`: 置信等级、原因和质量提示
 
 ## Benchmark Profile
 

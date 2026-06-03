@@ -440,6 +440,47 @@ func TestFormatSingleTestResultShowsNetworkQualityMatrix(t *testing.T) {
 	}
 }
 
+func TestVPSBenchmarkSummaryIncludesKeyMetrics(t *testing.T) {
+	generator := NewReportGenerator()
+	report, err := generator.GenerateReport("vps_summary_session", snapshotSystemInfo(), snapshotTestResults())
+	if err != nil {
+		t.Fatalf("expected report generation to succeed, got %v", err)
+	}
+
+	summary, ok := report.Summary["vps_benchmark_summary"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected vps_benchmark_summary to be present, got %#v", report.Summary["vps_benchmark_summary"])
+	}
+
+	system := summary["system"].(map[string]interface{})
+	if system["cpu_model"] != "Snapshot CPU" {
+		t.Fatalf("expected system CPU model in VPS summary, got %#v", system["cpu_model"])
+	}
+
+	cpu := summary["cpu"].(map[string]interface{})
+	if cpu["backend"] != "sysbench" || cpu["total_score"] != 86.0 {
+		t.Fatalf("unexpected CPU summary: %#v", cpu)
+	}
+
+	network := summary["network"].(map[string]interface{})
+	if network["backend"] != "iperf3" || network["ipv6_available"] != true {
+		t.Fatalf("unexpected network summary: %#v", network)
+	}
+
+	formatted := generator.FormatVPSBenchmarkSummary(report)
+	expectedSnippets := []string{
+		"=== VPS测评摘要 ===",
+		"系统:           Snapshot CPU | 4C/8T | 8192 MB RAM / 100.00 GB Disk",
+		"CPU:            sysbench | 单核 80.00 | 多核 90.00 | 总分 86.00",
+		"网络质量:       IPv4 可用 | IPv6 可用 | 抖动 0.80 ms | 失败率 0.00%",
+	}
+	for _, snippet := range expectedSnippets {
+		if !strings.Contains(formatted, snippet) {
+			t.Fatalf("expected VPS summary to contain %q, got:\n%s", snippet, formatted)
+		}
+	}
+}
+
 func TestWebServerKeyMetricsShowsFioMixedMatrix(t *testing.T) {
 	server := &WebServer{}
 	result := &models.TestResult{

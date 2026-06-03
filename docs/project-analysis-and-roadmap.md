@@ -13,7 +13,7 @@
 - CPU、内存、磁盘、网络基础性能测试
 - sysbench、Geekbench、fio、iperf3、speedtest 等主流后端接入边界
 - 网络质量矩阵、fio mixed 矩阵、iperf3 多节点矩阵
-- JSON 报告、文本报告、报告对比、批量排序和历史趋势
+- VPS 测评摘要、JSON 报告、文本报告、报告对比、批量排序和历史趋势
 - 路由追踪、流媒体检测、AI 服务可达性检测
 - 压力测试、安全体检
 - 终端报告与 Web 报告
@@ -314,10 +314,17 @@
 
 下一批增强建议：
 
-1. 增加成熟 VPS 测评摘要页，按 YABS/bench.sh 常见口径汇总 CPU、fio、网络和系统信息
-2. 增加 `--vps-profile` 或等价预设，一键启用更接近主流脚本的后端组合
-3. 增强网络测速节点策略，支持 speedtest 节点信息、iperf3 推荐节点池或用户节点组
-4. 增强报告可读性，把关键矩阵压缩成适合复制分享的 VPS 测评摘要
+1. 增加 `--vps-profile` 或等价预设，一键启用更接近主流脚本的后端组合
+2. 增强网络测速节点策略，支持 speedtest 节点信息、iperf3 推荐节点池或用户节点组
+3. 增强报告可读性，把关键矩阵进一步压缩成不同场景的复制模板
+4. 基于真实 VPS 样本回测评分 profile，校准默认阈值
+
+当前已落地的 VPS 测评摘要边界：
+
+- 文本报告顶部新增“VPS测评摘要”，集中展示系统、CPU、内存、磁盘、网络、网络质量、总分、等级、置信度和评分基准
+- JSON `summary` 新增 `vps_benchmark_summary`，用于脚本快速读取核心测评结果
+- `vps_benchmark_summary` 保留 `system`、`cpu`、`memory`、`disk`、`network`、`scores`、`confidence` 七个核心分组
+- 该摘要只压缩常用结果，不替代完整 `test_results` 和原始 metrics
 
 当前已落地的报告对比边界：
 

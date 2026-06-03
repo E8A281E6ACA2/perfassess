@@ -5,6 +5,17 @@
 会话ID:         snapshot_session
 报告时间:       2026-06-01 10:00:00
 
+=== VPS测评摘要 ===
+
+系统:           Snapshot CPU | 4C/8T | 8192 MB RAM / 100.00 GB Disk
+环境:           linux x86_64 | KVM | -
+CPU:            sysbench | 单核 80.00 | 多核 90.00 | 总分 86.00
+内存:           sysbench | 读 3200.00 MB/s | 写 2800.00 MB/s
+磁盘:           fio | 读 1000.00 MB/s | 写 800.00 MB/s | 随机 12000 IOPS
+网络:           iperf3 | 延迟 10.00 ms | 下载 900.00 Mbps | 上传 850.00 Mbps
+网络质量:       IPv4 可用 | IPv6 可用 | 抖动 0.80 ms | 失败率 0.00%
+评分:           总分 91.53 | 等级 优秀 | 置信 high | 基准 server
+
 === 系统信息 ===
 
 CPU型号:        Snapshot CPU
@@ -23,6 +34,9 @@ CPU频率:        2400.00 MHz
 操作系统:       linux
 系统版本:       snapshot
 系统架构:       x86_64
+
+虚拟化类型:     KVM
+虚拟化厂商:     kvm
 
 === 性能测试结果 ===
 
@@ -73,6 +87,9 @@ CPU频率:        2400.00 MHz
   iperf3矩阵:   server | proto | latency ms | download Mbps | upload Mbps
                  127.0.0.1:5201 | ipv4 | 10.00 | 900.00 | 850.00
                  [2001:db8::1]:5201 | ipv6 | 18.00 | 800.00 | 750.00
+  网络质量矩阵: target | proto | available | avg ms | jitter ms | fail %
+                 cloudflare_ipv4_https | ipv4 | true | 7.00 | 0.00 | 0.00%
+                 cloudflare_ipv6_https | ipv6 | true | 9.00 | 0.00 | 0.00%
   测试评分:     100.00
 
 

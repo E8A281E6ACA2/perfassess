@@ -584,6 +584,7 @@
         "quality_notes",
         "benchmark_profile",
         "confidence_level",
+        "vps_benchmark_summary",
         "score_profile",
         "score_breakdown"
       ],
@@ -677,6 +678,120 @@
             }
           }
         },
+        "vps_benchmark_summary": {
+          "type": "object",
+          "required": [
+            "system",
+            "cpu",
+            "memory",
+            "disk",
+            "network",
+            "scores",
+            "confidence"
+          ],
+          "properties": {
+            "benchmark_profile": {
+              "type": "string"
+            },
+            "mainstream_backend_count": {
+              "type": "number"
+            },
+            "system": {
+              "type": "object",
+              "properties": {
+                "cpu_model": {
+                  "type": "string"
+                },
+                "cpu_cores": {
+                  "type": "number"
+                },
+                "cpu_threads": {
+                  "type": "number"
+                },
+                "cpu_frequency_mhz": {
+                  "type": "number"
+                },
+                "memory_total_mb": {
+                  "type": "number"
+                },
+                "memory_available_mb": {
+                  "type": "number"
+                },
+                "disk_total_gb": {
+                  "type": "number"
+                },
+                "disk_available_gb": {
+                  "type": "number"
+                },
+                "disk_type": {
+                  "type": "string"
+                },
+                "os": {
+                  "type": "string"
+                },
+                "os_version": {
+                  "type": "string"
+                },
+                "architecture": {
+                  "type": "string"
+                },
+                "virtualization": {
+                  "type": "string"
+                },
+                "virtualization_vendor": {
+                  "type": "string"
+                },
+                "public_ip": {
+                  "type": "string"
+                },
+                "isp": {
+                  "type": "string"
+                },
+                "location": {
+                  "type": "string"
+                },
+                "country_code": {
+                  "type": "string"
+                }
+              }
+            },
+            "cpu": {
+              "$ref": "#/$defs/vps_summary_section"
+            },
+            "memory": {
+              "$ref": "#/$defs/vps_summary_section"
+            },
+            "disk": {
+              "$ref": "#/$defs/vps_summary_section"
+            },
+            "network": {
+              "$ref": "#/$defs/vps_summary_section"
+            },
+            "scores": {
+              "$ref": "#/$defs/vps_summary_section"
+            },
+            "confidence": {
+              "type": "object",
+              "properties": {
+                "level": {
+                  "type": "string"
+                },
+                "reasons": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "quality_notes": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
         "score_profile": {
           "type": "string",
           "enum": [
@@ -753,6 +868,143 @@
     }
   },
   "$defs": {
+    "vps_summary_section": {
+      "type": "object",
+      "properties": {
+        "backend": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string"
+        },
+        "score_profile": {
+          "type": "string"
+        },
+        "grade": {
+          "type": "string"
+        },
+        "server": {
+          "type": "string"
+        },
+        "upload_estimated": {
+          "type": "boolean"
+        },
+        "ipv4_available": {
+          "type": "boolean"
+        },
+        "ipv6_available": {
+          "type": "boolean"
+        },
+        "error": {
+          "type": "string"
+        },
+        "single_core_score": {
+          "type": "number"
+        },
+        "multi_core_score": {
+          "type": "number"
+        },
+        "total_score": {
+          "type": "number"
+        },
+        "single_core_events_per_sec": {
+          "type": "number"
+        },
+        "multi_core_events_per_sec": {
+          "type": "number"
+        },
+        "single_core_raw_score": {
+          "type": "number"
+        },
+        "multi_core_raw_score": {
+          "type": "number"
+        },
+        "cpu_cores": {
+          "type": "number"
+        },
+        "read_mbps": {
+          "type": "number"
+        },
+        "write_mbps": {
+          "type": "number"
+        },
+        "sequential_read_mbps": {
+          "type": "number"
+        },
+        "sequential_write_mbps": {
+          "type": "number"
+        },
+        "random_iops": {
+          "type": "number"
+        },
+        "random_read_iops": {
+          "type": "number"
+        },
+        "random_write_iops": {
+          "type": "number"
+        },
+        "random_read_p95_ms": {
+          "type": "number"
+        },
+        "random_write_p95_ms": {
+          "type": "number"
+        },
+        "fio_mixed_4k_total_iops": {
+          "type": "number"
+        },
+        "fio_mixed_1m_total_mbps": {
+          "type": "number"
+        },
+        "latency_ms": {
+          "type": "number"
+        },
+        "download_mbps": {
+          "type": "number"
+        },
+        "upload_mbps": {
+          "type": "number"
+        },
+        "iperf3_node_count": {
+          "type": "number"
+        },
+        "iperf3_avg_download_mbps": {
+          "type": "number"
+        },
+        "iperf3_avg_upload_mbps": {
+          "type": "number"
+        },
+        "iperf3_best_download_mbps": {
+          "type": "number"
+        },
+        "iperf3_best_upload_mbps": {
+          "type": "number"
+        },
+        "quality_failure_rate": {
+          "type": "number"
+        },
+        "quality_avg_latency_ms": {
+          "type": "number"
+        },
+        "quality_jitter_ms": {
+          "type": "number"
+        },
+        "score": {
+          "type": "number"
+        },
+        "cpu_score": {
+          "type": "number"
+        },
+        "memory_score": {
+          "type": "number"
+        },
+        "disk_score": {
+          "type": "number"
+        },
+        "network_score": {
+          "type": "number"
+        }
+      }
+    },
     "score_item": {
       "type": "object",
       "required": [

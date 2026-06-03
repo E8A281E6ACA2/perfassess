@@ -223,6 +223,93 @@
       ]
     },
     "score_profile": "server",
+    "vps_benchmark_summary": {
+      "benchmark_profile": "full_iperf3",
+      "mainstream_backend_count": 4,
+      "system": {
+        "cpu_model": "Example CPU",
+        "cpu_cores": 4,
+        "cpu_threads": 8,
+        "cpu_frequency_mhz": 2400,
+        "memory_total_mb": 8192,
+        "memory_available_mb": 4096,
+        "disk_total_gb": 100,
+        "disk_available_gb": 60,
+        "disk_type": "SSD",
+        "os": "linux",
+        "os_version": "example",
+        "architecture": "x86_64"
+      },
+      "cpu": {
+        "backend": "sysbench",
+        "status": "success",
+        "single_core_score": 85,
+        "multi_core_score": 90,
+        "total_score": 88,
+        "single_core_events_per_sec": 1020,
+        "multi_core_events_per_sec": 8600,
+        "cpu_cores": 8
+      },
+      "memory": {
+        "backend": "sysbench",
+        "status": "success",
+        "read_mbps": 3200,
+        "write_mbps": 2800,
+        "score": 78.67
+      },
+      "disk": {
+        "backend": "fio",
+        "status": "success",
+        "sequential_read_mbps": 1000,
+        "sequential_write_mbps": 800,
+        "random_iops": 12000,
+        "random_read_iops": 7000,
+        "random_write_iops": 5000,
+        "random_read_p95_ms": 1.25,
+        "random_write_p95_ms": 2.5,
+        "fio_mixed_4k_total_iops": 12000,
+        "fio_mixed_1m_total_mbps": 1930,
+        "score": 100
+      },
+      "network": {
+        "backend": "iperf3",
+        "status": "success",
+        "server": "127.0.0.1:5201",
+        "latency_ms": 10,
+        "download_mbps": 900,
+        "upload_mbps": 850,
+        "upload_estimated": false,
+        "iperf3_node_count": 2,
+        "iperf3_avg_download_mbps": 850,
+        "iperf3_avg_upload_mbps": 800,
+        "iperf3_best_download_mbps": 900,
+        "iperf3_best_upload_mbps": 850,
+        "ipv4_available": true,
+        "ipv6_available": true,
+        "quality_failure_rate": 0,
+        "quality_avg_latency_ms": 12,
+        "quality_jitter_ms": 1.1,
+        "score": 100
+      },
+      "scores": {
+        "total_score": 92.13,
+        "grade": "优秀",
+        "cpu_score": 88,
+        "memory_score": 78.67,
+        "disk_score": 100,
+        "network_score": 100,
+        "score_profile": "server"
+      },
+      "confidence": {
+        "level": "high",
+        "reasons": [
+          "核心测试均使用主流或真实测量路径。"
+        ],
+        "quality_notes": [
+          "核心测试均已完成，未发现明显降级或估算路径。"
+        ]
+      }
+    },
     "score_breakdown": {
       "score_profile": "server",
       "cpu": {
