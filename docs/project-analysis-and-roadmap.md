@@ -344,16 +344,17 @@
 - `BuiltinNetworkBackend` 继续承载当前内置测试逻辑
 - `Iperf3NetworkBackend` 已具备最小命令执行与 JSON 结果解析骨架
 - `SpeedtestNetworkBackend` 已接入 Ookla Speedtest CLI JSON 输出，用于更接近主流 VPS 脚本的公网测速口径
-- 配置层已预留 `network_backend` 与 `iperf3_server`
-- CLI 已支持 `--network-backend builtin|iperf3|speedtest` 与 `--iperf3-server`
+- 配置层已预留 `network_backend`、`iperf3_server` 与 `iperf3_servers`
+- CLI 已支持 `--network-backend builtin|iperf3|speedtest`、`--iperf3-server` 与 `--iperf3-servers`
 - `iperf3` 后端会检测本机是否安装 `iperf3`，缺失时返回安装提示，不自动安装
+- `iperf3` 后端支持多服务端矩阵，输出每个节点的协议族、延迟、下载、上传和错误信息
 - `speedtest` 后端会检测本机是否安装 Ookla Speedtest CLI，缺失时返回安装提示，不自动安装
 - 网络测试失败原因会写入 `network_error` 并展示在终端/Web 报告中
 - 网络报告会展示 `backend`，并在 `iperf3` 场景展示服务端地址
 - 网络测速来源字段会跟随 backend，例如 `iperf3_download`、`iperf3_upload`、`speedtest_download` 与 `speedtest_upload`
 - 内置下载测速已支持多个 HTTP 下载源顺序重试，成功时 `download_speed_source` 记录实际 URL，避免单个公共测速源故障直接导致网络降级
 - `iperf3` 后端只负责吞吐测试，延迟继续回退到内置 TCP connect 测量并使用 `latency_source=tcp_connect`
-- 后续真正启用 `iperf3` 前，需要补充真实服务端验证和报告展示
+- 后续真正启用 `iperf3` 前，需要补充真实服务端验证
 
 当前已落地的磁盘后端边界：
 
@@ -376,7 +377,7 @@
 `iperf3` 使用约定：
 
 - 用户需要显式选择 `--network-backend iperf3`
-- 用户需要提供 `--iperf3-server <host>` 或 `--iperf3-server <host:port>`
+- 用户需要提供 `--iperf3-server <host>`、`--iperf3-server <host:port>` 或 `--iperf3-servers <host:port,[IPv6]:port>`
 - 如果服务端包含端口，程序会转换为 `iperf3 -c <host> -p <port>`，避免把 `host:port` 错传给 `-c`
 - 被测机器需要预先安装 `iperf3`
 - 程序只负责检测并提示安装方式，不静默修改系统环境

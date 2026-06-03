@@ -353,6 +353,50 @@ func TestFormatSingleTestResultShowsNetworkError(t *testing.T) {
 	}
 }
 
+func TestFormatSingleTestResultShowsIperf3Matrix(t *testing.T) {
+	generator := NewReportGenerator()
+	result := &models.TestResult{
+		TestName:        "网络性能测试",
+		Status:          "success",
+		DurationSeconds: 8.4,
+		Metrics: map[string]interface{}{
+			"backend":                       "iperf3",
+			"average_latency_ms":            15.0,
+			"download_speed_mbps":           200.0,
+			"upload_speed_mbps":             100.0,
+			"upload_speed_estimated":        false,
+			"download_speed_source":         "iperf3_download",
+			"upload_speed_source":           "iperf3_upload",
+			"iperf3_matrix_server_count":    2,
+			"iperf3_matrix_1_server":        "node-a:5201",
+			"iperf3_matrix_1_protocol":      "ipv4",
+			"iperf3_matrix_1_latency_ms":    10.0,
+			"iperf3_matrix_1_download_mbps": 100.0,
+			"iperf3_matrix_1_upload_mbps":   50.0,
+			"iperf3_matrix_2_server":        "[2001:db8::2]:5201",
+			"iperf3_matrix_2_protocol":      "ipv6",
+			"iperf3_matrix_2_latency_ms":    20.0,
+			"iperf3_matrix_2_download_mbps": 300.0,
+			"iperf3_matrix_2_upload_mbps":   150.0,
+			"score":                         95.0,
+		},
+	}
+
+	formatted := generator.formatSingleTestResult("网络性能测试", result)
+
+	expectedSnippets := []string{
+		"测试后端:     iperf3",
+		"iperf3矩阵:   server | proto | latency ms | download Mbps | upload Mbps",
+		"node-a:5201 | ipv4 | 10.00 | 100.00 | 50.00",
+		"[2001:db8::2]:5201 | ipv6 | 20.00 | 300.00 | 150.00",
+	}
+	for _, snippet := range expectedSnippets {
+		if !strings.Contains(formatted, snippet) {
+			t.Fatalf("expected formatted report to contain %q, got:\n%s", snippet, formatted)
+		}
+	}
+}
+
 func TestWebServerKeyMetricsShowsFioMixedMatrix(t *testing.T) {
 	server := &WebServer{}
 	result := &models.TestResult{
@@ -370,6 +414,33 @@ func TestWebServerKeyMetricsShowsFioMixedMatrix(t *testing.T) {
 	metrics := server.getKeyMetrics(result)
 	if !strings.Contains(metrics, "fio | fio mixed: 4k 3000 IOPS | 1m 1050.00 MB/s") {
 		t.Fatalf("expected web key metrics to show fio mixed matrix, got %q", metrics)
+	}
+}
+
+func TestWebServerKeyMetricsShowsIperf3Matrix(t *testing.T) {
+	server := &WebServer{}
+	result := &models.TestResult{
+		TestName: "网络性能测试",
+		Status:   "success",
+		Metrics: map[string]interface{}{
+			"backend":                         "iperf3",
+			"iperf3_matrix_server_count":      2,
+			"iperf3_matrix_avg_download_mbps": 200.0,
+			"iperf3_matrix_avg_upload_mbps":   100.0,
+			"iperf3_matrix_1_server":          "node-a:5201",
+			"iperf3_matrix_1_protocol":        "ipv4",
+			"iperf3_matrix_1_download_mbps":   100.0,
+			"iperf3_matrix_1_upload_mbps":     50.0,
+			"iperf3_matrix_2_server":          "node-b:5201",
+			"iperf3_matrix_2_protocol":        "ipv4",
+			"iperf3_matrix_2_download_mbps":   300.0,
+			"iperf3_matrix_2_upload_mbps":     150.0,
+		},
+	}
+
+	metrics := server.getKeyMetrics(result)
+	if !strings.Contains(metrics, "iperf3 | iperf3 matrix: 2 nodes | 下载 200.00 Mbps | 上传 100.00 Mbps") {
+		t.Fatalf("expected web key metrics to show iperf3 matrix, got %q", metrics)
 	}
 }
 

@@ -96,6 +96,19 @@
 - `upload_speed_source`: 上传测速来源
 - `upload_speed_estimated`: 上传是否为估算值
 - `network_error`: 网络部分失败说明
+- `iperf3_matrix_profile`: iperf3 多节点矩阵口径，当前为 `multi_server`
+- `iperf3_matrix_server_count`: iperf3 矩阵服务端数量
+- `iperf3_matrix_success_count`: 至少完成下载或上传的服务端数量
+- `iperf3_matrix_avg_download_mbps`: iperf3 多节点平均下载吞吐
+- `iperf3_matrix_avg_upload_mbps`: iperf3 多节点平均上传吞吐
+- `iperf3_matrix_best_download_mbps`: iperf3 多节点最佳下载吞吐
+- `iperf3_matrix_best_upload_mbps`: iperf3 多节点最佳上传吞吐
+- `iperf3_matrix_<n>_server`: 第 n 个 iperf3 服务端原始配置
+- `iperf3_matrix_<n>_protocol`: 第 n 个 iperf3 服务端协议族，`ipv4` 或 `ipv6`
+- `iperf3_matrix_<n>_latency_ms`: 第 n 个 iperf3 服务端 TCP connect 延迟
+- `iperf3_matrix_<n>_download_mbps`: 第 n 个 iperf3 服务端下载吞吐
+- `iperf3_matrix_<n>_upload_mbps`: 第 n 个 iperf3 服务端上传吞吐
+- `iperf3_matrix_<n>_error`: 第 n 个 iperf3 服务端失败说明
 - `score`: 网络评分
 
 ## Summary

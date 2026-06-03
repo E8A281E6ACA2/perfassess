@@ -489,7 +489,39 @@
                 "network_error": {
                   "type": "string"
                 },
+                "iperf3_matrix_profile": {
+                  "type": "string",
+                  "enum": [
+                    "multi_server"
+                  ]
+                },
+                "iperf3_matrix_server_count": {
+                  "type": "number"
+                },
+                "iperf3_matrix_success_count": {
+                  "type": "number"
+                },
+                "iperf3_matrix_avg_download_mbps": {
+                  "type": "number"
+                },
+                "iperf3_matrix_avg_upload_mbps": {
+                  "type": "number"
+                },
+                "iperf3_matrix_best_download_mbps": {
+                  "type": "number"
+                },
+                "iperf3_matrix_best_upload_mbps": {
+                  "type": "number"
+                },
                 "score": {
+                  "type": "number"
+                }
+              },
+              "patternProperties": {
+                "^iperf3_matrix_[0-9]+_(server|host|protocol|port|error)$": {
+                  "type": "string"
+                },
+                "^iperf3_matrix_[0-9]+_(download_mbps|upload_mbps|latency_ms)$": {
                   "type": "number"
                 }
               }

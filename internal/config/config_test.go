@@ -26,6 +26,9 @@ func TestDefaultConfigUsesBuiltinNetworkBackend(t *testing.T) {
 	if cfg.MemoryBackend != "builtin" {
 		t.Fatalf("expected default memory backend builtin, got %q", cfg.MemoryBackend)
 	}
+	if len(cfg.Iperf3Servers) != 0 {
+		t.Fatalf("expected default iperf3 servers empty, got %#v", cfg.Iperf3Servers)
+	}
 	if err := cfg.Validate(); err != nil {
 		t.Fatalf("expected default config to validate, got %v", err)
 	}

@@ -343,8 +343,13 @@ func (ac *AssessmentController) newDiskTest() tests.PerformanceTest {
 func (ac *AssessmentController) newNetworkTest() tests.PerformanceTest {
 	if ac.config.NetworkBackend == models.NetworkBackendIperf3 {
 		latencyFallback := tests.NewNetworkTest(ac.logger)
+		servers := append([]string{}, ac.config.Iperf3Servers...)
+		if ac.config.Iperf3Server != "" {
+			servers = append([]string{ac.config.Iperf3Server}, servers...)
+		}
 		backend := tests.NewIperf3NetworkBackend(tests.Iperf3Config{
 			Server:    ac.config.Iperf3Server,
+			Servers:   servers,
 			LatencyFn: latencyFallback.TestLatency,
 		})
 		return tests.NewNetworkTestWithBackend(ac.logger, backend)

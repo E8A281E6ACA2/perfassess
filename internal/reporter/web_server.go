@@ -251,6 +251,15 @@ func (ws *WebServer) getKeyMetrics(result *models.TestResult) string {
 		}
 		backend := getNetworkBackend(result)
 		server := getNetworkBackendServer(result)
+		if rows := getNetworkIperf3MatrixRows(result); len(rows) > 0 {
+			download, _ := metricFloat64(result.Metrics, "iperf3_matrix_avg_download_mbps")
+			upload, _ := metricFloat64(result.Metrics, "iperf3_matrix_avg_upload_mbps")
+			prefix := ""
+			if backend != "" {
+				prefix = backend + " | "
+			}
+			return fmt.Sprintf("%siperf3 matrix: %d nodes | 下载 %.2f Mbps | 上传 %.2f Mbps", prefix, len(rows), download, upload)
+		}
 		if latency, ok := getNetworkLatency(result); ok {
 			prefix := ""
 			if backend != "" {

@@ -68,6 +68,9 @@ type Config struct {
 	// Iperf3Server iperf3 服务端地址，仅在 network_backend=iperf3 时使用
 	Iperf3Server string `mapstructure:"iperf3_server"`
 
+	// Iperf3Servers iperf3 多服务端地址列表，仅在 network_backend=iperf3 时使用
+	Iperf3Servers []string `mapstructure:"iperf3_servers"`
+
 	// DiskBackend 磁盘测试后端，可选值: builtin, fio
 	DiskBackend string `mapstructure:"disk_backend"`
 
@@ -105,6 +108,7 @@ func DefaultConfig() *Config {
 		MemoryBackend:      "builtin",
 		NetworkBackend:     "builtin",
 		Iperf3Server:       "",
+		Iperf3Servers:      []string{},
 		DiskBackend:        "builtin",
 		LogLevel:           "info",
 		GeoIPDBPath:        "",

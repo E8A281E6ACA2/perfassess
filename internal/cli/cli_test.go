@@ -112,6 +112,24 @@ func TestBindFlagsAcceptsSpeedtestNetworkBackend(t *testing.T) {
 	}
 }
 
+func TestBindFlagsAcceptsIperf3Servers(t *testing.T) {
+	app := NewCLI()
+	cmd := app.GetRootCmd()
+	args := []string{"--full", "--iperf3-servers", "node-a:5201,node-b:5201"}
+	if err := cmd.ParseFlags(args); err != nil {
+		t.Fatalf("failed to parse flags: %v", err)
+	}
+
+	if err := app.bindFlags(cmd); err != nil {
+		t.Fatalf("expected iperf3 servers bind to succeed, got %v", err)
+	}
+
+	if app.config.NetworkBackend != "iperf3" {
+		t.Fatalf("expected full preset with iperf3 servers to use iperf3, got %q", app.config.NetworkBackend)
+	}
+	assertStringSlice(t, app.config.Iperf3Servers, []string{"node-a:5201", "node-b:5201"})
+}
+
 func TestBindFlagsAcceptsGeekbenchCPUBackend(t *testing.T) {
 	app := NewCLI()
 	cmd := app.GetRootCmd()

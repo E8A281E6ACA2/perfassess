@@ -381,6 +381,47 @@ func getNetworkBackendServer(result *models.TestResult) string {
 	return ""
 }
 
+type networkIperf3MatrixRow struct {
+	Index        int
+	Server       string
+	Protocol     string
+	DownloadMbps float64
+	UploadMbps   float64
+	LatencyMs    float64
+	Error        string
+}
+
+func getNetworkIperf3MatrixRows(result *models.TestResult) []networkIperf3MatrixRow {
+	if result == nil || result.Metrics == nil {
+		return nil
+	}
+
+	count, ok := metricInt(result.Metrics, "iperf3_matrix_server_count")
+	if !ok || count <= 0 {
+		return nil
+	}
+	rows := make([]networkIperf3MatrixRow, 0, count)
+	for i := 1; i <= count; i++ {
+		prefix := fmt.Sprintf("iperf3_matrix_%d", i)
+		server, _ := metricString(result.Metrics, prefix+"_server")
+		protocol, _ := metricString(result.Metrics, prefix+"_protocol")
+		download, _ := metricFloat64(result.Metrics, prefix+"_download_mbps")
+		upload, _ := metricFloat64(result.Metrics, prefix+"_upload_mbps")
+		latency, _ := metricFloat64(result.Metrics, prefix+"_latency_ms")
+		errorMessage, _ := metricString(result.Metrics, prefix+"_error")
+		rows = append(rows, networkIperf3MatrixRow{
+			Index:        i,
+			Server:       server,
+			Protocol:     protocol,
+			DownloadMbps: download,
+			UploadMbps:   upload,
+			LatencyMs:    latency,
+			Error:        errorMessage,
+		})
+	}
+	return rows
+}
+
 func getNetworkDownloadSpeed(result *models.TestResult) (float64, bool) {
 	if result == nil {
 		return 0, false

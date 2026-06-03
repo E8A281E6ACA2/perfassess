@@ -70,6 +70,9 @@ CPU频率:        2400.00 MHz
   平均延迟:     10.00 ms (tcp_connect)
   下载速度:     900.00 Mbps (iperf3_download)
   上传速度:     850.00 Mbps (iperf3_upload)
+  iperf3矩阵:   server | proto | latency ms | download Mbps | upload Mbps
+                 127.0.0.1:5201 | ipv4 | 10.00 | 900.00 | 850.00
+                 [2001:db8::1]:5201 | ipv6 | 18.00 | 800.00 | 750.00
   测试评分:     100.00
 
 

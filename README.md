@@ -253,9 +253,12 @@ make run
 
 # 完整预设 + 主流网络吞吐后端（需要 iperf3 服务端）
 ./build/perfassess --full --iperf3-server 1.2.3.4:5201
+
+# 完整预设 + iperf3 多节点矩阵
+./build/perfassess --full --iperf3-servers 1.2.3.4:5201,[2001:db8::1]:5201
 ```
 
-`--full` 会优先使用 `sysbench` CPU 后端、`sysbench` 内存后端和 `fio` 磁盘后端；如果未安装依赖，程序会给出明确提示但不会自动安装。只有提供 `--iperf3-server` 时，`--full` 才会自动切换到 `iperf3` 网络后端。
+`--full` 会优先使用 `sysbench` CPU 后端、`sysbench` 内存后端和 `fio` 磁盘后端；如果未安装依赖，程序会给出明确提示但不会自动安装。提供 `--iperf3-server` 或 `--iperf3-servers` 时，`--full` 会自动切换到 `iperf3` 网络后端。
 
 #### 单项测试
 
@@ -286,6 +289,9 @@ make run
 
 # 使用 iperf3 后端测试网络吞吐（需要预装 iperf3，并准备服务端）
 ./build/perfassess -b network --network-backend iperf3 --iperf3-server 1.2.3.4:5201
+
+# 使用 iperf3 多节点矩阵测试网络吞吐（逗号分隔，支持 host:port 和 [IPv6]:port）
+./build/perfassess -b network --network-backend iperf3 --iperf3-servers 1.2.3.4:5201,[2001:db8::1]:5201
 
 # 使用 Ookla Speedtest CLI 后端测试网络（需要预装 speedtest）
 ./build/perfassess -b network --network-backend speedtest
@@ -410,6 +416,8 @@ Flags:
       --network-backend string
                               网络测试后端 (builtin,iperf3,speedtest) (default "builtin")
       --iperf3-server string  iperf3 服务端地址（仅 network-backend=iperf3 时使用）
+      --iperf3-servers strings
+                              iperf3 多服务端地址列表，逗号分隔（仅 network-backend=iperf3 时使用）
       --cpu-backend string    CPU 测试后端 (builtin,sysbench,geekbench) (default "builtin")
       --memory-backend string 内存测试后端 (builtin,sysbench) (default "builtin")
       --disk-backend string   磁盘测试后端 (builtin,fio) (default "builtin")
@@ -424,7 +432,7 @@ Flags:
 提示：使用 `--cpu-backend geekbench` 时，请提前安装 Geekbench 6 并确认 `geekbench6` 可通过 PATH 访问。程序只检测并提示，不会自动安装依赖。
 提示：使用 `--memory-backend sysbench` 时，请提前安装 sysbench。程序只检测并提示，不会自动安装依赖。
 提示：使用 `--disk-backend fio` 时，请提前安装 fio。程序只检测并提示，不会自动安装依赖。
-提示：使用 `--network-backend iperf3` 时，请提前安装 iperf3，并提供可访问的 `--iperf3-server`。服务端可写为 `host` 或 `host:port`，程序会把端口转换为 iperf3 的 `-p` 参数。程序只检测并提示，不会自动安装依赖。
+提示：使用 `--network-backend iperf3` 时，请提前安装 iperf3，并提供可访问的 `--iperf3-server` 或 `--iperf3-servers`。服务端可写为 `host`、`host:port` 或 `[IPv6]:port`，程序会把端口转换为 iperf3 的 `-p` 参数。程序只检测并提示，不会自动安装依赖。
 ```
 
 ### 使用示例

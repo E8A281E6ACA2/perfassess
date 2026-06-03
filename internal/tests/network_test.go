@@ -402,6 +402,64 @@ func TestIperf3NetworkBackendParsesUploadMbps(t *testing.T) {
 	assertStringSlice(t, runner.args, []string{"-c", "iperf.example", "-p", "5201", "--reverse", "--json"})
 }
 
+func TestIperf3NetworkBackendRunsMultiServerMatrixAndCachesResult(t *testing.T) {
+	runner := &recordingCommandRunner{
+		outputs: [][]byte{
+			[]byte(`{"end":{"sum_received":{"bits_per_second":100000000}}}`),
+			[]byte(`{"end":{"sum_sent":{"bits_per_second":50000000}}}`),
+			[]byte(`{"end":{"sum_received":{"bits_per_second":300000000}}}`),
+			[]byte(`{"end":{"sum_sent":{"bits_per_second":150000000}}}`),
+		},
+	}
+	latencyCalls := 0
+	backend := NewIperf3NetworkBackend(Iperf3Config{
+		Servers: []string{"node-a:5201", "[2001:db8::2]:5201"},
+		Runner:  runner,
+		LatencyFn: func(hosts []string) (float64, error) {
+			latencyCalls++
+			if len(hosts) != 1 {
+				t.Fatalf("expected one latency host, got %v", hosts)
+			}
+			return float64(latencyCalls * 10), nil
+		},
+	})
+
+	download, err := backend.MeasureDownload()
+	if err != nil {
+		t.Fatalf("expected matrix download to succeed, got %v", err)
+	}
+	if download.SpeedMbps != 200 {
+		t.Fatalf("expected average download 200 Mbps, got %.2f", download.SpeedMbps)
+	}
+	upload, estimated, err := backend.MeasureUpload(download.SpeedMbps)
+	if err != nil {
+		t.Fatalf("expected matrix upload to succeed, got %v", err)
+	}
+	if estimated {
+		t.Fatal("expected matrix upload to be real measurement")
+	}
+	if upload != 100 {
+		t.Fatalf("expected average upload 100 Mbps, got %.2f", upload)
+	}
+	if runner.calls != 4 {
+		t.Fatalf("expected matrix to run four iperf3 commands once, got %d", runner.calls)
+	}
+	if latencyCalls != 2 {
+		t.Fatalf("expected latency fallback once per server, got %d", latencyCalls)
+	}
+
+	metrics := map[string]interface{}{}
+	backend.AppendMetrics(metrics)
+	assertMetricString(t, metrics, "iperf3_matrix_profile", "multi_server")
+	assertMetricFloat(t, metrics, "iperf3_matrix_avg_download_mbps", 200)
+	assertMetricFloat(t, metrics, "iperf3_matrix_avg_upload_mbps", 100)
+	assertMetricFloat(t, metrics, "iperf3_matrix_best_download_mbps", 300)
+	assertMetricFloat(t, metrics, "iperf3_matrix_best_upload_mbps", 150)
+	assertMetricString(t, metrics, "iperf3_matrix_1_protocol", "ipv4")
+	assertMetricString(t, metrics, "iperf3_matrix_2_protocol", "ipv6")
+	assertMetricFloat(t, metrics, "iperf3_matrix_2_latency_ms", 20)
+}
+
 func TestSpeedtestNetworkBackendReportsMissingBinary(t *testing.T) {
 	backend := NewSpeedtestNetworkBackend(SpeedtestConfig{
 		Runner: &fakeCommandRunner{
@@ -614,6 +672,29 @@ type fakeCommandRunner struct {
 	name        string
 	args        []string
 	calls       int
+}
+
+type recordingCommandRunner struct {
+	outputs [][]byte
+	err     error
+	names   []string
+	args    [][]string
+	calls   int
+}
+
+func (r *recordingCommandRunner) Run(ctx context.Context, name string, args ...string) ([]byte, error) {
+	r.names = append(r.names, name)
+	r.args = append(r.args, append([]string(nil), args...))
+	r.calls++
+	index := r.calls - 1
+	if index >= len(r.outputs) {
+		index = len(r.outputs) - 1
+	}
+	return r.outputs[index], r.err
+}
+
+func (r *recordingCommandRunner) LookPath(name string) (string, error) {
+	return "/usr/bin/" + name, nil
 }
 
 func (r *fakeCommandRunner) Run(ctx context.Context, name string, args ...string) ([]byte, error) {

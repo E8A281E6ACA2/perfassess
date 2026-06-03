@@ -26,6 +26,10 @@ type NetworkBenchmarkBackend interface {
 	MeasureUpload(downloadSpeed float64) (float64, bool, error)
 }
 
+type NetworkMetricsAppender interface {
+	AppendMetrics(metrics map[string]interface{})
+}
+
 type NetworkDownloadResult struct {
 	SpeedMbps float64
 	SourceURL string
@@ -251,7 +255,11 @@ func (nt *NetworkTest) Execute() (*models.TestResult, error) {
 
 	nt.GetLogger().Info(fmt.Sprintf("网络测试完成，评分: %.2f", score))
 
-	return nt.CreateResult(status, metrics.ToMetricsMap(), metrics.ErrorMessage), nil
+	metricsMap := metrics.ToMetricsMap()
+	if appender, ok := nt.backend.(NetworkMetricsAppender); ok {
+		appender.AppendMetrics(metricsMap)
+	}
+	return nt.CreateResult(status, metricsMap, metrics.ErrorMessage), nil
 }
 
 func (nt *NetworkTest) resolveDownloadSource(result NetworkDownloadResult) string {

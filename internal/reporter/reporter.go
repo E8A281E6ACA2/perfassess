@@ -335,6 +335,16 @@ func (rg *ReportGenerator) formatSingleTestResult(testName string, result *model
 					sb.WriteString("  上传说明:     当前结果为估算值，不参与真实上传评分，网络评分上限为 85\n")
 				}
 			}
+			if rows := getNetworkIperf3MatrixRows(result); len(rows) > 0 {
+				sb.WriteString("  iperf3矩阵:   server | proto | latency ms | download Mbps | upload Mbps\n")
+				for _, row := range rows {
+					sb.WriteString(fmt.Sprintf("                 %s | %s | %.2f | %.2f | %.2f\n",
+						row.Server, row.Protocol, row.LatencyMs, row.DownloadMbps, row.UploadMbps))
+					if row.Error != "" {
+						sb.WriteString(fmt.Sprintf("                 节点错误: %s\n", row.Error))
+					}
+				}
+			}
 			if _, latencyOK := getNetworkLatency(result); latencyOK {
 				if _, downloadOK := getNetworkDownloadSpeed(result); downloadOK {
 					score := rg.scoreCalculator.CalculateNetworkScore(result)
