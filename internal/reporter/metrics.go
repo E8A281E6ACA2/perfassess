@@ -406,6 +406,20 @@ type networkQualityRow struct {
 	JitterMs     float64
 }
 
+type networkSpeedtestNode struct {
+	ServerID   int
+	Name       string
+	Location   string
+	Country    string
+	Host       string
+	ResultURL  string
+	ISP        string
+	ExternalIP string
+	Interface  string
+	IsVPN      bool
+	PingJitter float64
+}
+
 func getNetworkIperf3MatrixRows(result *models.TestResult) []networkIperf3MatrixRow {
 	if result == nil || result.Metrics == nil {
 		return nil
@@ -435,6 +449,41 @@ func getNetworkIperf3MatrixRows(result *models.TestResult) []networkIperf3Matrix
 		})
 	}
 	return rows
+}
+
+func getNetworkSpeedtestNode(result *models.TestResult) (networkSpeedtestNode, bool) {
+	if result == nil || result.Metrics == nil {
+		return networkSpeedtestNode{}, false
+	}
+	if profile, ok := metricString(result.Metrics, "speedtest_profile"); ok && profile != "" {
+		node := networkSpeedtestNode{}
+		node.ServerID, _ = metricInt(result.Metrics, "speedtest_server_id")
+		node.Name, _ = metricString(result.Metrics, "speedtest_server_name")
+		node.Location, _ = metricString(result.Metrics, "speedtest_server_location")
+		node.Country, _ = metricString(result.Metrics, "speedtest_server_country")
+		node.Host, _ = metricString(result.Metrics, "speedtest_server_host")
+		node.ResultURL, _ = metricString(result.Metrics, "speedtest_result_url")
+		node.ISP, _ = metricString(result.Metrics, "speedtest_isp")
+		node.ExternalIP, _ = metricString(result.Metrics, "speedtest_interface_external_ip")
+		node.Interface, _ = metricString(result.Metrics, "speedtest_interface_name")
+		node.IsVPN, _ = metricBool(result.Metrics, "speedtest_interface_is_vpn")
+		node.PingJitter, _ = metricFloat64(result.Metrics, "speedtest_ping_jitter_ms")
+		return node, true
+	}
+	return networkSpeedtestNode{}, false
+}
+
+func networkSpeedtestServerLabel(node networkSpeedtestNode) string {
+	if node.ServerID > 0 && node.Name != "" {
+		return fmt.Sprintf("%d/%s", node.ServerID, node.Name)
+	}
+	if node.Name != "" {
+		return node.Name
+	}
+	if node.ServerID > 0 {
+		return fmt.Sprintf("%d", node.ServerID)
+	}
+	return "-"
 }
 
 func getNetworkQualityRows(result *models.TestResult) []networkQualityRow {

@@ -397,6 +397,53 @@ func TestFormatSingleTestResultShowsIperf3Matrix(t *testing.T) {
 	}
 }
 
+func TestFormatSingleTestResultShowsSpeedtestNode(t *testing.T) {
+	generator := NewReportGenerator()
+	result := &models.TestResult{
+		TestName:        "网络性能测试",
+		Status:          "success",
+		DurationSeconds: 8.4,
+		Metrics: map[string]interface{}{
+			"backend":                         "speedtest",
+			"average_latency_ms":              12.5,
+			"download_speed_mbps":             1000.0,
+			"upload_speed_mbps":               400.0,
+			"upload_speed_estimated":          false,
+			"download_speed_source":           "speedtest_download",
+			"upload_speed_source":             "speedtest_upload",
+			"speedtest_profile":               "ookla_cli",
+			"speedtest_server_id":             1234,
+			"speedtest_server_name":           "Example Node",
+			"speedtest_server_location":       "Frankfurt",
+			"speedtest_server_country":        "Germany",
+			"speedtest_server_host":           "speed.example:8080",
+			"speedtest_isp":                   "Example ISP",
+			"speedtest_ping_jitter_ms":        1.1,
+			"speedtest_interface_external_ip": "203.0.113.10",
+			"speedtest_interface_name":        "eth0",
+			"speedtest_interface_is_vpn":      false,
+			"speedtest_result_url":            "https://www.speedtest.net/result/c/abcd",
+			"score":                           98.0,
+		},
+	}
+
+	formatted := generator.formatSingleTestResult("网络性能测试", result)
+
+	expectedSnippets := []string{
+		"测试后端:     speedtest",
+		"speedtest节点: server | location | country | host | isp",
+		"1234/Example Node | Frankfurt | Germany | speed.example:8080 | Example ISP",
+		"speedtest抖动: 1.10 ms",
+		"speedtest出口: 203.0.113.10 | interface eth0 | vpn false",
+		"speedtest结果: https://www.speedtest.net/result/c/abcd",
+	}
+	for _, snippet := range expectedSnippets {
+		if !strings.Contains(formatted, snippet) {
+			t.Fatalf("expected formatted report to contain %q, got:\n%s", snippet, formatted)
+		}
+	}
+}
+
 func TestFormatSingleTestResultShowsNetworkQualityMatrix(t *testing.T) {
 	generator := NewReportGenerator()
 	result := &models.TestResult{
@@ -481,6 +528,50 @@ func TestVPSBenchmarkSummaryIncludesKeyMetrics(t *testing.T) {
 	}
 }
 
+func TestVPSBenchmarkSummaryIncludesSpeedtestNode(t *testing.T) {
+	generator := NewReportGenerator()
+	report := &models.Report{
+		SessionID:  "session_speedtest",
+		Timestamp:  time.Date(2026, 6, 1, 8, 0, 0, 0, time.UTC),
+		SystemInfo: &models.SystemInfo{},
+		TestResults: &models.TestResults{
+			NetworkResult: &models.TestResult{
+				TestName: "网络性能测试",
+				Status:   "success",
+				Metrics: map[string]interface{}{
+					"backend":                         "speedtest",
+					"average_latency_ms":              12.5,
+					"download_speed_mbps":             1000.0,
+					"upload_speed_mbps":               400.0,
+					"upload_speed_estimated":          false,
+					"speedtest_profile":               "ookla_cli",
+					"speedtest_server_id":             1234,
+					"speedtest_server_name":           "Example Node",
+					"speedtest_server_location":       "Frankfurt",
+					"speedtest_server_country":        "Germany",
+					"speedtest_server_host":           "speed.example:8080",
+					"speedtest_isp":                   "Example ISP",
+					"speedtest_interface_external_ip": "203.0.113.10",
+					"speedtest_result_url":            "https://www.speedtest.net/result/c/abcd",
+					"speedtest_ping_jitter_ms":        1.1,
+				},
+			},
+		},
+		Summary: make(map[string]interface{}),
+	}
+
+	generator.AddSummary(report, &models.OverallScore{})
+	summary := report.Summary["vps_benchmark_summary"].(map[string]interface{})
+	network := summary["network"].(map[string]interface{})
+
+	if network["speedtest_server_name"] != "Example Node" {
+		t.Fatalf("expected speedtest node in VPS summary, got %#v", network)
+	}
+	if network["speedtest_server_location"] != "Frankfurt" || network["speedtest_external_ip"] != "203.0.113.10" {
+		t.Fatalf("expected speedtest location and external IP in VPS summary, got %#v", network)
+	}
+}
+
 func TestWebServerKeyMetricsShowsFioMixedMatrix(t *testing.T) {
 	server := &WebServer{}
 	result := &models.TestResult{
@@ -525,6 +616,29 @@ func TestWebServerKeyMetricsShowsIperf3Matrix(t *testing.T) {
 	metrics := server.getKeyMetrics(result)
 	if !strings.Contains(metrics, "iperf3 | iperf3 matrix: 2 nodes | 下载 200.00 Mbps | 上传 100.00 Mbps") {
 		t.Fatalf("expected web key metrics to show iperf3 matrix, got %q", metrics)
+	}
+}
+
+func TestWebServerKeyMetricsShowsSpeedtestNode(t *testing.T) {
+	server := &WebServer{}
+	result := &models.TestResult{
+		TestName: "网络性能测试",
+		Status:   "success",
+		Metrics: map[string]interface{}{
+			"backend":                   "speedtest",
+			"download_speed_mbps":       1000.0,
+			"upload_speed_mbps":         400.0,
+			"speedtest_profile":         "ookla_cli",
+			"speedtest_server_id":       1234,
+			"speedtest_server_name":     "Example Node",
+			"speedtest_server_location": "Frankfurt",
+			"speedtest_server_country":  "Germany",
+		},
+	}
+
+	metrics := server.getKeyMetrics(result)
+	if !strings.Contains(metrics, "speedtest | speedtest: 1234/Example Node | Frankfurt, Germany | 下载 1000.00 Mbps | 上传 400.00 Mbps") {
+		t.Fatalf("expected web key metrics to show speedtest node, got %q", metrics)
 	}
 }
 

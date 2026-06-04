@@ -267,7 +267,7 @@ make run
 ./build/perfassess --full --iperf3-servers 1.2.3.4:5201,[2001:db8::1]:5201
 ```
 
-`--vps-profile` 面向一把梭 VPS 测评，默认启用 `sysbench` CPU 后端、`sysbench` 内存后端、`fio` 磁盘后端、`speedtest` 网络后端、`vps` 评分基准、路由追踪和流媒体检测。它不会自动安装外部工具；建议先运行 `check-deps` 查看缺失项。提供 `--iperf3-server` 或 `--iperf3-servers` 时，且未显式指定 `--network-backend`，会自动切换到 `iperf3` 网络后端。
+`--vps-profile` 面向一把梭 VPS 测评，默认启用 `sysbench` CPU 后端、`sysbench` 内存后端、`fio` 磁盘后端、`speedtest` 网络后端、`vps` 评分基准、路由追踪和流媒体检测。它不会自动安装外部工具；建议先运行 `check-deps` 查看缺失项。使用 `speedtest` 时，报告会展示 Ookla 节点 ID、名称、地区、国家、Host、ISP、结果 URL、出口 IP 和 ping jitter。提供 `--iperf3-server` 或 `--iperf3-servers` 时，且未显式指定 `--network-backend`，会自动切换到 `iperf3` 网络后端。
 
 `--full` 会优先使用 `sysbench` CPU 后端、`sysbench` 内存后端和 `fio` 磁盘后端；如果未安装依赖，程序会给出明确提示但不会自动安装。提供 `--iperf3-server` 或 `--iperf3-servers` 时，`--full` 会自动切换到 `iperf3` 网络后端。
 
@@ -309,6 +309,8 @@ make run
 # 使用 Ookla Speedtest CLI 后端测试网络（需要预装 speedtest）
 ./build/perfassess -b network --network-backend speedtest
 ```
+
+`speedtest` 后端会把 Ookla CLI 返回的测速节点和出口信息写入文本报告、Web 摘要、JSON `test_results.network_result.metrics` 和 `summary.vps_benchmark_summary.network`，便于判断本次网络结果来自哪个节点。
 
 `--disk-backend fio` 会保留顺序读写与随机 IOPS 兼容字段，并额外输出 YABS 对齐的 4k / 64k / 512k / 1m mixed randrw 50/50 矩阵，便于和主流 VPS 测评结果横向对比。
 

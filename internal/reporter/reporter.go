@@ -335,6 +335,21 @@ func (rg *ReportGenerator) formatSingleTestResult(testName string, result *model
 					sb.WriteString("  上传说明:     当前结果为估算值，不参与真实上传评分，网络评分上限为 85\n")
 				}
 			}
+			if node, ok := getNetworkSpeedtestNode(result); ok {
+				sb.WriteString("  speedtest节点: server | location | country | host | isp\n")
+				sb.WriteString(fmt.Sprintf("                 %s | %s | %s | %s | %s\n",
+					networkSpeedtestServerLabel(node), node.Location, node.Country, node.Host, node.ISP))
+				if node.PingJitter > 0 {
+					sb.WriteString(fmt.Sprintf("  speedtest抖动: %.2f ms\n", node.PingJitter))
+				}
+				if node.ExternalIP != "" || node.Interface != "" {
+					sb.WriteString(fmt.Sprintf("  speedtest出口: %s | interface %s | vpn %t\n",
+						node.ExternalIP, node.Interface, node.IsVPN))
+				}
+				if node.ResultURL != "" {
+					sb.WriteString(fmt.Sprintf("  speedtest结果: %s\n", node.ResultURL))
+				}
+			}
 			if rows := getNetworkIperf3MatrixRows(result); len(rows) > 0 {
 				sb.WriteString("  iperf3矩阵:   server | proto | latency ms | download Mbps | upload Mbps\n")
 				for _, row := range rows {

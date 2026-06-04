@@ -162,7 +162,7 @@
 - `cpu`: CPU 后端、状态、单核/多核/总分、sysbench events/s 或 Geekbench 原始分
 - `memory`: 内存后端、状态、读写吞吐和评分
 - `disk`: 磁盘后端、状态、顺序读写、随机 IOPS、P95 延迟和 fio mixed 关键值
-- `network`: 网络后端、状态、延迟、下载、上传、上传估算标记、iperf3 聚合值、IPv4/IPv6 可用性、质量矩阵失败率和抖动
+- `network`: 网络后端、状态、延迟、下载、上传、上传估算标记、speedtest 节点信息、iperf3 聚合值、IPv4/IPv6 可用性、质量矩阵失败率和抖动
 - `scores`: 总分、等级、分项分和评分基准
 - `confidence`: 置信等级、原因和质量提示
 
@@ -174,6 +174,14 @@
 - `disk_backend`: 磁盘实际后端
 - `network_backend`: 网络实际后端
 - `mainstream_count`: 使用主流外部基准后端的核心测试数量
+
+## Network Metrics
+
+网络测试会按后端追加可选指标：
+
+- `speedtest_*`: Ookla Speedtest CLI 返回的节点信息，包括节点 ID、名称、地区、国家、Host、ISP、结果 URL、出口 IP、网卡名称、VPN 标记和 ping jitter
+- `iperf3_matrix_*`: iperf3 多节点矩阵，包括节点数、成功数、平均/最佳上下行，以及每个节点的 server、协议、端口、延迟、上下行和错误信息
+- `network_quality_*`: 内置 TCP connect 质量矩阵，包括 IPv4/IPv6 可用性、失败率、平均延迟和抖动
 
 ## Confidence Level
 

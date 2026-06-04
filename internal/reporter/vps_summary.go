@@ -163,6 +163,35 @@ func buildVPSNetworkSummary(result *models.TestResult) map[string]interface{} {
 		summary["upload_mbps"] = upload
 	}
 	summary["upload_estimated"] = isNetworkUploadEstimated(result)
+	if node, ok := getNetworkSpeedtestNode(result); ok {
+		if node.ServerID > 0 {
+			summary["speedtest_server_id"] = node.ServerID
+		}
+		if node.Name != "" {
+			summary["speedtest_server_name"] = node.Name
+		}
+		if node.Location != "" {
+			summary["speedtest_server_location"] = node.Location
+		}
+		if node.Country != "" {
+			summary["speedtest_server_country"] = node.Country
+		}
+		if node.Host != "" {
+			summary["speedtest_server_host"] = node.Host
+		}
+		if node.ISP != "" {
+			summary["speedtest_isp"] = node.ISP
+		}
+		if node.ExternalIP != "" {
+			summary["speedtest_external_ip"] = node.ExternalIP
+		}
+		if node.ResultURL != "" {
+			summary["speedtest_result_url"] = node.ResultURL
+		}
+		if node.PingJitter > 0 {
+			summary["speedtest_ping_jitter_ms"] = node.PingJitter
+		}
+	}
 	if rows := getNetworkIperf3MatrixRows(result); len(rows) > 0 {
 		summary["iperf3_node_count"] = len(rows)
 		addMetricFloat(summary, "iperf3_avg_download_mbps", result, "iperf3_matrix_avg_download_mbps")

@@ -260,6 +260,25 @@ func (ws *WebServer) getKeyMetrics(result *models.TestResult) string {
 			}
 			return fmt.Sprintf("%siperf3 matrix: %d nodes | 下载 %.2f Mbps | 上传 %.2f Mbps", prefix, len(rows), download, upload)
 		}
+		if node, ok := getNetworkSpeedtestNode(result); ok {
+			download, _ := getNetworkDownloadSpeed(result)
+			upload, _ := getNetworkUploadSpeed(result)
+			prefix := ""
+			if backend != "" {
+				prefix = backend + " | "
+			}
+			location := node.Location
+			if node.Country != "" {
+				if location != "" {
+					location += ", "
+				}
+				location += node.Country
+			}
+			if location == "" {
+				location = "-"
+			}
+			return fmt.Sprintf("%sspeedtest: %s | %s | 下载 %.2f Mbps | 上传 %.2f Mbps", prefix, networkSpeedtestServerLabel(node), location, download, upload)
+		}
 		if rows := getNetworkQualityRows(result); len(rows) > 0 {
 			avgLatency, _ := metricFloat64(result.Metrics, "network_quality_avg_latency_ms")
 			jitter, _ := metricFloat64(result.Metrics, "network_quality_jitter_ms")

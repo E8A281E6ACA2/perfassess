@@ -587,7 +587,10 @@ func TestSpeedtestNetworkBackendParsesMetricsAndCachesResult(t *testing.T) {
 			"ping": {"latency": 12.5, "jitter": 1.1},
 			"download": {"bandwidth": 125000000},
 			"upload": {"bandwidth": 50000000},
-			"server": {"host": "speed.example:8080"}
+			"server": {"id": 1234, "name": "Example Node", "location": "Frankfurt", "country": "Germany", "host": "speed.example:8080"},
+			"result": {"id": "abcd", "url": "https://www.speedtest.net/result/c/abcd"},
+			"interface": {"internalIp": "10.0.0.2", "name": "eth0", "macAddr": "00:11:22:33:44:55", "isVpn": false, "externalIp": "203.0.113.10"},
+			"isp": "Example ISP"
 		}`),
 		lookPathOK: true,
 	}
@@ -626,6 +629,19 @@ func TestSpeedtestNetworkBackendParsesMetricsAndCachesResult(t *testing.T) {
 		t.Fatalf("expected speedtest to run once due to cache, got %d", runner.calls)
 	}
 	assertStringSlice(t, runner.args, []string{"--format=json", "--accept-license", "--accept-gdpr"})
+
+	metrics := map[string]interface{}{}
+	backend.AppendMetrics(metrics)
+	assertMetricString(t, metrics, "speedtest_profile", "ookla_cli")
+	assertMetricInt(t, metrics, "speedtest_server_id", 1234)
+	assertMetricString(t, metrics, "speedtest_server_name", "Example Node")
+	assertMetricString(t, metrics, "speedtest_server_location", "Frankfurt")
+	assertMetricString(t, metrics, "speedtest_server_country", "Germany")
+	assertMetricString(t, metrics, "speedtest_server_host", "speed.example:8080")
+	assertMetricString(t, metrics, "speedtest_result_url", "https://www.speedtest.net/result/c/abcd")
+	assertMetricString(t, metrics, "speedtest_isp", "Example ISP")
+	assertMetricString(t, metrics, "speedtest_interface_external_ip", "203.0.113.10")
+	assertMetricFloat(t, metrics, "speedtest_ping_jitter_ms", 1.1)
 }
 
 func TestParseIperf3MbpsRejectsMissingThroughput(t *testing.T) {

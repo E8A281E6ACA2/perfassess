@@ -489,6 +489,54 @@
                 "network_error": {
                   "type": "string"
                 },
+                "speedtest_profile": {
+                  "type": "string",
+                  "enum": [
+                    "ookla_cli"
+                  ]
+                },
+                "speedtest_server_id": {
+                  "type": "number"
+                },
+                "speedtest_server_name": {
+                  "type": "string"
+                },
+                "speedtest_server_location": {
+                  "type": "string"
+                },
+                "speedtest_server_country": {
+                  "type": "string"
+                },
+                "speedtest_server_host": {
+                  "type": "string"
+                },
+                "speedtest_result_id": {
+                  "type": "string"
+                },
+                "speedtest_result_url": {
+                  "type": "string"
+                },
+                "speedtest_isp": {
+                  "type": "string"
+                },
+                "speedtest_interface_name": {
+                  "type": "string"
+                },
+                "speedtest_interface_internal_ip": {
+                  "type": "string"
+                },
+                "speedtest_interface_external_ip": {
+                  "type": "string"
+                },
+                "speedtest_interface_mac": {
+                  "type": "string"
+                },
+                "speedtest_interface_is_vpn": {
+                  "type": "boolean"
+                },
+                "speedtest_ping_jitter_ms": {
+                  "type": "number"
+                },
                 "network_quality_profile": {
                   "type": "string",
                   "enum": [
@@ -962,6 +1010,33 @@
           "type": "number"
         },
         "upload_mbps": {
+          "type": "number"
+        },
+        "speedtest_server_id": {
+          "type": "number"
+        },
+        "speedtest_server_name": {
+          "type": "string"
+        },
+        "speedtest_server_location": {
+          "type": "string"
+        },
+        "speedtest_server_country": {
+          "type": "string"
+        },
+        "speedtest_server_host": {
+          "type": "string"
+        },
+        "speedtest_isp": {
+          "type": "string"
+        },
+        "speedtest_external_ip": {
+          "type": "string"
+        },
+        "speedtest_result_url": {
+          "type": "string"
+        },
+        "speedtest_ping_jitter_ms": {
           "type": "number"
         },
         "iperf3_node_count": {

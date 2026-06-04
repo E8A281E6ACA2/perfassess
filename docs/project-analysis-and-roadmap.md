@@ -307,14 +307,14 @@
 
 当前收尾批次目标：
 
-1. 增加 `--vps-profile` 一把梭 VPS 测评预设
-2. 默认启用更接近主流 VPS 脚本的 `sysbench`、`fio`、`speedtest` 后端组合
-3. 使用 `vps` 评分基准，并启用路由追踪和流媒体检测
-4. 保持外部工具只提示、不自动安装，避免脚本在生产 VPS 上做不可控系统修改
+1. 增强 `speedtest` 节点信息输出
+2. 将 Ookla 节点 ID、名称、地区、国家、Host、ISP、结果 URL、出口 IP 和 ping jitter 写入报告
+3. 同步文本报告、Web 摘要、JSON metrics 和 VPS 测评摘要
+4. 保持网络测试执行流程不变，不新增外部依赖
 
 下一批增强建议：
 
-1. 增强网络测速节点策略，支持 speedtest 节点信息、iperf3 推荐节点池或用户节点组
+1. 增强 iperf3 节点策略，支持推荐节点池或用户节点组配置
 2. 增强报告可读性，把关键矩阵进一步压缩成不同场景的复制模板
 3. 基于真实 VPS 样本回测评分 profile，校准默认阈值
 4. 增加发布包级别的端到端冒烟样例，验证二进制、报告、依赖提示和 JSON 契约
@@ -324,6 +324,7 @@
 - 新增 `--vps-profile`，一键启用 `all` 测试、`vps` 评分基准、`sysbench` CPU、`sysbench` 内存、`fio` 磁盘、`speedtest` 网络、路由追踪和流媒体检测
 - `--vps-profile` 不启用 AI 服务检测、安全体检和长时间压力测试，避免默认 VPS 测评包含耗时或偏运维巡检的项目
 - `--vps-profile` 提供 `--iperf3-server` 或 `--iperf3-servers` 时会自动切换到 `iperf3` 网络后端；显式传入 `--network-backend` 时以用户参数为准
+- `speedtest` 后端会输出 Ookla 节点 ID、名称、地区、国家、Host、ISP、结果 URL、出口 IP 和 ping jitter
 - 文本报告顶部新增“VPS测评摘要”，集中展示系统、CPU、内存、磁盘、网络、网络质量、总分、等级、置信度和评分基准
 - JSON `summary` 新增 `vps_benchmark_summary`，用于脚本快速读取核心测评结果
 - `vps_benchmark_summary` 保留 `system`、`cpu`、`memory`、`disk`、`network`、`scores`、`confidence` 七个核心分组

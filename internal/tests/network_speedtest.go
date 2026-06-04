@@ -44,6 +44,18 @@ type speedtestJSONResult struct {
 		Country  string `json:"country"`
 		Host     string `json:"host"`
 	} `json:"server"`
+	Result struct {
+		ID  string `json:"id"`
+		URL string `json:"url"`
+	} `json:"result"`
+	Interface struct {
+		InternalIP string `json:"internalIp"`
+		Name       string `json:"name"`
+		MACAddress string `json:"macAddr"`
+		IsVPN      bool   `json:"isVpn"`
+		ExternalIP string `json:"externalIp"`
+	} `json:"interface"`
+	ISP string `json:"isp"`
 }
 
 func NewSpeedtestNetworkBackend(cfg SpeedtestConfig) *SpeedtestNetworkBackend {
@@ -115,6 +127,32 @@ func (b *SpeedtestNetworkBackend) MeasureUpload(downloadSpeed float64) (float64,
 	return speed, false, nil
 }
 
+func (b *SpeedtestNetworkBackend) AppendMetrics(metrics map[string]interface{}) {
+	if metrics == nil || b.result == nil {
+		return
+	}
+	result := b.result
+	metrics["speedtest_profile"] = "ookla_cli"
+	if result.Server.ID > 0 {
+		metrics["speedtest_server_id"] = result.Server.ID
+	}
+	addStringMetric(metrics, "speedtest_server_name", result.Server.Name)
+	addStringMetric(metrics, "speedtest_server_location", result.Server.Location)
+	addStringMetric(metrics, "speedtest_server_country", result.Server.Country)
+	addStringMetric(metrics, "speedtest_server_host", result.Server.Host)
+	addStringMetric(metrics, "speedtest_result_id", result.Result.ID)
+	addStringMetric(metrics, "speedtest_result_url", result.Result.URL)
+	addStringMetric(metrics, "speedtest_isp", result.ISP)
+	addStringMetric(metrics, "speedtest_interface_name", result.Interface.Name)
+	addStringMetric(metrics, "speedtest_interface_internal_ip", result.Interface.InternalIP)
+	addStringMetric(metrics, "speedtest_interface_external_ip", result.Interface.ExternalIP)
+	addStringMetric(metrics, "speedtest_interface_mac", result.Interface.MACAddress)
+	metrics["speedtest_interface_is_vpn"] = result.Interface.IsVPN
+	if result.Ping.Jitter > 0 {
+		metrics["speedtest_ping_jitter_ms"] = result.Ping.Jitter
+	}
+}
+
 func (b *SpeedtestNetworkBackend) measure() (*speedtestJSONResult, error) {
 	if b.result != nil {
 		return b.result, nil
@@ -154,4 +192,10 @@ func bandwidthBytesPerSecondToMbps(value float64) float64 {
 		return 0
 	}
 	return value * 8 / 1000000
+}
+
+func addStringMetric(metrics map[string]interface{}, key, value string) {
+	if value != "" {
+		metrics[key] = value
+	}
 }
