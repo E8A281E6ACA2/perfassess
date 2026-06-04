@@ -254,12 +254,20 @@ make run
 # 完整预设：基础测试 + 路由追踪 + 流媒体 + AI 服务 + 安全体检
 ./build/perfassess --full
 
+# VPS 测评预设：sysbench + fio + speedtest + VPS 评分基准 + 常用网络检查
+./build/perfassess --vps-profile
+
+# VPS 测评预设 + 自建 iperf3 服务端
+./build/perfassess --vps-profile --iperf3-server 1.2.3.4:5201
+
 # 完整预设 + 主流网络吞吐后端（需要 iperf3 服务端）
 ./build/perfassess --full --iperf3-server 1.2.3.4:5201
 
 # 完整预设 + iperf3 多节点矩阵
 ./build/perfassess --full --iperf3-servers 1.2.3.4:5201,[2001:db8::1]:5201
 ```
+
+`--vps-profile` 面向一把梭 VPS 测评，默认启用 `sysbench` CPU 后端、`sysbench` 内存后端、`fio` 磁盘后端、`speedtest` 网络后端、`vps` 评分基准、路由追踪和流媒体检测。它不会自动安装外部工具；建议先运行 `check-deps` 查看缺失项。提供 `--iperf3-server` 或 `--iperf3-servers` 时，且未显式指定 `--network-backend`，会自动切换到 `iperf3` 网络后端。
 
 `--full` 会优先使用 `sysbench` CPU 后端、`sysbench` 内存后端和 `fio` 磁盘后端；如果未安装依赖，程序会给出明确提示但不会自动安装。提供 `--iperf3-server` 或 `--iperf3-servers` 时，`--full` 会自动切换到 `iperf3` 网络后端。
 
@@ -407,6 +415,7 @@ Flags:
   -b, --benchmarks strings   指定要运行的检测项目 (cpu,memory,disk,network,all) (default [all])
       --quick                快速预设：只运行 CPU、内存、磁盘基础测试
       --full                 完整预设：运行基础测试并启用可选检查；提供 iperf3 服务端时使用 iperf3
+      --vps-profile          VPS 测评预设：启用 sysbench/fio/speedtest、VPS 评分基准和常用网络检查
   -o, --output string        指定输出文件路径（不指定则只输出到控制台）
       --output-format string 指定输出格式 (text,json) (default "text")
       --score-weights string 综合评分权重，如 cpu=0.3,memory=0.2,disk=0.25,network=0.25
@@ -806,6 +815,7 @@ A: 使用 `--port` 参数指定其他端口：
 | 交互式菜单 | `./build/perfassess -i` |
 | 快速 CPU 测试 | `./build/perfassess -b cpu` |
 | 完整测试 | `./build/perfassess -b all` |
+| VPS 测评预设 | `./build/perfassess --vps-profile` |
 | Web 报告 | `./build/perfassess -b all --web` |
 | 保存报告 | `./build/perfassess -b all -o report.txt` |
 | 报告对比 | `./build/perfassess compare vps-a.json vps-b.json` |
@@ -827,6 +837,7 @@ A: 使用 `--port` 参数指定其他端口：
 | `--benchmarks` | `-b` | 检测项目 | `-b cpu,memory` |
 | `--quick` | - | 快速预设 | `--quick` |
 | `--full` | - | 完整预设 | `--full` |
+| `--vps-profile` | - | VPS 测评预设 | `--vps-profile` |
 | `--output` | `-o` | 输出文件 | `-o report.txt` |
 | `--output-format` | - | 输出格式 | `--output-format json` |
 | `--verbose` | `-v` | 详细输出 | `-v` |

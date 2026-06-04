@@ -307,20 +307,23 @@
 
 当前收尾批次目标：
 
-1. 固化本地和 CI 验证入口
-2. 统一发布产物命名、README 和 Release workflow
-3. 补齐发布前检查清单
-4. 清理路线图中过期状态描述
+1. 增加 `--vps-profile` 一把梭 VPS 测评预设
+2. 默认启用更接近主流 VPS 脚本的 `sysbench`、`fio`、`speedtest` 后端组合
+3. 使用 `vps` 评分基准，并启用路由追踪和流媒体检测
+4. 保持外部工具只提示、不自动安装，避免脚本在生产 VPS 上做不可控系统修改
 
 下一批增强建议：
 
-1. 增加 `--vps-profile` 或等价预设，一键启用更接近主流脚本的后端组合
-2. 增强网络测速节点策略，支持 speedtest 节点信息、iperf3 推荐节点池或用户节点组
-3. 增强报告可读性，把关键矩阵进一步压缩成不同场景的复制模板
-4. 基于真实 VPS 样本回测评分 profile，校准默认阈值
+1. 增强网络测速节点策略，支持 speedtest 节点信息、iperf3 推荐节点池或用户节点组
+2. 增强报告可读性，把关键矩阵进一步压缩成不同场景的复制模板
+3. 基于真实 VPS 样本回测评分 profile，校准默认阈值
+4. 增加发布包级别的端到端冒烟样例，验证二进制、报告、依赖提示和 JSON 契约
 
 当前已落地的 VPS 测评摘要边界：
 
+- 新增 `--vps-profile`，一键启用 `all` 测试、`vps` 评分基准、`sysbench` CPU、`sysbench` 内存、`fio` 磁盘、`speedtest` 网络、路由追踪和流媒体检测
+- `--vps-profile` 不启用 AI 服务检测、安全体检和长时间压力测试，避免默认 VPS 测评包含耗时或偏运维巡检的项目
+- `--vps-profile` 提供 `--iperf3-server` 或 `--iperf3-servers` 时会自动切换到 `iperf3` 网络后端；显式传入 `--network-backend` 时以用户参数为准
 - 文本报告顶部新增“VPS测评摘要”，集中展示系统、CPU、内存、磁盘、网络、网络质量、总分、等级、置信度和评分基准
 - JSON `summary` 新增 `vps_benchmark_summary`，用于脚本快速读取核心测评结果
 - `vps_benchmark_summary` 保留 `system`、`cpu`、`memory`、`disk`、`network`、`scores`、`confidence` 七个核心分组

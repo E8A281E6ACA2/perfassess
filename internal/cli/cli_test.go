@@ -95,6 +95,112 @@ func TestBindFlagsFullPresetAllowsExplicitBackendOverride(t *testing.T) {
 	}
 }
 
+func TestBindFlagsVPSProfilePreset(t *testing.T) {
+	app := NewCLI()
+	cmd := app.GetRootCmd()
+	args := []string{"--vps-profile"}
+	if err := cmd.ParseFlags(args); err != nil {
+		t.Fatalf("failed to parse flags: %v", err)
+	}
+
+	if err := app.bindFlags(cmd); err != nil {
+		t.Fatalf("expected vps profile bind to succeed, got %v", err)
+	}
+
+	assertStringSlice(t, app.config.Tests, []string{"all"})
+	if app.config.ScoreProfile != "vps" {
+		t.Fatalf("expected vps score profile, got %q", app.config.ScoreProfile)
+	}
+	if app.config.CPUBackend != "sysbench" {
+		t.Fatalf("expected vps profile cpu backend sysbench, got %q", app.config.CPUBackend)
+	}
+	if app.config.MemoryBackend != "sysbench" {
+		t.Fatalf("expected vps profile memory backend sysbench, got %q", app.config.MemoryBackend)
+	}
+	if app.config.DiskBackend != "fio" {
+		t.Fatalf("expected vps profile disk backend fio, got %q", app.config.DiskBackend)
+	}
+	if app.config.NetworkBackend != "speedtest" {
+		t.Fatalf("expected vps profile network backend speedtest, got %q", app.config.NetworkBackend)
+	}
+	if !app.config.EnableRouteTrace {
+		t.Fatal("expected vps profile to enable route trace")
+	}
+	if !app.config.EnableStreaming {
+		t.Fatal("expected vps profile to enable streaming checks")
+	}
+	if app.config.EnableAIServices {
+		t.Fatal("expected vps profile to keep ai service checks disabled")
+	}
+	if app.config.EnableStressTest {
+		t.Fatal("expected vps profile to keep stress test disabled")
+	}
+	if app.config.EnableSecurityScan {
+		t.Fatal("expected vps profile to keep security scan disabled")
+	}
+}
+
+func TestBindFlagsVPSProfileAllowsExplicitOverrides(t *testing.T) {
+	app := NewCLI()
+	cmd := app.GetRootCmd()
+	args := []string{
+		"--vps-profile",
+		"--network-backend", "builtin",
+		"--disk-backend", "builtin",
+		"--cpu-backend", "builtin",
+		"--memory-backend", "builtin",
+		"--score-profile", "server",
+		"--route-trace=false",
+		"--streaming=false",
+	}
+	if err := cmd.ParseFlags(args); err != nil {
+		t.Fatalf("failed to parse flags: %v", err)
+	}
+
+	if err := app.bindFlags(cmd); err != nil {
+		t.Fatalf("expected vps profile bind to succeed, got %v", err)
+	}
+
+	if app.config.NetworkBackend != "builtin" {
+		t.Fatalf("expected explicit network backend override, got %q", app.config.NetworkBackend)
+	}
+	if app.config.DiskBackend != "builtin" {
+		t.Fatalf("expected explicit disk backend override, got %q", app.config.DiskBackend)
+	}
+	if app.config.CPUBackend != "builtin" {
+		t.Fatalf("expected explicit cpu backend override, got %q", app.config.CPUBackend)
+	}
+	if app.config.MemoryBackend != "builtin" {
+		t.Fatalf("expected explicit memory backend override, got %q", app.config.MemoryBackend)
+	}
+	if app.config.ScoreProfile != "server" {
+		t.Fatalf("expected explicit score profile override, got %q", app.config.ScoreProfile)
+	}
+	if app.config.EnableRouteTrace {
+		t.Fatal("expected explicit route trace override")
+	}
+	if app.config.EnableStreaming {
+		t.Fatal("expected explicit streaming override")
+	}
+}
+
+func TestBindFlagsVPSProfileWithIperf3ServerUsesIperf3(t *testing.T) {
+	app := NewCLI()
+	cmd := app.GetRootCmd()
+	args := []string{"--vps-profile", "--iperf3-server", "127.0.0.1:5201"}
+	if err := cmd.ParseFlags(args); err != nil {
+		t.Fatalf("failed to parse flags: %v", err)
+	}
+
+	if err := app.bindFlags(cmd); err != nil {
+		t.Fatalf("expected vps profile bind to succeed, got %v", err)
+	}
+
+	if app.config.NetworkBackend != "iperf3" {
+		t.Fatalf("expected vps profile with iperf3 server to use iperf3, got %q", app.config.NetworkBackend)
+	}
+}
+
 func TestBindFlagsAcceptsSpeedtestNetworkBackend(t *testing.T) {
 	app := NewCLI()
 	cmd := app.GetRootCmd()

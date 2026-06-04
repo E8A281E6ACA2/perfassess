@@ -110,6 +110,10 @@ func (c *CLI) setupCommands() {
 	flags.Bool("full", false,
 		"完整预设：运行基础测试并启用可选检查；提供 iperf3 服务端时使用 iperf3")
 
+	// --vps-profile 参数：VPS 测评预设
+	flags.Bool("vps-profile", false,
+		"VPS 测评预设：启用 sysbench/fio/speedtest、VPS 评分基准和常用网络检查")
+
 	// 保留 --tests 作为别名，向后兼容
 	flags.StringSliceP("tests", "t", []string{},
 		"(已弃用，请使用 --benchmarks) 指定要运行的测试类型")
@@ -403,11 +407,15 @@ func (c *CLI) bindFlags(cmd *cobra.Command) error {
 
 	quick, _ := flags.GetBool("quick")
 	full, _ := flags.GetBool("full")
+	vpsProfile, _ := flags.GetBool("vps-profile")
 	if quick {
 		c.applyQuickPreset()
 	}
 	if full {
 		c.applyFullPreset()
+	}
+	if vpsProfile {
+		c.applyVPSProfilePreset()
 	}
 
 	// 绑定 benchmarks 参数（优先）
@@ -438,7 +446,7 @@ func (c *CLI) bindFlags(cmd *cobra.Command) error {
 	}
 
 	// 绑定 score-profile 参数
-	if scoreProfile, err := flags.GetString("score-profile"); err == nil {
+	if scoreProfile, err := flags.GetString("score-profile"); err == nil && flags.Changed("score-profile") {
 		c.config.ScoreProfile = scoreProfile
 	}
 
@@ -487,7 +495,7 @@ func (c *CLI) bindFlags(cmd *cobra.Command) error {
 	if iperf3Servers, err := flags.GetStringSlice("iperf3-servers"); err == nil && flags.Changed("iperf3-servers") {
 		c.config.Iperf3Servers = iperf3Servers
 	}
-	if full && (c.config.Iperf3Server != "" || len(c.config.Iperf3Servers) > 0) && !flags.Changed("network-backend") {
+	if (full || vpsProfile) && (c.config.Iperf3Server != "" || len(c.config.Iperf3Servers) > 0) && !flags.Changed("network-backend") {
 		c.config.NetworkBackend = "iperf3"
 	}
 
@@ -546,6 +554,20 @@ func (c *CLI) applyFullPreset() {
 	c.config.CPUBackend = "sysbench"
 	c.config.MemoryBackend = "sysbench"
 	c.config.DiskBackend = "fio"
+}
+
+func (c *CLI) applyVPSProfilePreset() {
+	c.config.Tests = []string{"all"}
+	c.config.ScoreProfile = "vps"
+	c.config.EnableRouteTrace = true
+	c.config.EnableStreaming = true
+	c.config.EnableAIServices = false
+	c.config.EnableStressTest = false
+	c.config.EnableSecurityScan = false
+	c.config.CPUBackend = "sysbench"
+	c.config.MemoryBackend = "sysbench"
+	c.config.DiskBackend = "fio"
+	c.config.NetworkBackend = "speedtest"
 }
 
 // run 执行主命令
