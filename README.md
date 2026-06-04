@@ -417,6 +417,7 @@ Commands:
   compare                  对比两份 JSON 评估报告
   compare-dir              批量排序目录中的 JSON 评估报告
   history                  管理本地 JSON 报告历史库
+  version                  显示版本信息
 
 Flags:
   -i, --interactive          启用交互式菜单模式
@@ -646,8 +647,11 @@ make test
 # 日常开发验证：格式、schema、测试、构建、CLI 冒烟
 make validate
 
-# 发布前验证：validate、跨平台构建、快速 JSON 报告
+# 发布前验证：validate、发布二进制冒烟、跨平台构建
 make release-check
+
+# 发布二进制端到端冒烟：版本、help、依赖检查、JSON 报告、对比和历史趋势
+make release-smoke
 
 # 运行测试并生成覆盖率报告
 make test-coverage
@@ -832,6 +836,7 @@ A: 使用 `--port` 参数指定其他端口：
 | 批量排序 | `./build/perfassess compare-dir ./reports --sort-by total` |
 | 加入历史 | `./build/perfassess history add report.json` |
 | 趋势分析 | `./build/perfassess history trend` |
+| 查看版本 | `./build/perfassess version` |
 | 路由追踪 | `./build/perfassess --route-trace`（需预装 traceroute/tracert） |
 | 流媒体检测 | `./build/perfassess --streaming` |
 | AI 服务检测 | `./build/perfassess --ai-services` |

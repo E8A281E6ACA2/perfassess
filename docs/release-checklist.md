@@ -27,16 +27,19 @@ make release-check
 
 `make release-check` 在 `make validate` 基础上额外覆盖：
 
+- 发布二进制版本命令、help 和依赖检查冒烟测试
+- 发布二进制快速 JSON 报告生成与 JSON 语法检查
+- 发布二进制报告对比、历史库写入、历史列表和趋势 JSON 冒烟测试
 - Linux amd64/arm64 构建
 - macOS amd64/arm64 构建
 - Windows amd64 构建
-- 快速 JSON 报告生成与 JSON 语法检查
 
 ## 手动冒烟
 
 在真实 VPS 或测试机上建议至少运行：
 
 ```bash
+./build/perfassess version
 ./build/perfassess --quick --output-format json -o /tmp/perfassess-quick.json
 ./build/perfassess -b network --output-format json -o /tmp/perfassess-network.json
 ./build/perfassess check-deps
@@ -62,6 +65,7 @@ make release-check
 - README 中的安装地址、二进制文件名和 GitHub 仓库地址必须一致。
 - `docs/report.schema.json`、`docs/report-schema.md` 与示例报告必须同步。
 - 新增或修改报告字段时必须补充契约测试或快照测试。
+- 发布 workflow 必须在上传前执行 Linux amd64 发布二进制冒烟测试。
 - 可选外部依赖只允许检测和提示，不允许静默安装。
 - 默认无参数一把梭必须在没有可选依赖时仍可运行。
 - 发布前不得提交本地 IDE/workspace 文件、日志文件或临时报告。

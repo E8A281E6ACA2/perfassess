@@ -279,7 +279,9 @@
 - 已增加 GitHub Actions CI，覆盖 `go test ./...` 与 `go build ./...`
 - CI 已补充 CLI help、依赖检查和 JSON 示例报告契约 smoke
 - 已新增 `make validate`，统一本地日常验证入口
-- 已新增 `make release-check`，统一发布前验证入口并覆盖跨平台构建和快速 JSON 报告
+- 已新增 `make release-check`，统一发布前验证入口并覆盖发布二进制冒烟、跨平台构建和 JSON 报告契约
+- 已新增发布二进制端到端冒烟脚本，覆盖版本命令、help、依赖检查、快速 JSON 报告、报告对比和历史趋势链路
+- Release workflow 会在上传产物前对 Linux amd64 发布二进制执行端到端冒烟测试
 - 已新增 [发布前检查清单](release-checklist.md)
 - 已建立文本报告快照测试，防止核心输出格式无意回归
 - 已建立 JSON 示例报告契约测试，保护 `benchmark_profile`、`confidence_level` 和 `score_breakdown`
@@ -307,15 +309,15 @@
 
 当前收尾批次目标：
 
-1. 增强报告可读性，把关键结果压缩成可复制模板
-2. JSON `summary` 新增 `share_templates`，包含纯文本和 Markdown 两种格式
-3. 文本报告新增“分享模板”段落，便于直接复制到论坛、工单或聊天工具
-4. 模板基于 `vps_benchmark_summary` 生成，避免分享内容与结构化摘要不一致
+1. 增强发布级端到端验证，确保最终二进制本身可运行
+2. 新增稳定的 `version` 命令，用于安装脚本、发布包和用户排障确认版本
+3. 发布二进制冒烟覆盖 help、依赖检查、JSON 报告、报告对比和历史趋势
+4. Release workflow 上传产物前先执行 Linux amd64 二进制冒烟
 
 下一批增强建议：
 
 1. 基于真实 VPS 样本回测评分 profile，校准默认阈值
-2. 增加发布包级别的端到端冒烟样例，验证二进制、报告、依赖提示和 JSON 契约
+2. 增加真实 VPS 手动验收样例，记录外部依赖齐全和缺失两类环境下的输出样本
 
 当前已落地的 VPS 测评摘要边界：
 

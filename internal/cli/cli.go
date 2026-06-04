@@ -21,14 +21,21 @@ import (
 type CLI struct {
 	rootCmd *cobra.Command
 	config  *config.Config
+	version string
 }
 
 // NewCLI 创建新的命令行界面
 func NewCLI() *CLI {
+	return NewCLIWithVersion("1.0.0")
+}
+
+// NewCLIWithVersion 创建带版本号的命令行界面
+func NewCLIWithVersion(version string) *CLI {
 	cfg := config.DefaultConfig()
 
 	cli := &CLI{
-		config: cfg,
+		config:  cfg,
+		version: version,
 	}
 
 	cli.setupCommands()
@@ -87,6 +94,7 @@ func (c *CLI) setupCommands() {
 		RunE: c.run,
 	}
 	c.rootCmd.AddCommand(c.newCheckDepsCommand())
+	c.rootCmd.AddCommand(c.newVersionCommand())
 	c.rootCmd.AddCommand(c.newCompareCommand())
 	c.rootCmd.AddCommand(c.newCompareDirCommand())
 	c.rootCmd.AddCommand(c.newHistoryCommand())
@@ -201,6 +209,17 @@ func (c *CLI) setupCommands() {
 	// 绑定参数到配置
 	c.rootCmd.PreRunE = func(cmd *cobra.Command, args []string) error {
 		return c.bindFlags(cmd)
+	}
+}
+
+func (c *CLI) newVersionCommand() *cobra.Command {
+	return &cobra.Command{
+		Use:   "version",
+		Short: "显示版本信息",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			fmt.Fprintf(cmd.OutOrStdout(), "perfassess %s\n", c.version)
+			return nil
+		},
 	}
 }
 

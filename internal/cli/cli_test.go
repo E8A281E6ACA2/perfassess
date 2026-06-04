@@ -39,6 +39,21 @@ func TestBindFlagsQuickPreset(t *testing.T) {
 	}
 }
 
+func TestVersionCommandUsesInjectedVersion(t *testing.T) {
+	app := NewCLIWithVersion("v9.9.9-test")
+	cmd := app.GetRootCmd()
+	var output bytes.Buffer
+	cmd.SetOut(&output)
+	cmd.SetArgs([]string{"version"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("expected version command to succeed, got %v", err)
+	}
+	if strings.TrimSpace(output.String()) != "perfassess v9.9.9-test" {
+		t.Fatalf("unexpected version output: %q", output.String())
+	}
+}
+
 func TestBindFlagsFullPresetWithIperf3Server(t *testing.T) {
 	app := NewCLI()
 	cmd := app.GetRootCmd()

@@ -40,6 +40,11 @@ jobs:
           
           # Windows amd64
           GOOS=windows GOARCH=amd64 go build -ldflags "-s -w -X main.Version=${{ steps.get_version.outputs.VERSION }}" -o perfassess.exe cmd/main.go
+
+      - name: Smoke test release binary
+        run: |
+          chmod +x perfassess_linux_amd64
+          scripts/release-smoke.sh ./perfassess_linux_amd64
       
       - name: Create Release
         uses: softprops/action-gh-release@v1

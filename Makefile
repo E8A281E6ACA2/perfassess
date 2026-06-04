@@ -23,7 +23,7 @@ BINARY_LINUX=$(APP_NAME)_linux
 BINARY_DARWIN=$(APP_NAME)_darwin
 BINARY_WINDOWS=$(APP_NAME).exe
 
-.PHONY: all build build-all build-linux build-darwin build-windows clean test test-coverage deps install run run-verbose run-cpu run-all fmt fmt-check lint schema-check cli-smoke json-smoke validate release-check help
+.PHONY: all build build-all build-linux build-darwin build-windows clean test test-coverage deps install run run-verbose run-cpu run-all fmt fmt-check lint schema-check cli-smoke json-smoke release-smoke validate release-check help
 
 # 默认目标
 all: clean deps build
@@ -149,12 +149,17 @@ json-smoke:
 	@$(GOCMD) run ./cmd --quick --output-format json -o /tmp/perfassess-release-smoke.json >/tmp/perfassess-release-smoke.stdout
 	@python3 -m json.tool /tmp/perfassess-release-smoke.json >/dev/null
 
+# 使用发布二进制执行端到端冒烟测试
+release-smoke: build
+	@echo "运行发布二进制端到端冒烟测试..."
+	@scripts/release-smoke.sh $(BUILD_DIR)/$(APP_NAME)
+
 # 日常验证入口
 validate: fmt-check schema-check test build cli-smoke
 	@echo "日常验证通过"
 
 # 发布前验证入口
-release-check: validate build-all json-smoke
+release-check: validate release-smoke build-all
 	@echo "发布前验证通过"
 
 # 显示帮助信息
@@ -182,6 +187,7 @@ help:
 	@echo "  make schema-check   - 检查 JSON schema 和示例报告"
 	@echo "  make cli-smoke      - 运行 CLI 基础冒烟测试"
 	@echo "  make json-smoke     - 生成快速 JSON 报告并校验格式"
+	@echo "  make release-smoke  - 使用发布二进制执行端到端冒烟测试"
 	@echo "  make validate       - 日常验证：格式、schema、测试、构建、CLI 冒烟"
-	@echo "  make release-check  - 发布前验证：validate、跨平台构建、JSON 冒烟"
+	@echo "  make release-check  - 发布前验证：validate、二进制冒烟、跨平台构建"
 	@echo "  make help           - 显示此帮助信息"

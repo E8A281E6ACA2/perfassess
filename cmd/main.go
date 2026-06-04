@@ -9,14 +9,14 @@ import (
 	"performance-assessment-system/internal/cli"
 )
 
-// Version 应用程序版本号
-const Version = "1.0.0"
+// Version 应用程序版本号，可在发布构建时通过 -ldflags 注入。
+var Version = "1.0.0"
 
 // main 函数是程序的入口点
 // 初始化CLI并执行命令
 func main() {
 	// 创建CLI实例
-	cliApp := cli.NewCLI()
+	cliApp := cli.NewCLIWithVersion(Version)
 
 	// 执行CLI
 	if err := cliApp.Execute(); err != nil {
