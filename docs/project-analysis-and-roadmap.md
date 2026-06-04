@@ -307,23 +307,22 @@
 
 当前收尾批次目标：
 
-1. 增强 `speedtest` 节点信息输出
-2. 将 Ookla 节点 ID、名称、地区、国家、Host、ISP、结果 URL、出口 IP 和 ping jitter 写入报告
-3. 同步文本报告、Web 摘要、JSON metrics 和 VPS 测评摘要
-4. 保持网络测试执行流程不变，不新增外部依赖
+1. 增强 `iperf3` 用户节点组配置
+2. 新增 `--iperf3-server-file`，从节点文件读取自有或授权 iperf3 服务端
+3. 支持空行、整行 `#` 注释、行尾注释和重复节点去重
+4. 保持不内置公共 iperf3 节点，避免依赖不稳定或未授权的公共服务
 
 下一批增强建议：
 
-1. 增强 iperf3 节点策略，支持推荐节点池或用户节点组配置
-2. 增强报告可读性，把关键矩阵进一步压缩成不同场景的复制模板
-3. 基于真实 VPS 样本回测评分 profile，校准默认阈值
-4. 增加发布包级别的端到端冒烟样例，验证二进制、报告、依赖提示和 JSON 契约
+1. 增强报告可读性，把关键矩阵进一步压缩成不同场景的复制模板
+2. 基于真实 VPS 样本回测评分 profile，校准默认阈值
+3. 增加发布包级别的端到端冒烟样例，验证二进制、报告、依赖提示和 JSON 契约
 
 当前已落地的 VPS 测评摘要边界：
 
 - 新增 `--vps-profile`，一键启用 `all` 测试、`vps` 评分基准、`sysbench` CPU、`sysbench` 内存、`fio` 磁盘、`speedtest` 网络、路由追踪和流媒体检测
 - `--vps-profile` 不启用 AI 服务检测、安全体检和长时间压力测试，避免默认 VPS 测评包含耗时或偏运维巡检的项目
-- `--vps-profile` 提供 `--iperf3-server` 或 `--iperf3-servers` 时会自动切换到 `iperf3` 网络后端；显式传入 `--network-backend` 时以用户参数为准
+- `--vps-profile` 提供 `--iperf3-server`、`--iperf3-servers` 或 `--iperf3-server-file` 时会自动切换到 `iperf3` 网络后端；显式传入 `--network-backend` 时以用户参数为准
 - `speedtest` 后端会输出 Ookla 节点 ID、名称、地区、国家、Host、ISP、结果 URL、出口 IP 和 ping jitter
 - 文本报告顶部新增“VPS测评摘要”，集中展示系统、CPU、内存、磁盘、网络、网络质量、总分、等级、置信度和评分基准
 - JSON `summary` 新增 `vps_benchmark_summary`，用于脚本快速读取核心测评结果
@@ -360,10 +359,10 @@
 - `BuiltinNetworkBackend` 继续承载当前内置测试逻辑
 - `Iperf3NetworkBackend` 已具备最小命令执行与 JSON 结果解析骨架
 - `SpeedtestNetworkBackend` 已接入 Ookla Speedtest CLI JSON 输出，用于更接近主流 VPS 脚本的公网测速口径
-- 配置层已预留 `network_backend`、`iperf3_server` 与 `iperf3_servers`
-- CLI 已支持 `--network-backend builtin|iperf3|speedtest`、`--iperf3-server` 与 `--iperf3-servers`
+- 配置层已预留 `network_backend`、`iperf3_server`、`iperf3_servers` 与 `iperf3_server_file`
+- CLI 已支持 `--network-backend builtin|iperf3|speedtest`、`--iperf3-server`、`--iperf3-servers` 与 `--iperf3-server-file`
 - `iperf3` 后端会检测本机是否安装 `iperf3`，缺失时返回安装提示，不自动安装
-- `iperf3` 后端支持多服务端矩阵，输出每个节点的协议族、延迟、下载、上传和错误信息
+- `iperf3` 后端支持多服务端矩阵和节点文件，输出每个节点的协议族、延迟、下载、上传和错误信息
 - `speedtest` 后端会检测本机是否安装 Ookla Speedtest CLI，缺失时返回安装提示，不自动安装
 - 网络测试失败原因会写入 `network_error` 并展示在终端/Web 报告中
 - 网络报告会展示 `backend`，并在 `iperf3` 场景展示服务端地址
@@ -372,7 +371,7 @@
 - 默认网络测试已增加 TCP connect 网络质量矩阵，输出 IPv4/IPv6 可用性、目标失败率、平均延迟和抖动
 - 网络质量矩阵作为诊断指标写入 `network_quality_*`，不会因为 IPv6 不通而单独拉低网络评分或测试状态
 - `iperf3` 后端只负责吞吐测试，延迟继续回退到内置 TCP connect 测量并使用 `latency_source=tcp_connect`
-- 后续真正启用 `iperf3` 前，需要补充真实服务端验证
+- `iperf3` 不内置公共节点；用户需要提供自有或授权节点，避免依赖不稳定或未授权的公共服务
 
 当前已落地的磁盘后端边界：
 
@@ -395,8 +394,9 @@
 `iperf3` 使用约定：
 
 - 用户需要显式选择 `--network-backend iperf3`
-- 用户需要提供 `--iperf3-server <host>`、`--iperf3-server <host:port>` 或 `--iperf3-servers <host:port,[IPv6]:port>`
+- 用户需要提供 `--iperf3-server <host>`、`--iperf3-server <host:port>`、`--iperf3-servers <host:port,[IPv6]:port>` 或 `--iperf3-server-file <path>`
 - 如果服务端包含端口，程序会转换为 `iperf3 -c <host> -p <port>`，避免把 `host:port` 错传给 `-c`
+- 节点文件每行一个服务端，支持空行、整行 `#` 注释和行尾注释
 - 被测机器需要预先安装 `iperf3`
 - 程序只负责检测并提示安装方式，不静默修改系统环境
 

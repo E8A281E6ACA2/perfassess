@@ -50,10 +50,11 @@ make release-check
 ./build/perfassess -b network --network-backend speedtest --output-format json -o /tmp/perfassess-speedtest.json
 ```
 
-如有可用 iperf3 服务端，再补充：
+如有可用 iperf3 服务端，再补充。使用节点文件前，先把 `docs/examples/iperf3-servers.txt` 替换为自有或授权节点：
 
 ```bash
 ./build/perfassess -b network --network-backend iperf3 --iperf3-server 1.2.3.4:5201 --output-format json -o /tmp/perfassess-iperf3.json
+./build/perfassess -b network --network-backend iperf3 --iperf3-server-file docs/examples/iperf3-servers.txt --output-format json -o /tmp/perfassess-iperf3-file.json
 ```
 
 ## 发布确认

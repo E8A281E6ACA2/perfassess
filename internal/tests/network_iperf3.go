@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
+	"os"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -30,21 +31,23 @@ func (r *execCommandRunner) LookPath(name string) (string, error) {
 }
 
 type Iperf3NetworkBackend struct {
-	server    string
-	servers   []string
-	timeout   time.Duration
-	runner    commandRunner
-	latencyFn func([]string) (float64, error)
-	matrix    []iperf3ServerResult
-	matrixErr error
+	server     string
+	servers    []string
+	serverFile string
+	timeout    time.Duration
+	runner     commandRunner
+	latencyFn  func([]string) (float64, error)
+	matrix     []iperf3ServerResult
+	matrixErr  error
 }
 
 type Iperf3Config struct {
-	Server    string
-	Servers   []string
-	Timeout   time.Duration
-	Runner    commandRunner
-	LatencyFn func([]string) (float64, error)
+	Server     string
+	Servers    []string
+	ServerFile string
+	Timeout    time.Duration
+	Runner     commandRunner
+	LatencyFn  func([]string) (float64, error)
 }
 
 type iperf3Endpoint struct {
@@ -72,11 +75,12 @@ func NewIperf3NetworkBackend(cfg Iperf3Config) *Iperf3NetworkBackend {
 	servers := normalizeIperf3Servers(cfg.Server, cfg.Servers)
 
 	return &Iperf3NetworkBackend{
-		server:    cfg.Server,
-		servers:   servers,
-		timeout:   timeout,
-		runner:    runner,
-		latencyFn: cfg.LatencyFn,
+		server:     cfg.Server,
+		servers:    servers,
+		serverFile: cfg.ServerFile,
+		timeout:    timeout,
+		runner:     runner,
+		latencyFn:  cfg.LatencyFn,
 	}
 }
 
@@ -87,6 +91,9 @@ func (b *Iperf3NetworkBackend) Name() string {
 func (b *Iperf3NetworkBackend) Server() string {
 	if len(b.servers) > 0 {
 		return strings.Join(b.servers, ",")
+	}
+	if b.serverFile != "" {
+		return b.serverFile
 	}
 	return b.server
 }
@@ -107,7 +114,11 @@ func (b *Iperf3NetworkBackend) MeasureLatency(hosts []string) (float64, error) {
 }
 
 func (b *Iperf3NetworkBackend) MeasureDownload() (NetworkDownloadResult, error) {
-	if len(b.servers) > 1 {
+	servers, err := b.resolveServers()
+	if err != nil {
+		return NetworkDownloadResult{}, err
+	}
+	if len(servers) > 1 {
 		results, err := b.loadMatrix()
 		if err != nil {
 			return NetworkDownloadResult{}, err
@@ -119,7 +130,7 @@ func (b *Iperf3NetworkBackend) MeasureDownload() (NetworkDownloadResult, error) 
 		return NetworkDownloadResult{SpeedMbps: speed, SourceURL: models.NetworkDownloadSourceIperf3}, nil
 	}
 
-	endpoint, err := b.validateReady()
+	endpoint, err := b.validateReady(servers)
 	if err != nil {
 		return NetworkDownloadResult{}, err
 	}
@@ -140,7 +151,11 @@ func (b *Iperf3NetworkBackend) MeasureDownload() (NetworkDownloadResult, error) 
 }
 
 func (b *Iperf3NetworkBackend) MeasureUpload(downloadSpeed float64) (float64, bool, error) {
-	if len(b.servers) > 1 {
+	servers, err := b.resolveServers()
+	if err != nil {
+		return 0, false, err
+	}
+	if len(servers) > 1 {
 		results, err := b.loadMatrix()
 		if err != nil {
 			return 0, false, err
@@ -152,7 +167,7 @@ func (b *Iperf3NetworkBackend) MeasureUpload(downloadSpeed float64) (float64, bo
 		return speed, false, nil
 	}
 
-	endpoint, err := b.validateReady()
+	endpoint, err := b.validateReady(servers)
 	if err != nil {
 		return 0, false, err
 	}
@@ -238,12 +253,16 @@ func (b *Iperf3NetworkBackend) runMatrix() ([]iperf3ServerResult, error) {
 	if _, err := b.runner.LookPath("iperf3"); err != nil {
 		return nil, fmt.Errorf("iperf3 is not installed; install it manually before using --network-backend iperf3. Ubuntu/Debian: sudo apt install iperf3; RHEL/CentOS: sudo yum install iperf3; macOS: brew install iperf3")
 	}
-	if len(b.servers) == 0 {
+	servers, err := b.resolveServers()
+	if err != nil {
+		return nil, err
+	}
+	if len(servers) == 0 {
 		return nil, fmt.Errorf("iperf3 server is required; example: --network-backend iperf3 --iperf3-server 1.2.3.4:5201")
 	}
 
-	results := make([]iperf3ServerResult, 0, len(b.servers))
-	for _, server := range b.servers {
+	results := make([]iperf3ServerResult, 0, len(servers))
+	for _, server := range servers {
 		result := iperf3ServerResult{Server: server}
 		endpoint, err := parseIperf3Endpoint(server)
 		if err != nil {
@@ -287,8 +306,11 @@ func (b *Iperf3NetworkBackend) runIperf3(endpoint iperf3Endpoint, reverse bool) 
 	return parseIperf3Mbps(output)
 }
 
-func (b *Iperf3NetworkBackend) validateReady() (iperf3Endpoint, error) {
-	endpoint, err := parseIperf3Endpoint(b.server)
+func (b *Iperf3NetworkBackend) validateReady(servers []string) (iperf3Endpoint, error) {
+	if len(servers) == 0 {
+		return iperf3Endpoint{}, fmt.Errorf("iperf3 server is required; example: --network-backend iperf3 --iperf3-server 1.2.3.4:5201")
+	}
+	endpoint, err := parseIperf3Endpoint(servers[0])
 	if err != nil {
 		return iperf3Endpoint{}, err
 	}
@@ -372,6 +394,40 @@ func normalizeIperf3Servers(single string, servers []string) []string {
 		add(server)
 	}
 	return normalized
+}
+
+func (b *Iperf3NetworkBackend) resolveServers() ([]string, error) {
+	fileServers, err := loadIperf3ServersFile(b.serverFile)
+	if err != nil {
+		return nil, err
+	}
+	return normalizeIperf3Servers("", append(append([]string{}, b.servers...), fileServers...)), nil
+}
+
+func loadIperf3ServersFile(path string) ([]string, error) {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return nil, nil
+	}
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("read iperf3 server file %q: %w", path, err)
+	}
+	lines := strings.Split(string(content), "\n")
+	servers := make([]string, 0, len(lines))
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
+			continue
+		}
+		if index := strings.Index(trimmed, "#"); index >= 0 {
+			trimmed = strings.TrimSpace(trimmed[:index])
+		}
+		if trimmed != "" {
+			servers = append(servers, trimmed)
+		}
+	}
+	return servers, nil
 }
 
 func iperf3Protocol(host string) string {

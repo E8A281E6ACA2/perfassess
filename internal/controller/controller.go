@@ -348,9 +348,10 @@ func (ac *AssessmentController) newNetworkTest() tests.PerformanceTest {
 			servers = append([]string{ac.config.Iperf3Server}, servers...)
 		}
 		backend := tests.NewIperf3NetworkBackend(tests.Iperf3Config{
-			Server:    ac.config.Iperf3Server,
-			Servers:   servers,
-			LatencyFn: latencyFallback.TestLatency,
+			Server:     ac.config.Iperf3Server,
+			Servers:    servers,
+			ServerFile: ac.config.Iperf3ServerFile,
+			LatencyFn:  latencyFallback.TestLatency,
 		})
 		return tests.NewNetworkTestWithBackend(ac.logger, backend)
 	}

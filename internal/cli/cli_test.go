@@ -201,6 +201,26 @@ func TestBindFlagsVPSProfileWithIperf3ServerUsesIperf3(t *testing.T) {
 	}
 }
 
+func TestBindFlagsVPSProfileWithIperf3ServerFileUsesIperf3(t *testing.T) {
+	app := NewCLI()
+	cmd := app.GetRootCmd()
+	args := []string{"--vps-profile", "--iperf3-server-file", "docs/examples/iperf3-servers.txt"}
+	if err := cmd.ParseFlags(args); err != nil {
+		t.Fatalf("failed to parse flags: %v", err)
+	}
+
+	if err := app.bindFlags(cmd); err != nil {
+		t.Fatalf("expected vps profile bind to succeed, got %v", err)
+	}
+
+	if app.config.NetworkBackend != "iperf3" {
+		t.Fatalf("expected vps profile with iperf3 server file to use iperf3, got %q", app.config.NetworkBackend)
+	}
+	if app.config.Iperf3ServerFile != "docs/examples/iperf3-servers.txt" {
+		t.Fatalf("expected iperf3 server file to bind, got %q", app.config.Iperf3ServerFile)
+	}
+}
+
 func TestBindFlagsAcceptsSpeedtestNetworkBackend(t *testing.T) {
 	app := NewCLI()
 	cmd := app.GetRootCmd()

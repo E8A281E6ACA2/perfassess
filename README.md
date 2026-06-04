@@ -267,9 +267,9 @@ make run
 ./build/perfassess --full --iperf3-servers 1.2.3.4:5201,[2001:db8::1]:5201
 ```
 
-`--vps-profile` 面向一把梭 VPS 测评，默认启用 `sysbench` CPU 后端、`sysbench` 内存后端、`fio` 磁盘后端、`speedtest` 网络后端、`vps` 评分基准、路由追踪和流媒体检测。它不会自动安装外部工具；建议先运行 `check-deps` 查看缺失项。使用 `speedtest` 时，报告会展示 Ookla 节点 ID、名称、地区、国家、Host、ISP、结果 URL、出口 IP 和 ping jitter。提供 `--iperf3-server` 或 `--iperf3-servers` 时，且未显式指定 `--network-backend`，会自动切换到 `iperf3` 网络后端。
+`--vps-profile` 面向一把梭 VPS 测评，默认启用 `sysbench` CPU 后端、`sysbench` 内存后端、`fio` 磁盘后端、`speedtest` 网络后端、`vps` 评分基准、路由追踪和流媒体检测。它不会自动安装外部工具；建议先运行 `check-deps` 查看缺失项。使用 `speedtest` 时，报告会展示 Ookla 节点 ID、名称、地区、国家、Host、ISP、结果 URL、出口 IP 和 ping jitter。提供 `--iperf3-server`、`--iperf3-servers` 或 `--iperf3-server-file` 时，且未显式指定 `--network-backend`，会自动切换到 `iperf3` 网络后端。
 
-`--full` 会优先使用 `sysbench` CPU 后端、`sysbench` 内存后端和 `fio` 磁盘后端；如果未安装依赖，程序会给出明确提示但不会自动安装。提供 `--iperf3-server` 或 `--iperf3-servers` 时，`--full` 会自动切换到 `iperf3` 网络后端。
+`--full` 会优先使用 `sysbench` CPU 后端、`sysbench` 内存后端和 `fio` 磁盘后端；如果未安装依赖，程序会给出明确提示但不会自动安装。提供 `--iperf3-server`、`--iperf3-servers` 或 `--iperf3-server-file` 时，`--full` 会自动切换到 `iperf3` 网络后端。
 
 #### 单项测试
 
@@ -305,6 +305,9 @@ make run
 
 # 使用 iperf3 多节点矩阵测试网络吞吐（逗号分隔，支持 host:port 和 [IPv6]:port）
 ./build/perfassess -b network --network-backend iperf3 --iperf3-servers 1.2.3.4:5201,[2001:db8::1]:5201
+
+# 使用 iperf3 节点文件测试网络吞吐（支持空行和 # 注释）
+./build/perfassess -b network --network-backend iperf3 --iperf3-server-file docs/examples/iperf3-servers.txt
 
 # 使用 Ookla Speedtest CLI 后端测试网络（需要预装 speedtest）
 ./build/perfassess -b network --network-backend speedtest
@@ -434,6 +437,8 @@ Flags:
       --iperf3-server string  iperf3 服务端地址（仅 network-backend=iperf3 时使用）
       --iperf3-servers strings
                               iperf3 多服务端地址列表，逗号分隔（仅 network-backend=iperf3 时使用）
+      --iperf3-server-file string
+                              iperf3 节点文件路径，支持空行和 # 注释（仅 network-backend=iperf3 时使用）
       --cpu-backend string    CPU 测试后端 (builtin,sysbench,geekbench) (default "builtin")
       --memory-backend string 内存测试后端 (builtin,sysbench) (default "builtin")
       --disk-backend string   磁盘测试后端 (builtin,fio) (default "builtin")
@@ -448,7 +453,7 @@ Flags:
 提示：使用 `--cpu-backend geekbench` 时，请提前安装 Geekbench 6 并确认 `geekbench6` 可通过 PATH 访问。程序只检测并提示，不会自动安装依赖。
 提示：使用 `--memory-backend sysbench` 时，请提前安装 sysbench。程序只检测并提示，不会自动安装依赖。
 提示：使用 `--disk-backend fio` 时，请提前安装 fio。程序只检测并提示，不会自动安装依赖。
-提示：使用 `--network-backend iperf3` 时，请提前安装 iperf3，并提供可访问的 `--iperf3-server` 或 `--iperf3-servers`。服务端可写为 `host`、`host:port` 或 `[IPv6]:port`，程序会把端口转换为 iperf3 的 `-p` 参数。程序只检测并提示，不会自动安装依赖。
+提示：使用 `--network-backend iperf3` 时，请提前安装 iperf3，并提供可访问的 `--iperf3-server`、`--iperf3-servers` 或 `--iperf3-server-file`。服务端可写为 `host`、`host:port` 或 `[IPv6]:port`，程序会把端口转换为 iperf3 的 `-p` 参数。节点文件支持空行、整行 `#` 注释和行尾注释。程序只检测并提示，不会自动安装依赖，也不会内置公共 iperf3 节点。
 ```
 
 ### 使用示例
@@ -851,6 +856,7 @@ A: 使用 `--port` 参数指定其他端口：
 | `--memory-backend` | - | 内存测试后端 | `--memory-backend sysbench` |
 | `--disk-backend` | - | 磁盘测试后端 | `--disk-backend fio` |
 | `--network-backend` | - | 网络测试后端 | `--network-backend iperf3` |
+| `--iperf3-server-file` | - | iperf3 节点文件 | `--iperf3-server-file docs/examples/iperf3-servers.txt` |
 | `--store` | - | history 子命令历史库路径 | `history list --store ./history.jsonl` |
 | `--sort-by` | - | compare-dir 排序字段 | `compare-dir ./reports --sort-by cpu` |
 | `--route-trace` | - | 路由追踪 | `--route-trace` |

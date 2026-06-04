@@ -29,6 +29,9 @@ func TestDefaultConfigUsesBuiltinNetworkBackend(t *testing.T) {
 	if len(cfg.Iperf3Servers) != 0 {
 		t.Fatalf("expected default iperf3 servers empty, got %#v", cfg.Iperf3Servers)
 	}
+	if cfg.Iperf3ServerFile != "" {
+		t.Fatalf("expected default iperf3 server file empty, got %q", cfg.Iperf3ServerFile)
+	}
 	if err := cfg.Validate(); err != nil {
 		t.Fatalf("expected default config to validate, got %v", err)
 	}

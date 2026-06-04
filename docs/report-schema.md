@@ -86,7 +86,7 @@
 ## Network Metrics
 
 - `backend`: `builtin`、`iperf3` 或 `speedtest`
-- `backend_server`: 外部网络后端服务端信息，`iperf3` 为用户指定服务端，`speedtest` 为 CLI 自动选择的测速节点
+- `backend_server`: 外部网络后端服务端信息；`iperf3` 为用户指定服务端、服务端列表或节点文件路径，`speedtest` 为 CLI 自动选择的测速节点
 - `latency_ms`: 延迟，单位 ms
 - `average_latency_ms`: 平均延迟，单位 ms
 - `latency_source`: 延迟来源，当前主要为 `tcp_connect`

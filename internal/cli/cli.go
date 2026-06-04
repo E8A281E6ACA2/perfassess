@@ -170,6 +170,10 @@ func (c *CLI) setupCommands() {
 	flags.StringSlice("iperf3-servers", []string{},
 		"iperf3 多服务端地址列表，逗号分隔（仅 network-backend=iperf3 时使用）")
 
+	// --iperf3-server-file 参数：iperf3 节点文件
+	flags.String("iperf3-server-file", "",
+		"iperf3 节点文件路径，支持空行和 # 注释（仅 network-backend=iperf3 时使用）")
+
 	// --disk-backend 参数：选择磁盘测试后端
 	flags.String("disk-backend", "builtin",
 		"磁盘测试后端 (builtin,fio)")
@@ -495,7 +499,10 @@ func (c *CLI) bindFlags(cmd *cobra.Command) error {
 	if iperf3Servers, err := flags.GetStringSlice("iperf3-servers"); err == nil && flags.Changed("iperf3-servers") {
 		c.config.Iperf3Servers = iperf3Servers
 	}
-	if (full || vpsProfile) && (c.config.Iperf3Server != "" || len(c.config.Iperf3Servers) > 0) && !flags.Changed("network-backend") {
+	if iperf3ServerFile, err := flags.GetString("iperf3-server-file"); err == nil && flags.Changed("iperf3-server-file") {
+		c.config.Iperf3ServerFile = iperf3ServerFile
+	}
+	if (full || vpsProfile) && (c.config.Iperf3Server != "" || len(c.config.Iperf3Servers) > 0 || c.config.Iperf3ServerFile != "") && !flags.Changed("network-backend") {
 		c.config.NetworkBackend = "iperf3"
 	}
 

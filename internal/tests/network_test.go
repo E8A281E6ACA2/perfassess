@@ -6,6 +6,8 @@ import (
 	"math"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -562,6 +564,66 @@ func TestIperf3NetworkBackendRunsMultiServerMatrixAndCachesResult(t *testing.T) 
 	assertMetricString(t, metrics, "iperf3_matrix_1_protocol", "ipv4")
 	assertMetricString(t, metrics, "iperf3_matrix_2_protocol", "ipv6")
 	assertMetricFloat(t, metrics, "iperf3_matrix_2_latency_ms", 20)
+}
+
+func TestLoadIperf3ServersFileParsesCommentsAndInlineComments(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "iperf3-servers.txt")
+	content := `
+# private iperf3 nodes
+node-a:5201
+
+node-b:5201 # eu node
+[2001:db8::2]:5201
+`
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatalf("failed to write iperf3 server file: %v", err)
+	}
+
+	servers, err := loadIperf3ServersFile(path)
+	if err != nil {
+		t.Fatalf("expected server file to parse, got %v", err)
+	}
+	assertStringSlice(t, servers, []string{"node-a:5201", "node-b:5201", "[2001:db8::2]:5201"})
+}
+
+func TestIperf3NetworkBackendRunsMatrixFromServerFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "iperf3-servers.txt")
+	content := `
+node-a:5201
+node-b:5201
+node-a:5201
+`
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatalf("failed to write iperf3 server file: %v", err)
+	}
+	runner := &recordingCommandRunner{
+		outputs: [][]byte{
+			[]byte(`{"end":{"sum_received":{"bits_per_second":100000000}}}`),
+			[]byte(`{"end":{"sum_sent":{"bits_per_second":50000000}}}`),
+			[]byte(`{"end":{"sum_received":{"bits_per_second":300000000}}}`),
+			[]byte(`{"end":{"sum_sent":{"bits_per_second":150000000}}}`),
+		},
+	}
+	backend := NewIperf3NetworkBackend(Iperf3Config{
+		ServerFile: path,
+		Runner:     runner,
+		LatencyFn: func(hosts []string) (float64, error) {
+			return 10.0, nil
+		},
+	})
+
+	download, err := backend.MeasureDownload()
+	if err != nil {
+		t.Fatalf("expected matrix download to succeed, got %v", err)
+	}
+	if download.SpeedMbps != 200 {
+		t.Fatalf("expected average download 200 Mbps, got %.2f", download.SpeedMbps)
+	}
+	metrics := map[string]interface{}{}
+	backend.AppendMetrics(metrics)
+	assertMetricInt(t, metrics, "iperf3_matrix_server_count", 2)
+	assertMetricString(t, metrics, "iperf3_matrix_1_server", "node-a:5201")
+	assertMetricString(t, metrics, "iperf3_matrix_2_server", "node-b:5201")
 }
 
 func TestSpeedtestNetworkBackendReportsMissingBinary(t *testing.T) {
