@@ -296,6 +296,132 @@ func (rg *ReportGenerator) FormatVPSBenchmarkSummary(report *models.Report) stri
 	return sb.String()
 }
 
+func (rg *ReportGenerator) buildShareTemplates(report *models.Report) map[string]interface{} {
+	plain := rg.FormatSharePlainText(report)
+	markdown := rg.FormatShareMarkdown(report)
+	if plain == "" && markdown == "" {
+		return map[string]interface{}{}
+	}
+	return map[string]interface{}{
+		"plain_text": plain,
+		"markdown":   markdown,
+	}
+}
+
+func (rg *ReportGenerator) FormatSharePlainText(report *models.Report) string {
+	summary := reportVPSSummary(report)
+	if len(summary) == 0 {
+		return ""
+	}
+
+	lines := []string{
+		fmt.Sprintf("VPS测评: %s | %s | %s",
+			summaryPathString(summary, "system", "cpu_model"),
+			formatCoreThread(summary),
+			formatMemoryDisk(summary)),
+		fmt.Sprintf("环境: %s %s | %s | %s",
+			summaryPathString(summary, "system", "os"),
+			summaryPathString(summary, "system", "architecture"),
+			summaryPathString(summary, "system", "virtualization"),
+			summaryPathString(summary, "system", "location")),
+		fmt.Sprintf("CPU: %s | 单核 %s | 多核 %s | 总分 %s",
+			summaryPathString(summary, "cpu", "backend"),
+			summaryPathNumber(summary, "cpu", "single_core_score"),
+			summaryPathNumber(summary, "cpu", "multi_core_score"),
+			summaryPathNumber(summary, "cpu", "total_score")),
+		fmt.Sprintf("内存: %s | 读 %s MB/s | 写 %s MB/s",
+			summaryPathString(summary, "memory", "backend"),
+			summaryPathNumber(summary, "memory", "read_mbps"),
+			summaryPathNumber(summary, "memory", "write_mbps")),
+		fmt.Sprintf("磁盘: %s | 读 %s MB/s | 写 %s MB/s | 随机 %s IOPS",
+			summaryPathString(summary, "disk", "backend"),
+			summaryPathNumber(summary, "disk", "sequential_read_mbps"),
+			summaryPathNumber(summary, "disk", "sequential_write_mbps"),
+			summaryPathNumber(summary, "disk", "random_iops")),
+		fmt.Sprintf("网络: %s | 延迟 %s ms | 下载 %s Mbps | 上传 %s Mbps%s",
+			summaryPathString(summary, "network", "backend"),
+			summaryPathNumber(summary, "network", "latency_ms"),
+			summaryPathNumber(summary, "network", "download_mbps"),
+			summaryPathNumber(summary, "network", "upload_mbps"),
+			estimatedSuffix(summary)),
+		fmt.Sprintf("网络质量: IPv4 %s | IPv6 %s | 抖动 %s ms | 失败率 %s%%",
+			availableSummary(summary, "ipv4_available"),
+			availableSummary(summary, "ipv6_available"),
+			summaryPathNumber(summary, "network", "quality_jitter_ms"),
+			summaryPathPercent(summary, "network", "quality_failure_rate")),
+		fmt.Sprintf("评分: 总分 %s | 等级 %s | 置信 %s | 基准 %s",
+			summaryPathNumber(summary, "scores", "total_score"),
+			summaryPathString(summary, "scores", "grade"),
+			summaryPathString(summary, "confidence", "level"),
+			summaryPathString(summary, "scores", "score_profile")),
+	}
+	return strings.Join(lines, "\n")
+}
+
+func (rg *ReportGenerator) FormatShareMarkdown(report *models.Report) string {
+	summary := reportVPSSummary(report)
+	if len(summary) == 0 {
+		return ""
+	}
+
+	var sb strings.Builder
+	sb.WriteString("### VPS 测评摘要\n\n")
+	sb.WriteString("| 项目 | 结果 |\n")
+	sb.WriteString("|---|---|\n")
+	sb.WriteString(fmt.Sprintf("| 系统 | %s / %s / %s |\n",
+		escapeMarkdownCell(summaryPathString(summary, "system", "cpu_model")),
+		escapeMarkdownCell(formatCoreThread(summary)),
+		escapeMarkdownCell(formatMemoryDisk(summary))))
+	sb.WriteString(fmt.Sprintf("| 环境 | %s %s / %s / %s |\n",
+		escapeMarkdownCell(summaryPathString(summary, "system", "os")),
+		escapeMarkdownCell(summaryPathString(summary, "system", "architecture")),
+		escapeMarkdownCell(summaryPathString(summary, "system", "virtualization")),
+		escapeMarkdownCell(summaryPathString(summary, "system", "location"))))
+	sb.WriteString(fmt.Sprintf("| CPU | %s / 单核 %s / 多核 %s / 总分 %s |\n",
+		escapeMarkdownCell(summaryPathString(summary, "cpu", "backend")),
+		summaryPathNumber(summary, "cpu", "single_core_score"),
+		summaryPathNumber(summary, "cpu", "multi_core_score"),
+		summaryPathNumber(summary, "cpu", "total_score")))
+	sb.WriteString(fmt.Sprintf("| 内存 | %s / 读 %s MB/s / 写 %s MB/s |\n",
+		escapeMarkdownCell(summaryPathString(summary, "memory", "backend")),
+		summaryPathNumber(summary, "memory", "read_mbps"),
+		summaryPathNumber(summary, "memory", "write_mbps")))
+	sb.WriteString(fmt.Sprintf("| 磁盘 | %s / 读 %s MB/s / 写 %s MB/s / 随机 %s IOPS |\n",
+		escapeMarkdownCell(summaryPathString(summary, "disk", "backend")),
+		summaryPathNumber(summary, "disk", "sequential_read_mbps"),
+		summaryPathNumber(summary, "disk", "sequential_write_mbps"),
+		summaryPathNumber(summary, "disk", "random_iops")))
+	sb.WriteString(fmt.Sprintf("| 网络 | %s / 延迟 %s ms / 下载 %s Mbps / 上传 %s Mbps%s |\n",
+		escapeMarkdownCell(summaryPathString(summary, "network", "backend")),
+		summaryPathNumber(summary, "network", "latency_ms"),
+		summaryPathNumber(summary, "network", "download_mbps"),
+		summaryPathNumber(summary, "network", "upload_mbps"),
+		estimatedSuffix(summary)))
+	sb.WriteString(fmt.Sprintf("| 网络质量 | IPv4 %s / IPv6 %s / 抖动 %s ms / 失败率 %s%% |\n",
+		escapeMarkdownCell(availableSummary(summary, "ipv4_available")),
+		escapeMarkdownCell(availableSummary(summary, "ipv6_available")),
+		summaryPathNumber(summary, "network", "quality_jitter_ms"),
+		summaryPathPercent(summary, "network", "quality_failure_rate")))
+	sb.WriteString(fmt.Sprintf("| 评分 | 总分 %s / 等级 %s / 置信 %s / 基准 %s |\n",
+		summaryPathNumber(summary, "scores", "total_score"),
+		escapeMarkdownCell(summaryPathString(summary, "scores", "grade")),
+		escapeMarkdownCell(summaryPathString(summary, "confidence", "level")),
+		escapeMarkdownCell(summaryPathString(summary, "scores", "score_profile"))))
+	return strings.TrimRight(sb.String(), "\n")
+}
+
+func reportVPSSummary(report *models.Report) map[string]interface{} {
+	if report == nil || report.Summary == nil {
+		return nil
+	}
+	summary, _ := report.Summary["vps_benchmark_summary"].(map[string]interface{})
+	return summary
+}
+
+func escapeMarkdownCell(value string) string {
+	return strings.ReplaceAll(value, "|", "\\|")
+}
+
 func resultMetrics(result *models.TestResult) map[string]interface{} {
 	if result == nil {
 		return nil

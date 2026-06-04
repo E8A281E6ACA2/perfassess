@@ -310,6 +310,10 @@
         ]
       }
     },
+    "share_templates": {
+      "plain_text": "VPS测评: Example CPU | 4C/8T | 8192 MB RAM / 100.00 GB Disk\n环境: linux x86_64 | - | -\nCPU: sysbench | 单核 85.00 | 多核 90.00 | 总分 88.00\n内存: sysbench | 读 3200.00 MB/s | 写 2800.00 MB/s\n磁盘: fio | 读 1000.00 MB/s | 写 800.00 MB/s | 随机 12000 IOPS\n网络: iperf3 | 延迟 10.00 ms | 下载 900.00 Mbps | 上传 850.00 Mbps\n网络质量: IPv4 可用 | IPv6 可用 | 抖动 1.10 ms | 失败率 0.00%\n评分: 总分 92.13 | 等级 优秀 | 置信 high | 基准 server",
+      "markdown": "### VPS 测评摘要\n\n| 项目 | 结果 |\n|---|---|\n| 系统 | Example CPU / 4C/8T / 8192 MB RAM / 100.00 GB Disk |\n| 环境 | linux x86_64 / - / - |\n| CPU | sysbench / 单核 85.00 / 多核 90.00 / 总分 88.00 |\n| 内存 | sysbench / 读 3200.00 MB/s / 写 2800.00 MB/s |\n| 磁盘 | fio / 读 1000.00 MB/s / 写 800.00 MB/s / 随机 12000 IOPS |\n| 网络 | iperf3 / 延迟 10.00 ms / 下载 900.00 Mbps / 上传 850.00 Mbps |\n| 网络质量 | IPv4 可用 / IPv6 可用 / 抖动 1.10 ms / 失败率 0.00% |\n| 评分 | 总分 92.13 / 等级 优秀 / 置信 high / 基准 server |"
+    },
     "score_breakdown": {
       "score_profile": "server",
       "cpu": {

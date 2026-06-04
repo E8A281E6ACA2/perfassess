@@ -633,6 +633,7 @@
         "benchmark_profile",
         "confidence_level",
         "vps_benchmark_summary",
+        "share_templates",
         "score_profile",
         "score_breakdown"
       ],
@@ -847,6 +848,21 @@
             "server",
             "workstation"
           ]
+        },
+        "share_templates": {
+          "type": "object",
+          "required": [
+            "plain_text",
+            "markdown"
+          ],
+          "properties": {
+            "plain_text": {
+              "type": "string"
+            },
+            "markdown": {
+              "type": "string"
+            }
+          }
         },
         "score_breakdown": {
           "type": "object",

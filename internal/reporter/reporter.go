@@ -454,6 +454,7 @@ func (rg *ReportGenerator) AddSummary(report *models.Report, overallScore *model
 		overallScore.Grade = "未完成"
 	}
 	report.Summary["vps_benchmark_summary"] = rg.buildVPSBenchmarkSummary(report, overallScore)
+	report.Summary["share_templates"] = rg.buildShareTemplates(report)
 }
 
 func (rg *ReportGenerator) buildQualityNotes(testResults *models.TestResults) []string {
@@ -774,6 +775,11 @@ func (rg *ReportGenerator) FormatReport(report *models.Report) string {
 	}
 
 	sb.WriteString("\n")
+	if share := rg.FormatSharePlainText(report); share != "" {
+		sb.WriteString("=== 分享模板 ===\n\n")
+		sb.WriteString(share)
+		sb.WriteString("\n\n")
+	}
 
 	// 测试统计
 	if report.Summary != nil {

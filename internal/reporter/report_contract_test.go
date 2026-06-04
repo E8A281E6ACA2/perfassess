@@ -42,7 +42,7 @@ func TestReportJSONSampleContract(t *testing.T) {
 	}
 
 	summary := objectAt(t, sample, "summary")
-	for _, key := range []string{"benchmark_profile", "confidence_level", "score_breakdown", "vps_benchmark_summary"} {
+	for _, key := range []string{"benchmark_profile", "confidence_level", "score_breakdown", "vps_benchmark_summary", "share_templates"} {
 		if _, ok := summary[key]; !ok {
 			t.Fatalf("sample summary missing key %q", key)
 		}
@@ -75,6 +75,14 @@ func TestReportJSONSampleContract(t *testing.T) {
 	network := objectAt(t, vpsSummary, "network")
 	if network["backend"] != "iperf3" {
 		t.Fatalf("expected VPS summary network backend iperf3, got %#v", network["backend"])
+	}
+
+	share := objectAt(t, summary, "share_templates")
+	if _, ok := share["plain_text"].(string); !ok {
+		t.Fatalf("expected plain text share template, got %#v", share["plain_text"])
+	}
+	if markdown, ok := share["markdown"].(string); !ok || !strings.Contains(markdown, "| 项目 | 结果 |") {
+		t.Fatalf("expected markdown share template table, got %#v", share["markdown"])
 	}
 }
 

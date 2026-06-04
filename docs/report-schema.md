@@ -149,6 +149,7 @@
 - `benchmark_profile`: 本次评测档位和实际后端组合
 - `confidence_level`: 本次报告置信等级和原因
 - `vps_benchmark_summary`: 面向 VPS 测评分享的核心摘要
+- `share_templates`: 可直接复制分享的文本和 Markdown 模板
 - `score_profile`: 评分基准档位，当前为 `vps`、`server` 或 `workstation`
 - `score_breakdown`: 评分计算依据和分项权重
 
@@ -165,6 +166,13 @@
 - `network`: 网络后端、状态、延迟、下载、上传、上传估算标记、speedtest 节点信息、iperf3 聚合值、IPv4/IPv6 可用性、质量矩阵失败率和抖动
 - `scores`: 总分、等级、分项分和评分基准
 - `confidence`: 置信等级、原因和质量提示
+
+## Share Templates
+
+`share_templates` 基于 `vps_benchmark_summary` 生成，便于直接复制到论坛、工单或 IM。
+
+- `plain_text`: 多行纯文本模板，适合终端、聊天工具和不支持 Markdown 的平台
+- `markdown`: Markdown 表格模板，适合 README、Issue、论坛和支持 Markdown 的平台
 
 ## Benchmark Profile
 

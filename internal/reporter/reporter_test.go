@@ -528,6 +528,30 @@ func TestVPSBenchmarkSummaryIncludesKeyMetrics(t *testing.T) {
 	}
 }
 
+func TestShareTemplatesIncludePlainTextAndMarkdown(t *testing.T) {
+	generator := NewReportGenerator()
+	report, err := generator.GenerateReport("share_template_session", snapshotSystemInfo(), snapshotTestResults())
+	if err != nil {
+		t.Fatalf("expected report generation to succeed, got %v", err)
+	}
+
+	templates, ok := report.Summary["share_templates"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected share templates, got %#v", report.Summary["share_templates"])
+	}
+	plain, ok := templates["plain_text"].(string)
+	if !ok || !strings.Contains(plain, "VPS测评: Snapshot CPU") || !strings.Contains(plain, "评分: 总分") {
+		t.Fatalf("unexpected plain share template: %#v", templates["plain_text"])
+	}
+	markdown, ok := templates["markdown"].(string)
+	if !ok || !strings.Contains(markdown, "### VPS 测评摘要") || !strings.Contains(markdown, "| 项目 | 结果 |") {
+		t.Fatalf("unexpected markdown share template: %#v", templates["markdown"])
+	}
+	if !strings.Contains(report.FormattedContent, "=== 分享模板 ===") {
+		t.Fatalf("expected formatted report to include share template, got:\n%s", report.FormattedContent)
+	}
+}
+
 func TestVPSBenchmarkSummaryIncludesSpeedtestNode(t *testing.T) {
 	generator := NewReportGenerator()
 	report := &models.Report{

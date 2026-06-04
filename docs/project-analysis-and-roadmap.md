@@ -307,16 +307,15 @@
 
 当前收尾批次目标：
 
-1. 增强 `iperf3` 用户节点组配置
-2. 新增 `--iperf3-server-file`，从节点文件读取自有或授权 iperf3 服务端
-3. 支持空行、整行 `#` 注释、行尾注释和重复节点去重
-4. 保持不内置公共 iperf3 节点，避免依赖不稳定或未授权的公共服务
+1. 增强报告可读性，把关键结果压缩成可复制模板
+2. JSON `summary` 新增 `share_templates`，包含纯文本和 Markdown 两种格式
+3. 文本报告新增“分享模板”段落，便于直接复制到论坛、工单或聊天工具
+4. 模板基于 `vps_benchmark_summary` 生成，避免分享内容与结构化摘要不一致
 
 下一批增强建议：
 
-1. 增强报告可读性，把关键矩阵进一步压缩成不同场景的复制模板
-2. 基于真实 VPS 样本回测评分 profile，校准默认阈值
-3. 增加发布包级别的端到端冒烟样例，验证二进制、报告、依赖提示和 JSON 契约
+1. 基于真实 VPS 样本回测评分 profile，校准默认阈值
+2. 增加发布包级别的端到端冒烟样例，验证二进制、报告、依赖提示和 JSON 契约
 
 当前已落地的 VPS 测评摘要边界：
 
@@ -326,6 +325,8 @@
 - `speedtest` 后端会输出 Ookla 节点 ID、名称、地区、国家、Host、ISP、结果 URL、出口 IP 和 ping jitter
 - 文本报告顶部新增“VPS测评摘要”，集中展示系统、CPU、内存、磁盘、网络、网络质量、总分、等级、置信度和评分基准
 - JSON `summary` 新增 `vps_benchmark_summary`，用于脚本快速读取核心测评结果
+- JSON `summary` 新增 `share_templates`，提供 `plain_text` 和 `markdown` 两种复制模板
+- 文本报告新增“分享模板”，直接输出适合复制的多行纯文本摘要
 - `vps_benchmark_summary` 保留 `system`、`cpu`、`memory`、`disk`、`network`、`scores`、`confidence` 七个核心分组
 - 该摘要只压缩常用结果，不替代完整 `test_results` 和原始 metrics
 

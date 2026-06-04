@@ -376,6 +376,9 @@ make run
 # 输出机器可读 JSON
 ./build/perfassess -b all --output-format json -o report.json
 
+# JSON summary.share_templates 会包含 plain_text 和 markdown 两种复制模板
+# 文本报告也会输出“分享模板”段落，便于直接发帖或发给他人
+
 # 对比两份 JSON 报告
 ./build/perfassess compare vps-a.json vps-b.json
 
