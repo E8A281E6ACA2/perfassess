@@ -405,6 +405,7 @@ func (rg *ReportGenerator) AddSummary(report *models.Report, overallScore *model
 	report.Summary["quality_notes"] = rg.buildQualityNotes(report.TestResults)
 	report.Summary["benchmark_profile"] = rg.buildBenchmarkProfile(report.TestResults)
 	report.Summary["confidence_level"] = rg.buildConfidenceLevel(report.TestResults)
+	report.Summary["score_calibration"] = rg.scoreCalculator.BuildScoreCalibration()
 	report.Summary["score_breakdown"] = rg.scoreCalculator.BuildScoreBreakdown(report.TestResults, overallScore)
 	report.Summary["score_profile"] = rg.scoreCalculator.profile.Name
 

@@ -709,6 +709,8 @@ make lint
 
 默认使用 `server` 基准。可以通过 `--score-profile vps|server|workstation` 切换不同设备类型的内存、磁盘和网络基准线，避免 VPS、通用服务器和工作站使用同一套阈值导致评分解释失真。
 
+JSON 报告会输出 `summary.score_calibration`，记录当前校准版本、三套 profile 的完整基准线、等级阈值和说明；`summary.score_breakdown.calibration_version` 会标记本次分项评分使用的校准版本。当前校准版本为 `2026-06-v1`，后续接入真实 VPS 样本后可继续回测调整。
+
 ### 性能等级
 
 - **优秀**: 90分以上

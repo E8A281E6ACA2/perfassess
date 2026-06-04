@@ -151,6 +151,7 @@
 - `vps_benchmark_summary`: 面向 VPS 测评分享的核心摘要
 - `share_templates`: 可直接复制分享的文本和 Markdown 模板
 - `score_profile`: 评分基准档位，当前为 `vps`、`server` 或 `workstation`
+- `score_calibration`: 本次评分使用的校准版本、基准线和等级阈值
 - `score_breakdown`: 评分计算依据和分项权重
 
 ## VPS Benchmark Summary
@@ -202,9 +203,29 @@
 - 使用内置后端或估算上传时至少降为 `medium`
 - 核心测试均成功且未发现明显降级或估算路径时为 `high`
 
+## Score Calibration
+
+`score_calibration` 用于解释当前分数按什么基准线计算，避免只看到 `score_profile` 但不知道阈值。
+
+- `version`: 校准版本，当前为 `2026-06-v1`
+- `active_profile`: 本次实际使用的评分档位，取值为 `vps`、`server` 或 `workstation`
+- `active_baselines`: 当前档位的内存、磁盘和网络基准线
+- `profiles`: 三套评分档位的完整基准线，便于横向审计
+- `grade_thresholds`: 等级阈值，当前为优秀 90、良好 75、一般 60、较差 0
+- `notes`: 评分校准说明，包括 CPU 归一化、未完成测试和后续真实样本回测提示
+
+当前基准线：
+
+| profile | memory read/write MB/s | disk read/write MB/s | disk IOPS | latency ms | down/up Mbps |
+|---|---:|---:|---:|---:|---:|
+| `vps` | 3000 / 2000 | 300 / 200 | 3000 | 80 | 50 / 25 |
+| `server` | 5000 / 3000 | 500 / 300 | 5000 | 50 | 100 / 50 |
+| `workstation` | 8000 / 6000 | 1500 / 1000 | 20000 | 30 | 300 / 100 |
+
 ## Score Breakdown
 
 - `score_profile`: 本次评分使用的基准档位
+- `calibration_version`: 本次评分使用的校准版本
 - `cpu`: CPU 评分依据
 - `memory`: 内存评分依据
 - `disk`: 磁盘评分依据
@@ -226,6 +247,7 @@
 - `normalized_total.weighted_sum`: 成功测试分项的加权和
 - `normalized_total.active_weight`: 成功测试分项的权重和
 - `normalized_total.score`: `weighted_sum / active_weight`
+- `normalized_total.calibration_version`: 与 `score_calibration.version` 保持一致
 - 未执行或失败的核心测试不会参与权重归一化，但会降低 `confidence_level`
 
 ## Compare Result

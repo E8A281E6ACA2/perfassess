@@ -832,6 +832,96 @@ func TestScoreProfileChangesMetricBaselines(t *testing.T) {
 	}
 }
 
+func TestScoreCalibrationIncludesProfilesAndGradeThresholds(t *testing.T) {
+	calculator := NewScoreCalculatorWithWeightsAndProfile(map[string]float64{
+		"cpu":     0.30,
+		"memory":  0.20,
+		"disk":    0.25,
+		"network": 0.25,
+	}, "vps")
+
+	calibration := calculator.BuildScoreCalibration()
+	if calibration["version"] != scoreCalibrationVersion {
+		t.Fatalf("expected calibration version %q, got %#v", scoreCalibrationVersion, calibration["version"])
+	}
+	if calibration["active_profile"] != "vps" {
+		t.Fatalf("expected active profile vps, got %#v", calibration["active_profile"])
+	}
+	profiles, ok := calibration["profiles"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected profile calibration map, got %#v", calibration["profiles"])
+	}
+	for _, name := range []string{"vps", "server", "workstation"} {
+		if _, ok := profiles[name]; !ok {
+			t.Fatalf("expected calibration profile %q, got %#v", name, profiles)
+		}
+	}
+	thresholds, ok := calibration["grade_thresholds"].([]map[string]interface{})
+	if !ok {
+		t.Fatalf("expected grade thresholds, got %#v", calibration["grade_thresholds"])
+	}
+	if thresholds[0]["grade"] != "优秀" || thresholds[0]["min_score"] != float64(90) {
+		t.Fatalf("unexpected first grade threshold: %#v", thresholds[0])
+	}
+}
+
+func TestScoreProfileBacktestOrdersSampleClasses(t *testing.T) {
+	samples := []struct {
+		name          string
+		profile       string
+		results       *models.TestResults
+		minScore      float64
+		maxScore      float64
+		expectedGrade string
+	}{
+		{
+			name:          "entry_vps",
+			profile:       "vps",
+			results:       scoreBacktestResults(70, 1800, 1200, 180, 120, 1500, 70, 30, 15),
+			minScore:      55,
+			maxScore:      75,
+			expectedGrade: "一般",
+		},
+		{
+			name:          "mainstream_vps",
+			profile:       "vps",
+			results:       scoreBacktestResults(86, 3200, 2400, 550, 420, 6000, 35, 300, 150),
+			minScore:      90,
+			maxScore:      100,
+			expectedGrade: "优秀",
+		},
+		{
+			name:          "server_mid_range",
+			profile:       "server",
+			results:       scoreBacktestResults(84, 3000, 2200, 420, 300, 4500, 45, 160, 80),
+			minScore:      80,
+			maxScore:      90,
+			expectedGrade: "良好",
+		},
+		{
+			name:          "workstation_high_end",
+			profile:       "workstation",
+			results:       scoreBacktestResults(96, 9000, 7000, 1800, 1400, 25000, 15, 600, 300),
+			minScore:      90,
+			maxScore:      100,
+			expectedGrade: "优秀",
+		},
+	}
+
+	for _, sample := range samples {
+		t.Run(sample.name, func(t *testing.T) {
+			calculator := NewScoreCalculatorWithWeightsAndProfile(configuredDefaultWeights(), sample.profile)
+			overall := calculator.CalculateOverallScore(sample.results)
+			if overall.TotalScore < sample.minScore || overall.TotalScore > sample.maxScore {
+				t.Fatalf("expected score %.2f-%.2f, got %.2f", sample.minScore, sample.maxScore, overall.TotalScore)
+			}
+			if overall.Grade != sample.expectedGrade {
+				t.Fatalf("expected grade %s, got %s with score %.2f", sample.expectedGrade, overall.Grade, overall.TotalScore)
+			}
+		})
+	}
+}
+
 func TestBuildScoreBreakdownIncludesFormulaAndActiveWeight(t *testing.T) {
 	calculator := NewScoreCalculator()
 	results := &models.TestResults{
@@ -866,6 +956,57 @@ func TestBuildScoreBreakdownIncludesFormulaAndActiveWeight(t *testing.T) {
 	}
 	if breakdown["score_profile"] != "server" {
 		t.Fatalf("expected server score profile, got %#v", breakdown["score_profile"])
+	}
+	if breakdown["calibration_version"] != scoreCalibrationVersion {
+		t.Fatalf("expected calibration version, got %#v", breakdown["calibration_version"])
+	}
+}
+
+func configuredDefaultWeights() map[string]float64 {
+	return map[string]float64{
+		"cpu":     0.30,
+		"memory":  0.20,
+		"disk":    0.25,
+		"network": 0.25,
+	}
+}
+
+func scoreBacktestResults(cpuScore, memoryRead, memoryWrite, diskRead, diskWrite float64, diskIOPS int, latency, download, upload float64) *models.TestResults {
+	return &models.TestResults{
+		CPUResult: &models.TestResult{
+			TestName: "CPU性能测试",
+			Status:   models.TestStatusSuccess,
+			Metrics: map[string]interface{}{
+				"total_score": cpuScore,
+			},
+		},
+		MemoryResult: &models.TestResult{
+			TestName: "内存性能测试",
+			Status:   models.TestStatusSuccess,
+			Metrics: map[string]interface{}{
+				"read_speed_mbps":  memoryRead,
+				"write_speed_mbps": memoryWrite,
+			},
+		},
+		DiskResult: &models.TestResult{
+			TestName: "磁盘性能测试",
+			Status:   models.TestStatusSuccess,
+			Metrics: map[string]interface{}{
+				"sequential_read_mbps":  diskRead,
+				"sequential_write_mbps": diskWrite,
+				"random_iops":           diskIOPS,
+			},
+		},
+		NetworkResult: &models.TestResult{
+			TestName: "网络性能测试",
+			Status:   models.TestStatusSuccess,
+			Metrics: map[string]interface{}{
+				"average_latency_ms":     latency,
+				"download_speed_mbps":    download,
+				"upload_speed_mbps":      upload,
+				"upload_speed_estimated": false,
+			},
+		},
 	}
 }
 

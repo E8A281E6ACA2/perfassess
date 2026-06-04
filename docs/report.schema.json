@@ -634,6 +634,7 @@
         "confidence_level",
         "vps_benchmark_summary",
         "share_templates",
+        "score_calibration",
         "score_profile",
         "score_breakdown"
       ],
@@ -849,6 +850,64 @@
             "workstation"
           ]
         },
+        "score_calibration": {
+          "type": "object",
+          "required": [
+            "version",
+            "active_profile",
+            "active_baselines",
+            "grade_thresholds",
+            "profiles",
+            "notes"
+          ],
+          "properties": {
+            "version": {
+              "type": "string"
+            },
+            "active_profile": {
+              "type": "string",
+              "enum": [
+                "vps",
+                "server",
+                "workstation"
+              ]
+            },
+            "active_baselines": {
+              "$ref": "#/$defs/score_baselines"
+            },
+            "grade_thresholds": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/grade_threshold"
+              }
+            },
+            "profiles": {
+              "type": "object",
+              "required": [
+                "vps",
+                "server",
+                "workstation"
+              ],
+              "properties": {
+                "vps": {
+                  "$ref": "#/$defs/score_baselines"
+                },
+                "server": {
+                  "$ref": "#/$defs/score_baselines"
+                },
+                "workstation": {
+                  "$ref": "#/$defs/score_baselines"
+                }
+              }
+            },
+            "notes": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        },
         "share_templates": {
           "type": "object",
           "required": [
@@ -868,6 +927,7 @@
           "type": "object",
           "required": [
             "score_profile",
+            "calibration_version",
             "cpu",
             "memory",
             "disk",
@@ -882,6 +942,9 @@
                 "server",
                 "workstation"
               ]
+            },
+            "calibration_version": {
+              "type": "string"
             },
             "cpu": {
               "$ref": "#/$defs/score_item"
@@ -901,6 +964,7 @@
                 "score",
                 "active_weight",
                 "weighted_sum",
+                "calibration_version",
                 "formula"
               ],
               "properties": {
@@ -912,6 +976,9 @@
                 },
                 "weighted_sum": {
                   "type": "number"
+                },
+                "calibration_version": {
+                  "type": "string"
                 },
                 "formula": {
                   "type": "string"
@@ -1120,6 +1187,60 @@
         },
         "formula": {
           "type": "string"
+        }
+      }
+    },
+    "score_baselines": {
+      "type": "object",
+      "required": [
+        "memory_read_base_mbps",
+        "memory_write_base_mbps",
+        "disk_sequential_read_mbps",
+        "disk_sequential_write_mbps",
+        "disk_random_iops",
+        "network_latency_base_ms",
+        "network_download_base_mbps",
+        "network_upload_base_mbps"
+      ],
+      "properties": {
+        "memory_read_base_mbps": {
+          "type": "number"
+        },
+        "memory_write_base_mbps": {
+          "type": "number"
+        },
+        "disk_sequential_read_mbps": {
+          "type": "number"
+        },
+        "disk_sequential_write_mbps": {
+          "type": "number"
+        },
+        "disk_random_iops": {
+          "type": "number"
+        },
+        "network_latency_base_ms": {
+          "type": "number"
+        },
+        "network_download_base_mbps": {
+          "type": "number"
+        },
+        "network_upload_base_mbps": {
+          "type": "number"
+        }
+      }
+    },
+    "grade_threshold": {
+      "type": "object",
+      "required": [
+        "grade",
+        "min_score"
+      ],
+      "properties": {
+        "grade": {
+          "type": "string"
+        },
+        "min_score": {
+          "type": "number"
         }
       }
     }

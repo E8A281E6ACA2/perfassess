@@ -34,6 +34,7 @@ summary = report.get("summary", {})
 required = [
     "benchmark_profile",
     "confidence_level",
+    "score_calibration",
     "score_breakdown",
     "vps_benchmark_summary",
     "share_templates",

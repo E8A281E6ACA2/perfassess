@@ -223,6 +223,75 @@
       ]
     },
     "score_profile": "server",
+    "score_calibration": {
+      "version": "2026-06-v1",
+      "active_profile": "server",
+      "active_baselines": {
+        "memory_read_base_mbps": 5000,
+        "memory_write_base_mbps": 3000,
+        "disk_sequential_read_mbps": 500,
+        "disk_sequential_write_mbps": 300,
+        "disk_random_iops": 5000,
+        "network_latency_base_ms": 50,
+        "network_download_base_mbps": 100,
+        "network_upload_base_mbps": 50
+      },
+      "grade_thresholds": [
+        {
+          "grade": "优秀",
+          "min_score": 90
+        },
+        {
+          "grade": "良好",
+          "min_score": 75
+        },
+        {
+          "grade": "一般",
+          "min_score": 60
+        },
+        {
+          "grade": "较差",
+          "min_score": 0
+        }
+      ],
+      "profiles": {
+        "vps": {
+          "memory_read_base_mbps": 3000,
+          "memory_write_base_mbps": 2000,
+          "disk_sequential_read_mbps": 300,
+          "disk_sequential_write_mbps": 200,
+          "disk_random_iops": 3000,
+          "network_latency_base_ms": 80,
+          "network_download_base_mbps": 50,
+          "network_upload_base_mbps": 25
+        },
+        "server": {
+          "memory_read_base_mbps": 5000,
+          "memory_write_base_mbps": 3000,
+          "disk_sequential_read_mbps": 500,
+          "disk_sequential_write_mbps": 300,
+          "disk_random_iops": 5000,
+          "network_latency_base_ms": 50,
+          "network_download_base_mbps": 100,
+          "network_upload_base_mbps": 50
+        },
+        "workstation": {
+          "memory_read_base_mbps": 8000,
+          "memory_write_base_mbps": 6000,
+          "disk_sequential_read_mbps": 1500,
+          "disk_sequential_write_mbps": 1000,
+          "disk_random_iops": 20000,
+          "network_latency_base_ms": 30,
+          "network_download_base_mbps": 300,
+          "network_upload_base_mbps": 100
+        }
+      },
+      "notes": [
+        "CPU 分数由测试后端归一化输出，score_profile 当前主要校准内存、磁盘和网络基准线。",
+        "未执行、失败或降级测试不参与总分权重归一化，但会降低报告置信度并可能使等级标记为未完成。",
+        "当前阈值是工程默认基线，后续应基于真实 VPS 样本回测继续校准。"
+      ]
+    },
     "vps_benchmark_summary": {
       "benchmark_profile": "full_iperf3",
       "mainstream_backend_count": 4,
@@ -316,6 +385,7 @@
     },
     "score_breakdown": {
       "score_profile": "server",
+      "calibration_version": "2026-06-v1",
       "cpu": {
         "active": true,
         "status": "success",
@@ -354,6 +424,7 @@
         "active_weight": 1,
         "weighted_sum": 92.13,
         "score_profile": "server",
+        "calibration_version": "2026-06-v1",
         "formula": "总分 = 已成功测试分项加权和 / 已成功测试权重和。"
       }
     }

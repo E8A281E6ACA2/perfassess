@@ -8,6 +8,8 @@ import (
 	"performance-assessment-system/internal/models"
 )
 
+const scoreCalibrationVersion = "2026-06-v1"
+
 // ScoreCalculator 评分计算器
 // 负责根据测试结果计算各项性能评分和综合评分
 type ScoreCalculator struct {
@@ -28,6 +30,11 @@ type ScoreProfile struct {
 	NetworkLatencyBaseMs    float64
 	NetworkDownloadMbps     float64
 	NetworkUploadMbps       float64
+}
+
+type gradeThreshold struct {
+	Name    string
+	Minimum float64
 }
 
 // NewScoreCalculator 创建新的评分计算器
@@ -90,6 +97,67 @@ func scoreProfileByName(name string) ScoreProfile {
 			NetworkDownloadMbps:     100,
 			NetworkUploadMbps:       50,
 		}
+	}
+}
+
+func gradeThresholds() []gradeThreshold {
+	return []gradeThreshold{
+		{Name: "优秀", Minimum: 90},
+		{Name: "良好", Minimum: 75},
+		{Name: "一般", Minimum: 60},
+		{Name: "较差", Minimum: 0},
+	}
+}
+
+func scoreProfilesByName() map[string]ScoreProfile {
+	profiles := map[string]ScoreProfile{}
+	for _, name := range []string{"vps", "server", "workstation"} {
+		profiles[name] = scoreProfileByName(name)
+	}
+	return profiles
+}
+
+func (sc *ScoreCalculator) BuildScoreCalibration() map[string]interface{} {
+	thresholds := make([]map[string]interface{}, 0, len(gradeThresholds()))
+	for _, threshold := range gradeThresholds() {
+		thresholds = append(thresholds, map[string]interface{}{
+			"grade":     threshold.Name,
+			"min_score": threshold.Minimum,
+		})
+	}
+
+	return map[string]interface{}{
+		"version":          scoreCalibrationVersion,
+		"active_profile":   sc.profile.Name,
+		"active_baselines": scoreProfileToMap(sc.profile),
+		"grade_thresholds": thresholds,
+		"profiles":         scoreProfilesToMap(scoreProfilesByName()),
+		"notes": []string{
+			"CPU 分数由测试后端归一化输出，score_profile 当前主要校准内存、磁盘和网络基准线。",
+			"未执行、失败或降级测试不参与总分权重归一化，但会降低报告置信度并可能使等级标记为未完成。",
+			"当前阈值是工程默认基线，后续应基于真实 VPS 样本回测继续校准。",
+		},
+	}
+}
+
+func scoreProfilesToMap(profiles map[string]ScoreProfile) map[string]interface{} {
+	result := make(map[string]interface{}, len(profiles))
+	for name, profile := range profiles {
+		result[name] = scoreProfileToMap(profile)
+	}
+	return result
+}
+
+func scoreProfileToMap(profile ScoreProfile) map[string]interface{} {
+	return map[string]interface{}{
+		"memory_read_base_mbps":      profile.MemoryReadBaseMBps,
+		"memory_write_base_mbps":     profile.MemoryWriteBaseMBps,
+		"disk_sequential_read_mbps":  profile.DiskSequentialReadMBps,
+		"disk_sequential_write_mbps": profile.DiskSequentialWriteMBps,
+		"disk_random_iops":           profile.DiskRandomIOPS,
+		"network_latency_base_ms":    profile.NetworkLatencyBaseMs,
+		"network_download_base_mbps": profile.NetworkDownloadMbps,
+		"network_upload_base_mbps":   profile.NetworkUploadMbps,
 	}
 }
 
@@ -313,11 +381,12 @@ func (sc *ScoreCalculator) BuildScoreBreakdown(results *models.TestResults, over
 	}
 
 	breakdown := map[string]interface{}{
-		"score_profile": sc.profile.Name,
-		"cpu":           sc.buildCPUScoreBreakdown(results.CPUResult),
-		"memory":        sc.buildMemoryScoreBreakdown(results.MemoryResult),
-		"disk":          sc.buildDiskScoreBreakdown(results.DiskResult),
-		"network":       sc.buildNetworkScoreBreakdown(results.NetworkResult),
+		"score_profile":       sc.profile.Name,
+		"calibration_version": scoreCalibrationVersion,
+		"cpu":                 sc.buildCPUScoreBreakdown(results.CPUResult),
+		"memory":              sc.buildMemoryScoreBreakdown(results.MemoryResult),
+		"disk":                sc.buildDiskScoreBreakdown(results.DiskResult),
+		"network":             sc.buildNetworkScoreBreakdown(results.NetworkResult),
 	}
 
 	activeWeight := 0.0
@@ -343,11 +412,12 @@ func (sc *ScoreCalculator) BuildScoreBreakdown(results *models.TestResults, over
 	}
 
 	breakdown["normalized_total"] = map[string]interface{}{
-		"score":         totalScore,
-		"active_weight": activeWeight,
-		"weighted_sum":  weightedSum,
-		"score_profile": sc.profile.Name,
-		"formula":       "总分 = 已成功测试分项加权和 / 已成功测试权重和。",
+		"score":               totalScore,
+		"active_weight":       activeWeight,
+		"weighted_sum":        weightedSum,
+		"score_profile":       sc.profile.Name,
+		"calibration_version": scoreCalibrationVersion,
+		"formula":             "总分 = 已成功测试分项加权和 / 已成功测试权重和。",
 	}
 	return breakdown
 }

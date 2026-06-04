@@ -252,8 +252,9 @@
 - 新增 `score_profile` 配置和 `--score-profile` CLI 参数，当前支持 `vps`、`server`、`workstation`
 - 权重包括 `cpu`、`memory`、`disk`、`network`，未执行或失败的测试不参与总分归一化
 - 评分基准线从硬编码迁移到 profile，内存、磁盘、网络会按不同设备场景使用不同基准
+- 报告摘要新增 `score_calibration`，记录校准版本、当前档位基准线、完整 profile 基准线和等级阈值
 - 报告摘要新增 `score_breakdown`
-- `score_breakdown` 记录每个分项的原始指标、基准线、子项分、权重和计算说明
+- `score_breakdown` 记录每个分项的原始指标、基准线、子项分、权重、校准版本和计算说明
 - 文本报告会展示简明评分说明，JSON 报告保留结构化计算依据
 
 ### 第四阶段：补充工程保障
@@ -309,15 +310,15 @@
 
 当前收尾批次目标：
 
-1. 增强发布级端到端验证，确保最终二进制本身可运行
-2. 新增稳定的 `version` 命令，用于安装脚本、发布包和用户排障确认版本
-3. 发布二进制冒烟覆盖 help、依赖检查、JSON 报告、报告对比和历史趋势
-4. Release workflow 上传产物前先执行 Linux amd64 二进制冒烟
+1. 固化评分校准版本，当前为 `2026-06-v1`
+2. JSON `summary` 新增 `score_calibration`，输出三套评分档位的完整基准线和等级阈值
+3. `score_breakdown` 新增 `calibration_version`，让分项评分可追踪到校准版本
+4. 增加评分样本回测测试，保护 `vps`、`server`、`workstation` 档位的相对严格程度
 
 下一批增强建议：
 
-1. 基于真实 VPS 样本回测评分 profile，校准默认阈值
-2. 增加真实 VPS 手动验收样例，记录外部依赖齐全和缺失两类环境下的输出样本
+1. 增加真实 VPS 手动验收样例，记录外部依赖齐全和缺失两类环境下的输出样本
+2. 收集更多真实 VPS 样本，基于 `score_calibration.version` 做下一轮阈值回测
 
 当前已落地的 VPS 测评摘要边界：
 

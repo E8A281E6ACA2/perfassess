@@ -42,7 +42,7 @@ func TestReportJSONSampleContract(t *testing.T) {
 	}
 
 	summary := objectAt(t, sample, "summary")
-	for _, key := range []string{"benchmark_profile", "confidence_level", "score_breakdown", "vps_benchmark_summary", "share_templates"} {
+	for _, key := range []string{"benchmark_profile", "confidence_level", "score_calibration", "score_breakdown", "vps_benchmark_summary", "share_templates"} {
 		if _, ok := summary[key]; !ok {
 			t.Fatalf("sample summary missing key %q", key)
 		}
@@ -61,7 +61,22 @@ func TestReportJSONSampleContract(t *testing.T) {
 		t.Fatalf("expected sample confidence high, got %#v", confidence["level"])
 	}
 
+	calibration := objectAt(t, summary, "score_calibration")
+	if calibration["version"] != scoreCalibrationVersion {
+		t.Fatalf("expected sample calibration version %q, got %#v", scoreCalibrationVersion, calibration["version"])
+	}
+	if calibration["active_profile"] != "server" {
+		t.Fatalf("expected sample calibration active profile server, got %#v", calibration["active_profile"])
+	}
+	profiles := objectAt(t, calibration, "profiles")
+	if _, ok := profiles["server"]; !ok {
+		t.Fatalf("expected sample calibration to include server profile, got %#v", profiles)
+	}
+
 	breakdown := objectAt(t, summary, "score_breakdown")
+	if breakdown["calibration_version"] != scoreCalibrationVersion {
+		t.Fatalf("expected score breakdown calibration version %q, got %#v", scoreCalibrationVersion, breakdown["calibration_version"])
+	}
 	normalized := objectAt(t, breakdown, "normalized_total")
 	if _, ok := normalized["active_weight"].(float64); !ok {
 		t.Fatalf("expected normalized active_weight number, got %#v", normalized["active_weight"])
