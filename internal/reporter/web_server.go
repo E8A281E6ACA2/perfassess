@@ -111,6 +111,11 @@ func (ws *WebServer) prepareTemplateData() map[string]interface{} {
 	data["OverallScoreColor"] = ws.getScoreColor(overallScore.TotalScore)
 	data["OverallGradeClass"] = ws.getGradeClass(overallScore.Grade)
 	data["QualityNotes"] = ws.getQualityNotes()
+	data["ScoreProfile"] = ws.summaryString("score_profile")
+	data["BenchmarkProfileName"] = ws.benchmarkProfileName()
+	data["ConfidenceLevel"] = ws.confidenceLevel()
+	data["CalibrationVersion"] = ws.calibrationVersion()
+	data["SharePlainText"] = ws.sharePlainText()
 
 	// 测试结果列表
 	testResultsList := []map[string]interface{}{}
@@ -133,6 +138,64 @@ func (ws *WebServer) prepareTemplateData() map[string]interface{} {
 	data["TestResultsList"] = testResultsList
 
 	return data
+}
+
+func (ws *WebServer) summaryString(key string) string {
+	if ws.report == nil || ws.report.Summary == nil {
+		return "-"
+	}
+	if value, ok := ws.report.Summary[key].(string); ok && value != "" {
+		return value
+	}
+	return "-"
+}
+
+func (ws *WebServer) benchmarkProfileName() string {
+	if ws.report == nil || ws.report.Summary == nil {
+		return "-"
+	}
+	if profile, ok := ws.report.Summary["benchmark_profile"].(map[string]interface{}); ok {
+		if name, ok := profile["name"].(string); ok && name != "" {
+			return name
+		}
+	}
+	return "-"
+}
+
+func (ws *WebServer) confidenceLevel() string {
+	if ws.report == nil || ws.report.Summary == nil {
+		return "-"
+	}
+	if confidence, ok := ws.report.Summary["confidence_level"].(map[string]interface{}); ok {
+		if level, ok := confidence["level"].(string); ok && level != "" {
+			return level
+		}
+	}
+	return "-"
+}
+
+func (ws *WebServer) calibrationVersion() string {
+	if ws.report == nil || ws.report.Summary == nil {
+		return "-"
+	}
+	if calibration, ok := ws.report.Summary["score_calibration"].(map[string]interface{}); ok {
+		if version, ok := calibration["version"].(string); ok && version != "" {
+			return version
+		}
+	}
+	return "-"
+}
+
+func (ws *WebServer) sharePlainText() string {
+	if ws.report == nil || ws.report.Summary == nil {
+		return ""
+	}
+	if templates, ok := ws.report.Summary["share_templates"].(map[string]interface{}); ok {
+		if plain, ok := templates["plain_text"].(string); ok {
+			return plain
+		}
+	}
+	return ""
 }
 
 func (ws *WebServer) getQualityNotes() []string {
@@ -177,6 +240,8 @@ func (ws *WebServer) getStatusText(status string) string {
 		return "失败"
 	case "skipped":
 		return "跳过"
+	case "degraded":
+		return "降级"
 	default:
 		return "未知"
 	}

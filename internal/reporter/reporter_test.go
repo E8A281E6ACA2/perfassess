@@ -2,6 +2,7 @@ package reporter
 
 import (
 	"encoding/json"
+	"html/template"
 	"math"
 	"strings"
 	"testing"
@@ -725,6 +726,38 @@ func TestWebServerKeyMetricsShowsNetworkError(t *testing.T) {
 	metrics := server.getKeyMetrics(result)
 	if metrics != "iperf3 server is required" {
 		t.Fatalf("expected web key metrics to show network error, got %q", metrics)
+	}
+}
+
+func TestWebReportTemplateRendersMaterialSummary(t *testing.T) {
+	generator := NewReportGenerator()
+	report, err := generator.GenerateReport("web_material_session", snapshotSystemInfo(), snapshotTestResults())
+	if err != nil {
+		t.Fatalf("expected report generation to succeed, got %v", err)
+	}
+
+	server := &WebServer{report: report}
+	tmpl, err := template.New("report").Parse(HTMLTemplate)
+	if err != nil {
+		t.Fatalf("expected web template to parse, got %v", err)
+	}
+	var output strings.Builder
+	if err := tmpl.Execute(&output, server.prepareTemplateData()); err != nil {
+		t.Fatalf("expected web template to render, got %v", err)
+	}
+
+	html := output.String()
+	for _, snippet := range []string{
+		"Material Design 3 Web Report",
+		"评分基准",
+		"置信度",
+		"校准 2026-06-v1",
+		"分享模板",
+		"VPS测评: Snapshot CPU",
+	} {
+		if !strings.Contains(html, snippet) {
+			t.Fatalf("expected rendered web report to contain %q", snippet)
+		}
 	}
 }
 
