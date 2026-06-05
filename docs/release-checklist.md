@@ -39,11 +39,14 @@ make release-check
 在真实 VPS 或测试机上建议至少运行：
 
 ```bash
+scripts/vps-acceptance.sh
 ./build/perfassess version
 ./build/perfassess --quick --output-format json -o /tmp/perfassess-quick.json
 ./build/perfassess -b network --output-format json -o /tmp/perfassess-network.json
 ./build/perfassess check-deps
 ```
+
+`scripts/vps-acceptance.sh` 会保留验收产物并生成 `summary.md`。详细流程见 [VPS 真实环境验收](vps-acceptance.md)。
 
 如果机器已安装可选依赖，再补充：
 
@@ -66,6 +69,7 @@ make release-check
 - `docs/report.schema.json`、`docs/report-schema.md` 与示例报告必须同步。
 - 新增或修改报告字段时必须补充契约测试或快照测试。
 - 发布 workflow 必须在上传前执行 Linux amd64 发布二进制冒烟测试。
+- 公开发版前建议至少在一台真实 VPS 上执行 `scripts/vps-acceptance.sh`。
 - 可选外部依赖只允许检测和提示，不允许静默安装。
 - 默认无参数一把梭必须在没有可选依赖时仍可运行。
 - 发布前不得提交本地 IDE/workspace 文件、日志文件或临时报告。

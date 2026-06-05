@@ -310,15 +310,15 @@
 
 当前收尾批次目标：
 
-1. 固化评分校准版本，当前为 `2026-06-v1`
-2. JSON `summary` 新增 `score_calibration`，输出三套评分档位的完整基准线和等级阈值
-3. `score_breakdown` 新增 `calibration_version`，让分项评分可追踪到校准版本
-4. 增加评分样本回测测试，保护 `vps`、`server`、`workstation` 档位的相对严格程度
+1. 增加真实 VPS 验收脚本，保留验收产物并检查核心 JSON 报告契约
+2. 增加真实 VPS 验收文档，覆盖必过命令、可选依赖、iperf3 授权节点和失败处理
+3. 增加脱敏归档约定，避免真实 VPS 样本泄露公网 IP、ISP 和地理位置
+4. 将验收流程接入 README 和发布前检查清单
 
 下一批增强建议：
 
-1. 增加真实 VPS 手动验收样例，记录外部依赖齐全和缺失两类环境下的输出样本
-2. 收集更多真实 VPS 样本，基于 `score_calibration.version` 做下一轮阈值回测
+1. 收集更多真实 VPS 样本，基于 `score_calibration.version` 做下一轮阈值回测
+2. 基于脱敏样本补充一组稳定的评分校准样本集
 
 当前已落地的 VPS 测评摘要边界：
 

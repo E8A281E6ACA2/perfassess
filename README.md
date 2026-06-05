@@ -6,6 +6,7 @@
 
 - 项目分析与优化路线图: [docs/project-analysis-and-roadmap.md](docs/project-analysis-and-roadmap.md)
 - 发布前检查清单: [docs/release-checklist.md](docs/release-checklist.md)
+- 真实 VPS 验收流程: [docs/vps-acceptance.md](docs/vps-acceptance.md)
 
 ## 当前状态
 
@@ -652,6 +653,9 @@ make release-check
 
 # 发布二进制端到端冒烟：版本、help、依赖检查、JSON 报告、对比和历史趋势
 make release-smoke
+
+# 真实 VPS 验收：保留验收产物并检查报告关键字段
+scripts/vps-acceptance.sh
 
 # 运行测试并生成覆盖率报告
 make test-coverage
