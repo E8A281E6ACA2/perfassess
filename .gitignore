@@ -12,6 +12,7 @@ performance-assessment
 *.out
 coverage.out
 coverage.html
+study/
 
 # Go 工作空间文件
 go.work
