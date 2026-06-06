@@ -23,6 +23,37 @@ type WebServer struct {
 	report *models.Report
 }
 
+type webMetricCard struct {
+	Label string
+	Value string
+	Unit  string
+	Tone  string
+}
+
+type webDetailRow struct {
+	Label string
+	Value string
+}
+
+type webTable struct {
+	Title   string
+	Headers []string
+	Rows    [][]string
+}
+
+type webReportSection struct {
+	ID         string
+	Title      string
+	Subtitle   string
+	Status     string
+	StatusText string
+	Summary    string
+	Hint       string
+	Metrics    []webMetricCard
+	Details    []webDetailRow
+	Tables     []webTable
+}
+
 // NewWebServer 创建新的 Web 服务器
 func NewWebServer(port int, logger *logger.Logger) *WebServer {
 	return &WebServer{
@@ -116,6 +147,7 @@ func (ws *WebServer) prepareTemplateData() map[string]interface{} {
 	data["ConfidenceLevel"] = ws.confidenceLevel()
 	data["CalibrationVersion"] = ws.calibrationVersion()
 	data["SharePlainText"] = ws.sharePlainText()
+	data["ReportSections"] = ws.buildReportSections(overallScore)
 
 	// 测试结果列表
 	testResultsList := []map[string]interface{}{}
@@ -138,6 +170,388 @@ func (ws *WebServer) prepareTemplateData() map[string]interface{} {
 	data["TestResultsList"] = testResultsList
 
 	return data
+}
+
+func (ws *WebServer) buildReportSections(overallScore *models.OverallScore) []webReportSection {
+	sections := []webReportSection{
+		ws.overviewSection(overallScore),
+		ws.systemSection(),
+	}
+
+	var cpuResult, memoryResult, diskResult, networkResult *models.TestResult
+	if ws.report != nil && ws.report.TestResults != nil {
+		cpuResult = ws.report.TestResults.CPUResult
+		memoryResult = ws.report.TestResults.MemoryResult
+		diskResult = ws.report.TestResults.DiskResult
+		networkResult = ws.report.TestResults.NetworkResult
+	}
+
+	sections = append(sections,
+		ws.cpuSection(cpuResult, overallScore),
+		ws.memorySection(memoryResult, overallScore),
+		ws.diskSection(diskResult, overallScore),
+		ws.networkSection(networkResult, overallScore),
+		ws.optionalSection("route", "路由追踪", "到主要地区和节点的网络路径质量。", "route_trace_results", "本次未启用路由追踪。使用 --route-trace 启用。"),
+		ws.optionalSection("streaming", "流媒体解锁", "Netflix、Disney+、YouTube 等平台的区域访问能力。", "streaming_results", "本次未启用流媒体检测。使用 --streaming 启用。"),
+		ws.optionalSection("ai", "AI 服务检测", "OpenAI、Gemini 等 AI 服务的可访问性。", "ai_results", "本次未启用 AI 服务检测。使用 --ai-services 启用。"),
+		ws.placeholderSection("ip-quality", "IP 质量", "参考 IPQuality 的风险、类型、黑名单和邮件连通性模块。", "规划中：下一阶段接入 IP 风险评分、DNSBL、邮件服务连通性和 IP 类型识别。"),
+		ws.optionalSection("stress", "压力测试", "长时间 CPU、内存、磁盘压力下的稳定性。", "stress_report", "本次未启用压力测试。使用 --stress 启用。"),
+		ws.optionalSection("security", "安全体检", "端口、SSH 配置和基础安全风险检查。", "security_report", "本次未启用安全体检。使用 --security 启用。"),
+	)
+
+	return sections
+}
+
+func (ws *WebServer) overviewSection(overallScore *models.OverallScore) webReportSection {
+	if overallScore == nil {
+		overallScore = &models.OverallScore{}
+	}
+	return webReportSection{
+		ID:         "overview",
+		Title:      "总览",
+		Subtitle:   "本次服务器测评的综合摘要。",
+		Status:     "success",
+		StatusText: "已生成",
+		Summary:    fmt.Sprintf("总分 %.2f / 100，等级 %s，置信度 %s。", overallScore.TotalScore, overallScore.Grade, ws.confidenceLevel()),
+		Metrics: []webMetricCard{
+			{Label: "总体评分", Value: fmt.Sprintf("%.0f", overallScore.TotalScore), Unit: "/ 100", Tone: "primary"},
+			{Label: "CPU", Value: fmt.Sprintf("%.0f", overallScore.CPUScore), Unit: "/ 100", Tone: "blue"},
+			{Label: "内存", Value: fmt.Sprintf("%.0f", overallScore.MemoryScore), Unit: "/ 100", Tone: "green"},
+			{Label: "磁盘", Value: fmt.Sprintf("%.0f", overallScore.DiskScore), Unit: "/ 100", Tone: "amber"},
+			{Label: "网络", Value: fmt.Sprintf("%.0f", overallScore.NetworkScore), Unit: "/ 100", Tone: "cyan"},
+		},
+		Details: []webDetailRow{
+			{Label: "评分基准", Value: ws.summaryString("score_profile")},
+			{Label: "评测档位", Value: ws.benchmarkProfileName()},
+			{Label: "校准版本", Value: ws.calibrationVersion()},
+			{Label: "会话 ID", Value: ws.report.SessionID},
+		},
+	}
+}
+
+func (ws *WebServer) systemSection() webReportSection {
+	section := webReportSection{
+		ID:         "system",
+		Title:      "系统信息",
+		Subtitle:   "硬件、系统、虚拟化和公网 IP 信息。",
+		Status:     "success",
+		StatusText: "已采集",
+		Summary:    "系统基础信息已采集完成。",
+	}
+	if ws.report == nil || ws.report.SystemInfo == nil {
+		section.Status = "skipped"
+		section.StatusText = "无数据"
+		section.Hint = "本次报告没有系统信息。"
+		return section
+	}
+	sys := ws.report.SystemInfo
+	if sys.CPU != nil {
+		section.Details = append(section.Details,
+			webDetailRow{Label: "CPU 型号", Value: sys.CPU.Model},
+			webDetailRow{Label: "CPU 核心/线程", Value: fmt.Sprintf("%d 核 / %d 线程", sys.CPU.Cores, sys.CPU.Threads)},
+			webDetailRow{Label: "CPU 频率", Value: fmt.Sprintf("%.0f MHz", sys.CPU.FrequencyMHz)},
+		)
+	}
+	if sys.Memory != nil {
+		section.Details = append(section.Details,
+			webDetailRow{Label: "内存总量", Value: fmt.Sprintf("%d MB", sys.Memory.TotalMB)},
+			webDetailRow{Label: "内存可用", Value: fmt.Sprintf("%d MB", sys.Memory.AvailableMB)},
+		)
+		if sys.Memory.MemoryType != "" {
+			section.Details = append(section.Details, webDetailRow{Label: "内存类型", Value: sys.Memory.MemoryType})
+		}
+	}
+	if sys.Disk != nil {
+		section.Details = append(section.Details,
+			webDetailRow{Label: "磁盘总量", Value: fmt.Sprintf("%.2f GB", sys.Disk.TotalGB)},
+			webDetailRow{Label: "磁盘可用", Value: fmt.Sprintf("%.2f GB", sys.Disk.AvailableGB)},
+		)
+		if sys.Disk.DiskType != "" {
+			section.Details = append(section.Details, webDetailRow{Label: "磁盘类型", Value: sys.Disk.DiskType})
+		}
+	}
+	if sys.OS != nil {
+		section.Details = append(section.Details,
+			webDetailRow{Label: "操作系统", Value: fmt.Sprintf("%s %s", sys.OS.Name, sys.OS.Version)},
+			webDetailRow{Label: "系统架构", Value: sys.OS.Architecture},
+		)
+	}
+	if sys.Virtualization != nil {
+		section.Details = append(section.Details,
+			webDetailRow{Label: "虚拟化", Value: sys.Virtualization.Type},
+			webDetailRow{Label: "虚拟化厂商", Value: fallback(sys.Virtualization.Vendor, "-")},
+		)
+	}
+	if sys.IPInfo != nil {
+		section.Details = append(section.Details,
+			webDetailRow{Label: "公网 IP", Value: sys.IPInfo.PublicIP},
+			webDetailRow{Label: "ISP", Value: fallback(sys.IPInfo.ISP, "-")},
+		)
+		if sys.IPInfo.GeoLocation != nil {
+			geo := sys.IPInfo.GeoLocation
+			section.Details = append(section.Details, webDetailRow{Label: "位置", Value: fmt.Sprintf("%s, %s", fallback(geo.Country, "-"), fallback(geo.City, "-"))})
+		}
+	}
+	return section
+}
+
+func (ws *WebServer) cpuSection(result *models.TestResult, overallScore *models.OverallScore) webReportSection {
+	section := ws.testSectionBase("cpu", "CPU 测试", "单核、多核性能和采样稳定性。", result, "本次未执行 CPU 测试。使用 -b cpu 或 -b all 启用。")
+	if result == nil || result.Status != models.TestStatusSuccess {
+		return section
+	}
+	section.Metrics = append(section.Metrics, webMetricCard{Label: "CPU 评分", Value: fmt.Sprintf("%.0f", overallScore.CPUScore), Unit: "/ 100", Tone: "blue"})
+	if score, ok := getCPUScore(result); ok {
+		section.Details = append(section.Details, webDetailRow{Label: "测试总分", Value: fmt.Sprintf("%.2f", score)})
+	}
+	if backend := getCPUBackend(result); backend != "" {
+		section.Details = append(section.Details, webDetailRow{Label: "测试后端", Value: backend})
+	}
+	if events, ok := getCPUSingleCoreEvents(result); ok {
+		section.Metrics = append(section.Metrics, webMetricCard{Label: "单核事件", Value: fmt.Sprintf("%.2f", events), Unit: "events/s", Tone: "primary"})
+	}
+	if events, ok := getCPUMultiCoreEvents(result); ok {
+		section.Metrics = append(section.Metrics, webMetricCard{Label: "多核事件", Value: fmt.Sprintf("%.2f", events), Unit: "events/s", Tone: "primary"})
+	}
+	if single, ok := getCPUSingleCoreRawScore(result); ok {
+		section.Details = append(section.Details, webDetailRow{Label: "单核原始分", Value: fmt.Sprintf("%.0f", single)})
+	}
+	if multi, ok := getCPUMultiCoreRawScore(result); ok {
+		section.Details = append(section.Details, webDetailRow{Label: "多核原始分", Value: fmt.Sprintf("%.0f", multi)})
+	}
+	if stddev, ok := getCPUScoreStdDev(result); ok {
+		section.Details = append(section.Details, webDetailRow{Label: "采样波动", Value: fmt.Sprintf("%.2f", stddev)})
+	}
+	return section
+}
+
+func (ws *WebServer) memorySection(result *models.TestResult, overallScore *models.OverallScore) webReportSection {
+	section := ws.testSectionBase("memory", "内存测试", "内存读写吞吐和采样稳定性。", result, "本次未执行内存测试。使用 -b memory 或 -b all 启用。")
+	if result == nil || result.Status != models.TestStatusSuccess {
+		return section
+	}
+	section.Metrics = append(section.Metrics, webMetricCard{Label: "内存评分", Value: fmt.Sprintf("%.0f", overallScore.MemoryScore), Unit: "/ 100", Tone: "green"})
+	if read, ok := getMemoryReadSpeed(result); ok {
+		section.Metrics = append(section.Metrics, webMetricCard{Label: "读取速度", Value: fmt.Sprintf("%.2f", read), Unit: "MB/s", Tone: "green"})
+	}
+	if write, ok := getMemoryWriteSpeed(result); ok {
+		section.Metrics = append(section.Metrics, webMetricCard{Label: "写入速度", Value: fmt.Sprintf("%.2f", write), Unit: "MB/s", Tone: "green"})
+	}
+	if backend := getMemoryBackend(result); backend != "" {
+		section.Details = append(section.Details, webDetailRow{Label: "测试后端", Value: backend})
+	}
+	if source := getMemoryReadSource(result); source != "" {
+		section.Details = append(section.Details, webDetailRow{Label: "读取来源", Value: source})
+	}
+	if source := getMemoryWriteSource(result); source != "" {
+		section.Details = append(section.Details, webDetailRow{Label: "写入来源", Value: source})
+	}
+	if stddev, ok := getMemoryReadStdDev(result); ok {
+		section.Details = append(section.Details, webDetailRow{Label: "读取波动", Value: fmt.Sprintf("%.2f MB/s", stddev)})
+	}
+	if stddev, ok := getMemoryWriteStdDev(result); ok {
+		section.Details = append(section.Details, webDetailRow{Label: "写入波动", Value: fmt.Sprintf("%.2f MB/s", stddev)})
+	}
+	return section
+}
+
+func (ws *WebServer) diskSection(result *models.TestResult, overallScore *models.OverallScore) webReportSection {
+	section := ws.testSectionBase("disk", "磁盘测试", "顺序读写、随机 IOPS 和 fio mixed 矩阵。", result, "本次未执行磁盘测试。使用 -b disk 或 -b all 启用。")
+	if result == nil || result.Status != models.TestStatusSuccess {
+		return section
+	}
+	section.Metrics = append(section.Metrics, webMetricCard{Label: "磁盘评分", Value: fmt.Sprintf("%.0f", overallScore.DiskScore), Unit: "/ 100", Tone: "amber"})
+	if read, ok := getDiskReadSpeed(result); ok {
+		section.Metrics = append(section.Metrics, webMetricCard{Label: "顺序读取", Value: fmt.Sprintf("%.2f", read), Unit: "MB/s", Tone: "amber"})
+	}
+	if write, ok := getDiskWriteSpeed(result); ok {
+		section.Metrics = append(section.Metrics, webMetricCard{Label: "顺序写入", Value: fmt.Sprintf("%.2f", write), Unit: "MB/s", Tone: "amber"})
+	}
+	if iops, ok := getDiskRandomIOPS(result); ok {
+		section.Metrics = append(section.Metrics, webMetricCard{Label: "随机 IOPS", Value: fmt.Sprintf("%d", iops), Unit: "IOPS", Tone: "amber"})
+	}
+	if backend := getDiskBackend(result); backend != "" {
+		section.Details = append(section.Details, webDetailRow{Label: "测试后端", Value: backend})
+	}
+	if readIOPS, ok := getDiskRandomReadIOPS(result); ok {
+		section.Details = append(section.Details, webDetailRow{Label: "随机读 IOPS", Value: fmt.Sprintf("%.0f", readIOPS)})
+	}
+	if writeIOPS, ok := getDiskRandomWriteIOPS(result); ok {
+		section.Details = append(section.Details, webDetailRow{Label: "随机写 IOPS", Value: fmt.Sprintf("%.0f", writeIOPS)})
+	}
+	if latency, ok := getDiskRandomReadP95Latency(result); ok {
+		section.Details = append(section.Details, webDetailRow{Label: "随机读 P95 延迟", Value: fmt.Sprintf("%.2f ms", latency)})
+	}
+	if latency, ok := getDiskRandomWriteP95Latency(result); ok {
+		section.Details = append(section.Details, webDetailRow{Label: "随机写 P95 延迟", Value: fmt.Sprintf("%.2f ms", latency)})
+	}
+	if rows := getDiskFioMixedRows(result); len(rows) > 0 {
+		table := webTable{Title: "fio mixed randrw 50/50 矩阵", Headers: []string{"块大小", "读 MB/s", "写 MB/s", "总 MB/s", "读 IOPS", "写 IOPS", "总 IOPS"}}
+		for _, row := range rows {
+			table.Rows = append(table.Rows, []string{
+				row.BlockSize,
+				fmt.Sprintf("%.2f", row.ReadMBps),
+				fmt.Sprintf("%.2f", row.WriteMBps),
+				fmt.Sprintf("%.2f", row.TotalMBps),
+				fmt.Sprintf("%.0f", row.ReadIOPS),
+				fmt.Sprintf("%.0f", row.WriteIOPS),
+				fmt.Sprintf("%.0f", row.TotalIOPS),
+			})
+		}
+		section.Tables = append(section.Tables, table)
+	}
+	return section
+}
+
+func (ws *WebServer) networkSection(result *models.TestResult, overallScore *models.OverallScore) webReportSection {
+	section := ws.testSectionBase("network", "网络测试", "延迟、下载、上传、IPv4/IPv6 和多节点质量。", result, "本次未执行网络测试。使用 -b network 或 -b all 启用。")
+	if result == nil || result.Status != models.TestStatusSuccess {
+		return section
+	}
+	section.Metrics = append(section.Metrics, webMetricCard{Label: "网络评分", Value: fmt.Sprintf("%.0f", overallScore.NetworkScore), Unit: "/ 100", Tone: "cyan"})
+	if latency, ok := getNetworkLatency(result); ok {
+		section.Metrics = append(section.Metrics, webMetricCard{Label: "平均延迟", Value: fmt.Sprintf("%.2f", latency), Unit: "ms", Tone: "cyan"})
+	}
+	if download, ok := getNetworkDownloadSpeed(result); ok {
+		section.Metrics = append(section.Metrics, webMetricCard{Label: "下载速度", Value: fmt.Sprintf("%.2f", download), Unit: "Mbps", Tone: "cyan"})
+	}
+	if upload, ok := getNetworkUploadSpeed(result); ok {
+		unit := "Mbps"
+		if isNetworkUploadEstimated(result) {
+			unit = "Mbps 估算"
+		}
+		section.Metrics = append(section.Metrics, webMetricCard{Label: "上传速度", Value: fmt.Sprintf("%.2f", upload), Unit: unit, Tone: "cyan"})
+	}
+	if backend := getNetworkBackend(result); backend != "" {
+		section.Details = append(section.Details, webDetailRow{Label: "测试后端", Value: backend})
+	}
+	if server := getNetworkBackendServer(result); server != "" {
+		section.Details = append(section.Details, webDetailRow{Label: "测试服务端", Value: server})
+	}
+	if source := getNetworkLatencySource(result); source != "" {
+		section.Details = append(section.Details, webDetailRow{Label: "延迟来源", Value: source})
+	}
+	if source := getNetworkDownloadSource(result); source != "" {
+		section.Details = append(section.Details, webDetailRow{Label: "下载来源", Value: source})
+	}
+	if source := getNetworkUploadSource(result); source != "" {
+		section.Details = append(section.Details, webDetailRow{Label: "上传来源", Value: source})
+	}
+	if node, ok := getNetworkSpeedtestNode(result); ok {
+		section.Details = append(section.Details,
+			webDetailRow{Label: "Speedtest 节点", Value: networkSpeedtestServerLabel(node)},
+			webDetailRow{Label: "节点位置", Value: fmt.Sprintf("%s %s", node.Location, node.Country)},
+			webDetailRow{Label: "ISP", Value: fallback(node.ISP, "-")},
+			webDetailRow{Label: "结果 URL", Value: fallback(node.ResultURL, "-")},
+			webDetailRow{Label: "出口 IP", Value: fallback(node.ExternalIP, "-")},
+			webDetailRow{Label: "Ping Jitter", Value: fmt.Sprintf("%.2f ms", node.PingJitter)},
+		)
+	}
+	if rows := getNetworkQualityRows(result); len(rows) > 0 {
+		table := webTable{Title: "TCP connect 网络质量矩阵", Headers: []string{"目标", "协议", "可用", "成功/失败", "平均延迟", "抖动", "失败率"}}
+		for _, row := range rows {
+			table.Rows = append(table.Rows, []string{
+				fmt.Sprintf("%s %s", row.Target, row.Address),
+				row.Protocol,
+				availabilityLabel(row.Available),
+				fmt.Sprintf("%d/%d", row.SuccessCount, row.FailureCount),
+				fmt.Sprintf("%.2f ms", row.AvgLatencyMs),
+				fmt.Sprintf("%.2f ms", row.JitterMs),
+				fmt.Sprintf("%.2f%%", row.FailureRate*100),
+			})
+		}
+		section.Tables = append(section.Tables, table)
+	}
+	if rows := getNetworkIperf3MatrixRows(result); len(rows) > 0 {
+		table := webTable{Title: "iperf3 多节点矩阵", Headers: []string{"节点", "协议", "下载", "上传", "延迟", "错误"}}
+		for _, row := range rows {
+			table.Rows = append(table.Rows, []string{
+				row.Server,
+				row.Protocol,
+				fmt.Sprintf("%.2f Mbps", row.DownloadMbps),
+				fmt.Sprintf("%.2f Mbps", row.UploadMbps),
+				fmt.Sprintf("%.2f ms", row.LatencyMs),
+				fallback(row.Error, "-"),
+			})
+		}
+		section.Tables = append(section.Tables, table)
+	}
+	if err := getNetworkError(result); err != "" {
+		section.Details = append(section.Details, webDetailRow{Label: "网络错误", Value: err})
+	}
+	return section
+}
+
+func (ws *WebServer) testSectionBase(id string, title string, subtitle string, result *models.TestResult, hint string) webReportSection {
+	section := webReportSection{
+		ID:       id,
+		Title:    title,
+		Subtitle: subtitle,
+		Hint:     hint,
+	}
+	if result == nil {
+		section.Status = "skipped"
+		section.StatusText = "未执行"
+		section.Summary = hint
+		return section
+	}
+	section.Status = result.Status
+	section.StatusText = ws.getStatusText(result.Status)
+	section.Summary = ws.getKeyMetrics(result)
+	if result.Status == models.TestStatusSuccess {
+		section.Hint = ""
+	}
+	section.Details = append(section.Details,
+		webDetailRow{Label: "测试状态", Value: section.StatusText},
+		webDetailRow{Label: "测试耗时", Value: fmt.Sprintf("%.2f 秒", result.DurationSeconds)},
+	)
+	if result.ErrorMessage != "" {
+		section.Details = append(section.Details, webDetailRow{Label: "错误信息", Value: result.ErrorMessage})
+	}
+	if section.Summary == "-" {
+		section.Summary = "本模块已执行，暂无可展示的关键指标。"
+	}
+	return section
+}
+
+func (ws *WebServer) optionalSection(id string, title string, subtitle string, summaryKey string, hint string) webReportSection {
+	section := webReportSection{
+		ID:       id,
+		Title:    title,
+		Subtitle: subtitle,
+		Hint:     hint,
+	}
+	if ws.report == nil || ws.report.Summary == nil {
+		section.Status = "skipped"
+		section.StatusText = "未执行"
+		section.Summary = hint
+		return section
+	}
+	value, ok := ws.report.Summary[summaryKey]
+	if !ok || value == nil {
+		section.Status = "skipped"
+		section.StatusText = "未执行"
+		section.Summary = hint
+		return section
+	}
+	section.Status = "success"
+	section.StatusText = "已执行"
+	section.Summary = "本模块已执行，详细结构会在后续版本中继续展开。"
+	section.Details = append(section.Details, webDetailRow{Label: "报告字段", Value: summaryKey})
+	section.Details = append(section.Details, webDetailRow{Label: "结果摘要", Value: fmt.Sprintf("%v", value)})
+	return section
+}
+
+func (ws *WebServer) placeholderSection(id string, title string, subtitle string, hint string) webReportSection {
+	return webReportSection{
+		ID:         id,
+		Title:      title,
+		Subtitle:   subtitle,
+		Status:     "skipped",
+		StatusText: "规划中",
+		Summary:    hint,
+		Hint:       hint,
+	}
 }
 
 func (ws *WebServer) summaryString(key string) string {
@@ -379,6 +793,13 @@ func availabilityLabel(available bool) string {
 		return "可用"
 	}
 	return "不可用"
+}
+
+func fallback(value string, fallbackValue string) string {
+	if value != "" {
+		return value
+	}
+	return fallbackValue
 }
 
 // getScoreColor 获取评分颜色

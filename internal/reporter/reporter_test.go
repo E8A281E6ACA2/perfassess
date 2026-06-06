@@ -749,9 +749,15 @@ func TestWebReportTemplateRendersMaterialSummary(t *testing.T) {
 	html := output.String()
 	for _, snippet := range []string{
 		"Material Design 3 Web Report",
+		"报告目录",
 		"评分基准",
 		"置信度",
 		"校准 2026-06-v1",
+		"CPU 测试",
+		"磁盘测试",
+		"网络测试",
+		"IP 质量",
+		"本次未启用流媒体检测",
 		"分享模板",
 		"VPS测评: Snapshot CPU",
 	} {
