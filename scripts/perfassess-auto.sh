@@ -392,7 +392,32 @@ def ratio_or_skipped(ok, total, suffix):
 def ip_quality_summary(value):
     if not isinstance(value, dict) or not value:
         return "未执行"
+    verdict = value.get("verdict") if isinstance(value.get("verdict"), dict) else {}
+    if verdict.get("summary"):
+        return text(verdict.get("summary"))
     return f"{text(value.get('public_ip'))} / 风险 {text(value.get('risk_level'))} / 评分 {text(value.get('risk_score'))}/100"
+
+def ip_verdict(value):
+    if not isinstance(value, dict):
+        return {}
+    verdict = value.get("verdict")
+    return verdict if isinstance(verdict, dict) else {}
+
+def ip_evidence_rows(value):
+    if not isinstance(value, dict):
+        return []
+    evidence = value.get("evidence") if isinstance(value.get("evidence"), list) else []
+    return [
+        [text(item.get("name")), text(item.get("value")), text(item.get("status")), text(item.get("detail"))]
+        for item in evidence
+        if isinstance(item, dict)
+    ]
+
+def ip_recommendations(value):
+    if not isinstance(value, dict):
+        return []
+    items = value.get("recommendations") if isinstance(value.get("recommendations"), list) else []
+    return [text(item) for item in items if text(item, "")]
 
 def security_summary(value, total, severity):
     if not isinstance(value, dict):
@@ -722,6 +747,9 @@ def write_module_artifacts():
     }
     ip_payload = {
         **module_common,
+        "verdict": ip_verdict(ip_report),
+        "evidence": ip_report.get("evidence", []) if isinstance(ip_report, dict) else [],
+        "recommendations": ip_recommendations(ip_report),
         "report": ip_report,
     }
     streaming_payload = {
@@ -791,6 +819,10 @@ def write_module_artifacts():
             "Perfassess IP 质量摘要",
             ip_quality_summary(ip_report),
             f"ASN: {text(ip_report.get('asn'))} | 组织: {text(ip_report.get('organization'))}" if ip_report else "未执行",
+            "证据:",
+            *[f"- {row[0]}: {row[1]} | {row[2]} | {row[3]}" for row in ip_evidence_rows(ip_report)],
+            "建议:",
+            *[f"- {item}" for item in ip_recommendations(ip_report)],
             "",
         ]),
         encoding="utf-8",
@@ -933,14 +965,27 @@ def console_report(color=False):
 
     rows += section("IP 质量")
     if ip_report:
+        verdict = ip_verdict(ip_report)
         rows.extend([
+            kv("结论", text(verdict.get("summary"), ip_quality_summary(ip_report))),
             kv("IP", f"{text(ip_report.get('public_ip'))} | {text(ip_report.get('country'))} {text(ip_report.get('city'))}"),
             kv("运营商", f"{text(ip_report.get('isp'))} / {text(ip_report.get('organization'))}"),
-            kv("类型", f"{text(ip_report.get('ip_version'))} | {text(ip_report.get('ip_type'))}"),
+            kv("类型", f"{text(ip_report.get('ip_version'))} | {text(verdict.get('ip_type_label'), text(ip_report.get('ip_type')))}"),
             kv("风险", f"{text(ip_report.get('risk_level'))} | {text(ip_report.get('risk_score'))}/100", style_for_status(ip_report.get("risk_level"))),
             kv("黑名单", f"干净 {text(blacklists.get('clean'))}/{text(blacklists.get('total'))} | 命中 {text(blacklists.get('listed'))}"),
             kv("邮件端口", f"连通 {mail_ok}/{len(mail_checks)}"),
         ])
+        evidence_rows = ip_evidence_rows(ip_report)
+        if evidence_rows:
+            rows.extend(table(
+                ["证据", "结果", "状态", "说明"],
+                evidence_rows[:6],
+                [12, 18, 10, 40],
+                status_col=2,
+            ))
+        recommendations = ip_recommendations(ip_report)
+        if recommendations:
+            rows.append(kv("建议", recommendations[0], "yellow"))
         factors = [item for item in ip_report.get("risk_factors", []) if isinstance(item, dict) and item.get("detected")]
         if factors:
             rows.extend(table(

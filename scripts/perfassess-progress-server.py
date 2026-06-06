@@ -731,12 +731,25 @@ def ip_quality_section(summary: dict[str, Any]) -> dict[str, Any]:
         return optional_section("ip-quality", "IP 节点分析报告", "公网 IP、归属地、机房类型、欺诈风险、DNSBL 和邮件连通性。", None, hint)
 
     blacklist = report.get("blacklist_summary") if isinstance(report.get("blacklist_summary"), dict) else {}
+    verdict = report.get("verdict") if isinstance(report.get("verdict"), dict) else {}
+    evidence = report.get("evidence") if isinstance(report.get("evidence"), list) else []
+    recommendations = report.get("recommendations") if isinstance(report.get("recommendations"), list) else []
     risk_factors = report.get("risk_factors") if isinstance(report.get("risk_factors"), list) else []
     blacklists = report.get("blacklist_checks") if isinstance(report.get("blacklist_checks"), list) else []
     mail_checks = report.get("mail_checks") if isinstance(report.get("mail_checks"), list) else []
     level = text(report.get("risk_level"), "unknown")
     status = "failed" if level == "high" else "warning" if level == "medium" else "success"
     tables = []
+    if evidence:
+        tables.append(table("结论证据", ["证据", "结果", "状态", "说明"], [
+            [item.get("name"), item.get("value"), item.get("status"), item.get("detail")]
+            for item in evidence if isinstance(item, dict)
+        ]))
+    if recommendations:
+        tables.append(table("建议", ["序号", "建议"], [
+            [index + 1, item]
+            for index, item in enumerate(recommendations)
+        ]))
     if risk_factors:
         tables.append(table("风险因子", ["名称", "命中", "置信度", "来源", "说明"], [
             [item.get("name"), "是" if item.get("detected") else "否", item.get("confidence"), item.get("source"), item.get("detail")]
@@ -758,10 +771,10 @@ def ip_quality_section(summary: dict[str, Any]) -> dict[str, Any]:
         "subtitle": "公网 IP、归属地、机房类型、欺诈风险、DNSBL 和邮件连通性。",
         "status": status,
         "status_text": {"low": "低风险", "medium": "中风险", "high": "高风险"}.get(level, "未知"),
-        "summary": f"{ip_node_type_summary(report)}，欺诈风险分 {text(report.get('risk_score'))}/100，综合评级 {ip_quality_grade(report)}。",
+        "summary": text(verdict.get("summary"), f"{ip_node_type_summary(report)}，欺诈风险分 {text(report.get('risk_score'))}/100，综合评级 {ip_quality_grade(report)}。"),
         "metrics": [
             metric("欺诈风险分", report.get("risk_score"), "/ 100", "red" if status == "failed" else "amber" if status == "warning" else "green"),
-            metric("综合评级", ip_quality_grade(report), {"low": "低风险", "medium": "中风险", "high": "高风险"}.get(level, "未知"), "red" if status == "failed" else "amber" if status == "warning" else "green"),
+            metric("综合评级", verdict.get("grade") or ip_quality_grade(report), verdict.get("risk_label") or {"low": "低风险", "medium": "中风险", "high": "高风险"}.get(level, "未知"), "red" if status == "failed" else "amber" if status == "warning" else "green"),
             metric("DNSBL 命中", blacklist.get("listed", 0), f"/ {blacklist.get('total', len(blacklists))}", "amber"),
             metric("邮件可连", count_reachable_mail(mail_checks), f"/ {len(mail_checks)}", "cyan"),
         ],
@@ -769,9 +782,10 @@ def ip_quality_section(summary: dict[str, Any]) -> dict[str, Any]:
             detail("IP 地址", report.get("public_ip")),
             detail("国家/地区", ", ".join(part for part in [text(report.get("country"), ""), text(report.get("city"), "")] if part)),
             detail("运营商/ASN", ip_asn_label(report)),
-            detail("IP 类型", ip_node_type_summary(report)),
-            detail("代理/VPN 标记", "是" if risk_factor_detected(report, "proxy") or risk_factor_detected(report, "vpn") else "否"),
-            detail("机房/托管标记", "是" if risk_factor_detected(report, "datacenter") else "否"),
+            detail("IP 类型", verdict.get("ip_type_label") or ip_node_type_summary(report)),
+            detail("代理/VPN 标记", "是" if verdict.get("proxy_hint") or risk_factor_detected(report, "proxy") or risk_factor_detected(report, "vpn") else "否"),
+            detail("机房/托管标记", "是" if verdict.get("hosting_hint") or risk_factor_detected(report, "datacenter") else "否"),
+            detail("邮件可用", "是" if verdict.get("mail_usable") else "否"),
             detail("评级依据", ip_quality_basis(report, blacklist, mail_checks)),
         ],
         "tables": tables,

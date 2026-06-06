@@ -100,6 +100,9 @@ func (s *IPQualityScanner) Run(systemInfo *models.SystemInfo) *models.IPQualityR
 	report.BlacklistSummary = summarizeBlacklists(report.BlacklistChecks)
 	report.MailChecks = s.checkMailPorts()
 	report.RiskScore, report.RiskLevel = calculateIPRisk(report)
+	report.Verdict = buildIPQualityVerdict(report)
+	report.Evidence = buildIPQualityEvidence(report)
+	report.Recommendations = buildIPQualityRecommendations(report)
 
 	if report.IPVersion == "IPv6" {
 		report.Notes = append(report.Notes, "当前版本仅对 IPv4 执行 DNSBL 黑名单查询，IPv6 已跳过该项。")
@@ -111,6 +114,83 @@ func (s *IPQualityScanner) Run(systemInfo *models.SystemInfo) *models.IPQualityR
 	report.Notes = append(report.Notes, "邮件连通性只测试出站 TCP 连接，不代表收信信誉或真实投递率。")
 
 	return report
+}
+
+func buildIPQualityVerdict(report *models.IPQualityReport) *models.IPQualityVerdict {
+	grade := ipQualityGrade(report)
+	mailUsable := countReachableIPQualityMail(report.MailChecks) > 0
+	hostingHint := ipQualityRiskFactorDetected(report, "datacenter") || report.IPType == "datacenter_likely"
+	proxyHint := ipQualityRiskFactorDetected(report, "proxy") || ipQualityRiskFactorDetected(report, "vpn") || ipQualityRiskFactorDetected(report, "tor")
+	return &models.IPQualityVerdict{
+		Grade:       grade,
+		Summary:     ipQualityVerdictSummary(report, grade, mailUsable, hostingHint, proxyHint),
+		IPTypeLabel: ipQualityTypeLabel(report.IPType),
+		RiskLabel:   ipQualityRiskLabel(report.RiskLevel),
+		MailUsable:  mailUsable,
+		HostingHint: hostingHint,
+		ProxyHint:   proxyHint,
+	}
+}
+
+func buildIPQualityEvidence(report *models.IPQualityReport) []*models.IPQualityEvidence {
+	evidence := []*models.IPQualityEvidence{
+		{Name: "公网 IP", Value: report.PublicIP, Status: "info", Detail: strings.TrimSpace(strings.Join([]string{report.Country, report.City}, " "))},
+		{Name: "ASN/组织", Value: ipQualityASNValue(report), Status: "info", Detail: report.ISP},
+		{Name: "IP 类型", Value: ipQualityTypeLabel(report.IPType), Status: ipQualityTypeStatus(report.IPType), Detail: "基于 ISP、ASN 组织和反向 DNS 关键词推断"},
+		{Name: "风险分", Value: fmt.Sprintf("%d/100", report.RiskScore), Status: report.RiskLevel, Detail: ipQualityRiskLabel(report.RiskLevel)},
+	}
+	if report.BlacklistSummary != nil {
+		status := "clean"
+		if report.BlacklistSummary.Listed > 0 {
+			status = "listed"
+		} else if report.BlacklistSummary.Timeout > 0 || report.BlacklistSummary.Other > 0 {
+			status = "partial"
+		}
+		evidence = append(evidence, &models.IPQualityEvidence{
+			Name:   "DNSBL",
+			Value:  fmt.Sprintf("命中 %d/%d", report.BlacklistSummary.Listed, report.BlacklistSummary.Total),
+			Status: status,
+			Detail: fmt.Sprintf("干净 %d，超时 %d，跳过 %d，其他 %d", report.BlacklistSummary.Clean, report.BlacklistSummary.Timeout, report.BlacklistSummary.Skipped, report.BlacklistSummary.Other),
+		})
+	}
+	evidence = append(evidence, &models.IPQualityEvidence{
+		Name:   "邮件端口",
+		Value:  fmt.Sprintf("可连 %d/%d", countReachableIPQualityMail(report.MailChecks), len(report.MailChecks)),
+		Status: ipQualityMailStatus(report.MailChecks),
+		Detail: "仅表示 TCP 出站连通性，不代表真实投递率",
+	})
+	for _, factor := range report.RiskFactors {
+		if factor == nil || !factor.Detected {
+			continue
+		}
+		evidence = append(evidence, &models.IPQualityEvidence{
+			Name:   "风险因子",
+			Value:  factor.Name,
+			Status: factor.Confidence,
+			Detail: factor.Detail,
+		})
+	}
+	return evidence
+}
+
+func buildIPQualityRecommendations(report *models.IPQualityReport) []string {
+	recommendations := []string{}
+	if report.BlacklistSummary != nil && report.BlacklistSummary.Listed > 0 {
+		recommendations = append(recommendations, "DNSBL 存在命中，不建议直接用于邮件发送或高信誉业务。")
+	}
+	if countReachableIPQualityMail(report.MailChecks) == 0 && len(report.MailChecks) > 0 {
+		recommendations = append(recommendations, "邮件端口全部不可连，如需发信建议使用第三方 SMTP 或工单确认端口策略。")
+	}
+	if ipQualityRiskFactorDetected(report, "proxy") || ipQualityRiskFactorDetected(report, "vpn") || ipQualityRiskFactorDetected(report, "tor") {
+		recommendations = append(recommendations, "检测到代理/VPN/Tor 相关线索，可能影响风控敏感服务访问。")
+	}
+	if report.IPType == "datacenter_likely" {
+		recommendations = append(recommendations, "该 IP 更像机房/云服务器节点，适合常规建站、代理入口或测试环境，不应按住宅 IP 预期使用。")
+	}
+	if len(recommendations) == 0 {
+		recommendations = append(recommendations, "当前未发现明显高风险线索，仍建议结合目标业务进行实际访问和投递测试。")
+	}
+	return recommendations
 }
 
 func (s *IPQualityScanner) checkBlacklists(ip net.IP) []*models.IPBlacklistCheck {
@@ -229,11 +309,37 @@ func (s *IPQualityScanner) lookupASN(ip net.IP) (string, string) {
 	if err != nil || len(records) == 0 {
 		return "", ""
 	}
-	fields := strings.Split(records[0], "|")
-	if len(fields) < 5 {
-		return strings.TrimSpace(fields[0]), ""
+	asn := parseTeamCymruOriginASN(records[0])
+	if asn == "" {
+		return "", ""
 	}
-	return strings.TrimSpace(fields[0]), strings.TrimSpace(fields[4])
+	return asn, s.lookupASNName(asn)
+}
+
+func (s *IPQualityScanner) lookupASNName(asn string) string {
+	ctx, cancel := context.WithTimeout(context.Background(), s.lookupTimeout)
+	defer cancel()
+	records, err := s.resolver.LookupTXT(ctx, "AS"+asn+".asn.cymru.com")
+	if err != nil || len(records) == 0 {
+		return ""
+	}
+	return parseTeamCymruASNName(records[0])
+}
+
+func parseTeamCymruOriginASN(record string) string {
+	fields := strings.Split(record, "|")
+	if len(fields) == 0 {
+		return ""
+	}
+	return strings.TrimSpace(fields[0])
+}
+
+func parseTeamCymruASNName(record string) string {
+	fields := strings.Split(record, "|")
+	if len(fields) < 5 {
+		return ""
+	}
+	return strings.TrimSpace(fields[4])
 }
 
 func teamCymruQuery(ip net.IP) string {
@@ -353,6 +459,120 @@ func calculateIPRisk(report *models.IPQualityReport) (int, string) {
 	default:
 		return score, "low"
 	}
+}
+
+func ipQualityGrade(report *models.IPQualityReport) string {
+	listed := 0
+	if report.BlacklistSummary != nil {
+		listed = report.BlacklistSummary.Listed
+	}
+	switch {
+	case report.RiskLevel == "low" && listed == 0:
+		return "A"
+	case report.RiskLevel == "low":
+		return "B"
+	case report.RiskLevel == "medium":
+		return "C"
+	default:
+		return "D"
+	}
+}
+
+func ipQualityVerdictSummary(report *models.IPQualityReport, grade string, mailUsable bool, hostingHint bool, proxyHint bool) string {
+	parts := []string{fmt.Sprintf("综合评级 %s", grade), ipQualityTypeLabel(report.IPType), ipQualityRiskLabel(report.RiskLevel)}
+	if mailUsable {
+		parts = append(parts, "邮件端口部分可连")
+	} else if len(report.MailChecks) > 0 {
+		parts = append(parts, "邮件端口不可连")
+	}
+	if proxyHint {
+		parts = append(parts, "存在代理/VPN/Tor 线索")
+	} else if hostingHint {
+		parts = append(parts, "存在机房/托管线索")
+	}
+	return strings.Join(parts, "；")
+}
+
+func ipQualityTypeLabel(value string) string {
+	switch value {
+	case "datacenter_likely":
+		return "机房/云服务器 IP"
+	case "residential_or_isp_likely":
+		return "住宅或运营商 IP"
+	default:
+		return "类型未知"
+	}
+}
+
+func ipQualityTypeStatus(value string) string {
+	switch value {
+	case "datacenter_likely":
+		return "hosting"
+	case "residential_or_isp_likely":
+		return "clean"
+	default:
+		return "unknown"
+	}
+}
+
+func ipQualityRiskLabel(value string) string {
+	switch value {
+	case "low":
+		return "低风险"
+	case "medium":
+		return "中风险"
+	case "high":
+		return "高风险"
+	default:
+		return "未知风险"
+	}
+}
+
+func ipQualityMailStatus(checks []*models.MailPortCheck) string {
+	reachable := countReachableIPQualityMail(checks)
+	switch {
+	case len(checks) == 0:
+		return "unknown"
+	case reachable == len(checks):
+		return "open"
+	case reachable > 0:
+		return "partial"
+	default:
+		return "blocked"
+	}
+}
+
+func countReachableIPQualityMail(checks []*models.MailPortCheck) int {
+	count := 0
+	for _, check := range checks {
+		if check != nil && check.Reachable {
+			count++
+		}
+	}
+	return count
+}
+
+func ipQualityRiskFactorDetected(report *models.IPQualityReport, name string) bool {
+	for _, factor := range report.RiskFactors {
+		if factor != nil && factor.Name == name && factor.Detected {
+			return true
+		}
+	}
+	return false
+}
+
+func ipQualityASNValue(report *models.IPQualityReport) string {
+	parts := []string{}
+	if strings.TrimSpace(report.ASN) != "" {
+		parts = append(parts, "AS"+strings.TrimSpace(report.ASN))
+	}
+	if strings.TrimSpace(report.Organization) != "" {
+		parts = append(parts, strings.TrimSpace(report.Organization))
+	}
+	if len(parts) == 0 {
+		return "-"
+	}
+	return strings.Join(parts, " / ")
 }
 
 func ipVersion(ip net.IP) string {

@@ -57,6 +57,18 @@ func TestTeamCymruQueryFormatsIPv4AndIPv6(t *testing.T) {
 	}
 }
 
+func TestParseTeamCymruRecords(t *testing.T) {
+	origin := "197540 | 159.195.40.0/22 | DE | ripencc | 1992-05-26"
+	if got := parseTeamCymruOriginASN(origin); got != "197540" {
+		t.Fatalf("expected origin ASN, got %q", got)
+	}
+
+	asnName := "197540 | DE | ripencc | 2011-07-21 | NETCUP-AS netcup GmbH, DE"
+	if got := parseTeamCymruASNName(asnName); got != "NETCUP-AS netcup GmbH, DE" {
+		t.Fatalf("expected ASN name, got %q", got)
+	}
+}
+
 func TestSummarizeBlacklists(t *testing.T) {
 	summary := summarizeBlacklists([]*models.IPBlacklistCheck{
 		{Status: "clean"},
@@ -85,6 +97,47 @@ func TestDetectRiskFactorsUsesEvidence(t *testing.T) {
 	}
 	if !detected["vpn"] || !detected["tor"] || !detected["datacenter"] {
 		t.Fatalf("expected vpn, tor and datacenter factors, got %#v", detected)
+	}
+}
+
+func TestBuildIPQualityVerdictEvidenceAndRecommendations(t *testing.T) {
+	report := &models.IPQualityReport{
+		PublicIP:     "192.0.2.10",
+		IPType:       "datacenter_likely",
+		RiskLevel:    "medium",
+		RiskScore:    45,
+		ASN:          "64500",
+		Organization: "Example Hosting",
+		ISP:          "Example ISP",
+		BlacklistSummary: &models.IPBlacklistSummary{
+			Total:  2,
+			Clean:  1,
+			Listed: 1,
+		},
+		RiskFactors: []*models.IPRiskFactor{
+			{Name: "datacenter", Detected: true, Confidence: "medium", Detail: "hosting keyword"},
+		},
+		MailChecks: []*models.MailPortCheck{
+			{Target: "smtp.example", Port: 25, Status: "blocked"},
+		},
+	}
+
+	verdict := buildIPQualityVerdict(report)
+	if verdict.Grade != "C" {
+		t.Fatalf("expected grade C, got %#v", verdict)
+	}
+	if !verdict.HostingHint || verdict.MailUsable {
+		t.Fatalf("unexpected verdict flags: %#v", verdict)
+	}
+
+	evidence := buildIPQualityEvidence(report)
+	if len(evidence) < 6 {
+		t.Fatalf("expected evidence rows, got %#v", evidence)
+	}
+
+	recommendations := buildIPQualityRecommendations(report)
+	if len(recommendations) == 0 {
+		t.Fatal("expected recommendations")
 	}
 }
 
