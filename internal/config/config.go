@@ -5,12 +5,13 @@ package config
 import "fmt"
 
 const (
-	DefaultCPUWeight      = 0.30
-	DefaultMemoryWeight   = 0.20
-	DefaultDiskWeight     = 0.25
-	DefaultNetworkWeight  = 0.25
-	DefaultScoreProfile   = "server"
-	DefaultNetworkProfile = "quick"
+	DefaultCPUWeight        = 0.30
+	DefaultMemoryWeight     = 0.20
+	DefaultDiskWeight       = 0.25
+	DefaultNetworkWeight    = 0.25
+	DefaultScoreProfile     = "server"
+	DefaultNetworkProfile   = "quick"
+	DefaultStreamingProfile = "quick"
 )
 
 // Config 表示应用程序的配置结构
@@ -43,6 +44,9 @@ type Config struct {
 
 	// EnableStreaming 是否启用流媒体检测功能
 	EnableStreaming bool `mapstructure:"enable_streaming"`
+
+	// StreamingProfile 流媒体检测档位，可选值: quick, standard, full
+	StreamingProfile string `mapstructure:"streaming_profile"`
 
 	// EnableAIServices 是否启用AI服务检测功能
 	EnableAIServices bool `mapstructure:"enable_ai_services"`
@@ -110,6 +114,7 @@ func DefaultConfig() *Config {
 		Verbose:            false,
 		EnableRouteTrace:   false,
 		EnableStreaming:    false,
+		StreamingProfile:   DefaultStreamingProfile,
 		EnableAIServices:   false,
 		EnableIPQuality:    false,
 		EnableStressTest:   false,
@@ -140,6 +145,15 @@ func DefaultScoreWeights() map[string]float64 {
 }
 
 func IsValidNetworkProfile(profile string) bool {
+	switch profile {
+	case "quick", "standard", "full":
+		return true
+	default:
+		return false
+	}
+}
+
+func IsValidStreamingProfile(profile string) bool {
 	switch profile {
 	case "quick", "standard", "full":
 		return true
@@ -283,6 +297,13 @@ func (c *Config) Validate() error {
 		return &ConfigError{
 			Field:   "network_profile",
 			Message: "无效的网络检测档位: " + c.NetworkProfile,
+		}
+	}
+
+	if !IsValidStreamingProfile(c.StreamingProfile) {
+		return &ConfigError{
+			Field:   "streaming_profile",
+			Message: "无效的流媒体检测档位: " + c.StreamingProfile,
 		}
 	}
 

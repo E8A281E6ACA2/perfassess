@@ -10,6 +10,7 @@ progress_file="${PERFASSESS_PROGRESS_FILE:-$output_dir/progress.json}"
 auto_profile="${PERFASSESS_AUTO_PROFILE:-standard}"
 quality_profile="${PERFASSESS_QUALITY_PROFILE:-builtin}"
 network_profile="${PERFASSESS_NETWORK_PROFILE:-auto}"
+streaming_profile="${PERFASSESS_STREAMING_PROFILE:-auto}"
 extra_args="${PERFASSESS_AUTO_ARGS:-}"
 stress_enabled="${PERFASSESS_AUTO_STRESS:-0}"
 iperf3_server="${PERFASSESS_IPERF3_SERVER:-}"
@@ -44,11 +45,27 @@ case "$network_profile" in
     ;;
 esac
 
+case "$streaming_profile" in
+  auto|quick|standard|full) ;;
+  *)
+    echo "perfassess auto failed: PERFASSESS_STREAMING_PROFILE must be auto, quick, standard, or full" >&2
+    exit 1
+    ;;
+esac
+
 if [[ "$network_profile" == "auto" ]]; then
   case "$auto_profile" in
     full) network_profile="full" ;;
     standard) network_profile="standard" ;;
     *) network_profile="quick" ;;
+  esac
+fi
+
+if [[ "$streaming_profile" == "auto" ]]; then
+  case "$auto_profile" in
+    full) streaming_profile="full" ;;
+    standard) streaming_profile="standard" ;;
+    *) streaming_profile="quick" ;;
   esac
 fi
 
@@ -84,8 +101,8 @@ case "$auto_profile" in
   basic)
     ;;
   standard|full)
-    default_args+=(--route-trace --streaming --ai-services --ip-quality --security)
-    default_text_args+=(--route-trace --streaming --ai-services --ip-quality --security)
+    default_args+=(--route-trace --streaming --streaming-profile "$streaming_profile" --ai-services --ip-quality --security)
+    default_text_args+=(--route-trace --streaming --streaming-profile "$streaming_profile" --ai-services --ip-quality --security)
     ;;
 esac
 if [[ "$stress_enabled" == "1" || "$stress_enabled" == "true" ]]; then
@@ -301,7 +318,7 @@ finish_step "运行验收流程"
 
 current_progress_step="summary"
 progress_update "summary" "running" "生成汇总"
-python3 - "$output_dir" "$auto_profile" "$quality_profile" "$network_profile" <<'PY'
+python3 - "$output_dir" "$auto_profile" "$quality_profile" "$network_profile" "$streaming_profile" <<'PY'
 import json
 import pathlib
 import sys
@@ -312,6 +329,7 @@ out = pathlib.Path(sys.argv[1])
 auto_profile = sys.argv[2]
 quality_profile = sys.argv[3]
 network_profile = sys.argv[4]
+streaming_profile = sys.argv[5]
 
 def load(name):
     with (out / name).open(encoding="utf-8") as f:
@@ -629,6 +647,7 @@ def write_module_artifacts():
         "auto_profile": auto_profile,
         "quality_profile": quality_profile,
         "network_profile": network_profile,
+        "streaming_profile": streaming_profile,
     }
     hardware_payload = {
         **module_common,
@@ -669,7 +688,11 @@ def write_module_artifacts():
         **module_common,
         "report": ip_report,
     }
-    streaming_payload = {**module_common, "results": default_summary.get("streaming_results", {})}
+    streaming_payload = {
+        **module_common,
+        "profile": text(default_summary.get("streaming_profile"), streaming_profile),
+        "results": default_summary.get("streaming_results", {}),
+    }
     ai_payload = {**module_common, "results": default_summary.get("ai_results", {})}
     security_payload = {**module_common, "report": default_summary.get("security_report", {})}
     stress_payload = {**module_common, "report": stress_report}
@@ -800,6 +823,7 @@ def console_report(color=False):
         line("═"),
         f"{kv('版本', version)}    {kv('档位', auto_profile, 'yellow')}    {kv('质量', quality_profile, 'yellow')}",
         kv("网络档位", network_profile, "yellow"),
+        kv("流媒体档位", streaming_profile, "yellow"),
         kv("输出目录", out),
     ]
 
@@ -978,6 +1002,7 @@ lines = [
     f"| 自动档位 | {auto_profile} |",
     f"| 质量档位 | {quality_profile} |",
     f"| 网络档位 | {network_profile} |",
+    f"| 流媒体档位 | {streaming_profile} |",
     f"| 综合评分 | {num(default_summary.get('total_score'))} / 100 |",
     f"| 等级 | {text(default_summary.get('grade'))} |",
     f"| 置信度 | {text(confidence)} |",

@@ -150,6 +150,9 @@ func TestBindFlagsVPSProfilePreset(t *testing.T) {
 	if !app.config.EnableStreaming {
 		t.Fatal("expected vps profile to enable streaming checks")
 	}
+	if app.config.StreamingProfile != "standard" {
+		t.Fatalf("expected vps profile streaming profile standard, got %q", app.config.StreamingProfile)
+	}
 	if app.config.EnableAIServices {
 		t.Fatal("expected vps profile to keep ai service checks disabled")
 	}
@@ -232,6 +235,26 @@ func TestBindFlagsAcceptsNetworkProfile(t *testing.T) {
 	}
 }
 
+func TestBindFlagsAcceptsStreamingProfile(t *testing.T) {
+	app := NewCLI()
+	cmd := app.GetRootCmd()
+	args := []string{"--streaming", "--streaming-profile", "full"}
+	if err := cmd.ParseFlags(args); err != nil {
+		t.Fatalf("failed to parse flags: %v", err)
+	}
+
+	if err := app.bindFlags(cmd); err != nil {
+		t.Fatalf("expected streaming profile bind to succeed, got %v", err)
+	}
+
+	if !app.config.EnableStreaming {
+		t.Fatal("expected streaming to be enabled")
+	}
+	if app.config.StreamingProfile != "full" {
+		t.Fatalf("expected streaming profile full, got %q", app.config.StreamingProfile)
+	}
+}
+
 func TestBindFlagsFullPresetUsesFullNetworkProfile(t *testing.T) {
 	app := NewCLI()
 	cmd := app.GetRootCmd()
@@ -246,6 +269,9 @@ func TestBindFlagsFullPresetUsesFullNetworkProfile(t *testing.T) {
 
 	if app.config.NetworkProfile != "full" {
 		t.Fatalf("expected full preset network profile full, got %q", app.config.NetworkProfile)
+	}
+	if app.config.StreamingProfile != "full" {
+		t.Fatalf("expected full preset streaming profile full, got %q", app.config.StreamingProfile)
 	}
 	if len(app.config.RouteTraceTargets) <= 6 {
 		t.Fatalf("expected full network profile to expand route targets, got %#v", app.config.RouteTraceTargets)

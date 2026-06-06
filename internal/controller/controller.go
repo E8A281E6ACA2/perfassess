@@ -201,6 +201,7 @@ func (ac *AssessmentController) RunAssessment(session *models.AssessmentSession)
 	}
 	if streamingResults != nil {
 		report.Summary["streaming_results"] = streamingResults
+		report.Summary["streaming_profile"] = ac.config.StreamingProfile
 	}
 	if aiResults != nil {
 		report.Summary["ai_results"] = aiResults
@@ -398,7 +399,7 @@ func (ac *AssessmentController) runRouteTrace() ([]*models.TraceResult, error) {
 // runStreamingDetection 执行流媒体检测
 func (ac *AssessmentController) runStreamingDetection() (map[string]*models.StreamingResult, error) {
 	// 创建流媒体检测器
-	detector := tests.NewStreamingDetector(ac.logger)
+	detector := tests.NewStreamingDetectorWithProfile(ac.logger, ac.config.StreamingProfile)
 
 	// 检查网络连接
 	if !detector.CheckConnectivity() {

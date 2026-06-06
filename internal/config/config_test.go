@@ -47,6 +47,9 @@ func TestDefaultConfigUsesBuiltinNetworkBackend(t *testing.T) {
 	if cfg.NetworkProfile != DefaultNetworkProfile {
 		t.Fatalf("expected default network profile %q, got %q", DefaultNetworkProfile, cfg.NetworkProfile)
 	}
+	if cfg.StreamingProfile != DefaultStreamingProfile {
+		t.Fatalf("expected default streaming profile %q, got %q", DefaultStreamingProfile, cfg.StreamingProfile)
+	}
 	if err := cfg.Validate(); err != nil {
 		t.Fatalf("expected default config to validate, got %v", err)
 	}
@@ -86,6 +89,24 @@ func TestValidateRejectsUnknownNetworkProfile(t *testing.T) {
 	}
 	if configErr.Field != "network_profile" {
 		t.Fatalf("expected field network_profile, got %q", configErr.Field)
+	}
+}
+
+func TestValidateRejectsUnknownStreamingProfile(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.StreamingProfile = "unknown"
+
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("expected invalid streaming profile to fail validation")
+	}
+
+	configErr, ok := err.(*ConfigError)
+	if !ok {
+		t.Fatalf("expected ConfigError, got %T", err)
+	}
+	if configErr.Field != "streaming_profile" {
+		t.Fatalf("expected field streaming_profile, got %q", configErr.Field)
 	}
 }
 

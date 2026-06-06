@@ -37,8 +37,8 @@ curl -fsSL https://raw.githubusercontent.com/E8A281E6ACA2/perfassess/main/script
 启动前脚本会探测 CPU 线程数、内存、swap 和可用磁盘，并选择自动测评档位和后端质量档位。有交互终端时会在机器探测后、正式测评前显示选项；通过 `curl | bash` 这类无人值守方式运行时会自动选择推荐档位。自动档位只会在内存或磁盘明显不足时降级到 `basic`；单核但内存和磁盘充足的机器会默认跑 `standard`，保留路由、流媒体、AI、IP 质量和安全体检等扩展报告。
 
 - `basic`：基础测评，CPU、内存、磁盘、网络，适合低配或 512MB 机器。
-- `standard`：标准完整报告，基础测评加路由追踪、流媒体解锁、AI 服务、IP 质量和安全体检，不跑压力测试。
-- `full`：全量测评，标准完整报告加压力测试，耗时更长且会明显占用资源。
+- `standard`：标准完整报告，基础测评加路由追踪、standard 档流媒体解锁、AI 服务、IP 质量和安全体检，不跑压力测试。
+- `full`：全量测评，标准完整报告加 full 档流媒体解锁和压力测试，耗时更长且会明显占用资源。
 
 后端质量档位用于控制报告置信度和可比性：
 
@@ -53,6 +53,8 @@ curl -fsSL https://raw.githubusercontent.com/E8A281E6ACA2/perfassess/main/script
 curl -fsSL https://raw.githubusercontent.com/E8A281E6ACA2/perfassess/main/scripts/bootstrap.sh | bash -s -- --quality builtin
 curl -fsSL https://raw.githubusercontent.com/E8A281E6ACA2/perfassess/main/scripts/bootstrap.sh | bash -s -- --quality mainstream
 ```
+
+流媒体检测档位默认跟随自动测评档位：`basic` 不启用，`standard` 使用主流平台集合，`full` 增加区域型平台。需要单独指定时可设置 `PERFASSESS_STREAMING_PROFILE=quick|standard|full`。
 
 如需让 `mainstream` 使用真实 iperf3 上传/下载，需要提供可访问的 iperf3 服务端：
 
@@ -650,6 +652,8 @@ Flags:
       --network-profile string
                               网络检测档位 (quick,standard,full) (default "quick")
       --streaming            启用流媒体解锁检测功能
+      --streaming-profile string
+                              流媒体检测档位 (quick,standard,full) (default "quick")
       --ai-services          启用 AI 服务检测功能
       --ip-quality           启用 IP 质量检测
       --stress               启用长时间压力测试
@@ -726,6 +730,9 @@ Flags:
 
 # 启用流媒体解锁检测
 ./build/perfassess --streaming
+
+# 启用 full 流媒体检测档位
+./build/perfassess --streaming --streaming-profile full
 
 # 组合使用多个功能
 ./build/perfassess -b all --route-trace --streaming -o report.txt
@@ -1096,6 +1103,7 @@ A: 使用 `--port` 参数指定其他端口：
 | `--sort-by` | - | compare-dir 排序字段 | `compare-dir ./reports --sort-by cpu` |
 | `--route-trace` | - | 路由追踪 | `--route-trace` |
 | `--streaming` | - | 流媒体检测 | `--streaming` |
+| `--streaming-profile` | - | 流媒体检测档位 | `--streaming-profile full` |
 | `--ai-services` | - | AI 服务检测 | `--ai-services` |
 | `--ip-quality` | - | IP 质量检测 | `--ip-quality` |
 | `--stress` | - | 长时间压力测试 | `--stress` |

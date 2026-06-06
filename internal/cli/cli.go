@@ -158,6 +158,10 @@ func (c *CLI) setupCommands() {
 	flags.Bool("streaming", false,
 		"启用流媒体解锁检测功能")
 
+	// --streaming-profile 参数：选择流媒体检测档位
+	flags.String("streaming-profile", config.DefaultStreamingProfile,
+		"流媒体检测档位 (quick,standard,full)")
+
 	// --ai-services 参数：启用 AI 服务检测
 	flags.Bool("ai-services", false,
 		"启用 AI 服务可用性检测功能")
@@ -504,6 +508,10 @@ func (c *CLI) bindFlags(cmd *cobra.Command) error {
 		c.config.EnableStreaming = streaming
 	}
 
+	if streamingProfile, err := flags.GetString("streaming-profile"); err == nil && flags.Changed("streaming-profile") {
+		c.config.StreamingProfile = streamingProfile
+	}
+
 	// 绑定 ai-services 参数
 	if aiServices, err := flags.GetBool("ai-services"); err == nil && flags.Changed("ai-services") {
 		c.config.EnableAIServices = aiServices
@@ -580,6 +588,7 @@ func (c *CLI) applyQuickPreset() {
 	c.config.Tests = []string{"cpu", "memory", "disk"}
 	c.config.EnableRouteTrace = false
 	c.config.EnableStreaming = false
+	c.config.StreamingProfile = "quick"
 	c.config.EnableAIServices = false
 	c.config.EnableIPQuality = false
 	c.config.EnableStressTest = false
@@ -596,6 +605,7 @@ func (c *CLI) applyFullPreset() {
 	c.config.Tests = []string{"all"}
 	c.config.EnableRouteTrace = true
 	c.config.EnableStreaming = true
+	c.config.StreamingProfile = "full"
 	c.config.EnableAIServices = true
 	c.config.EnableIPQuality = true
 	c.config.EnableStressTest = true
@@ -612,6 +622,7 @@ func (c *CLI) applyVPSProfilePreset() {
 	c.config.ScoreProfile = "vps"
 	c.config.EnableRouteTrace = true
 	c.config.EnableStreaming = true
+	c.config.StreamingProfile = "standard"
 	c.config.EnableAIServices = false
 	c.config.EnableIPQuality = true
 	c.config.EnableStressTest = false

@@ -54,6 +54,7 @@ Environment:
   PERFASSESS_AUTO_PROFILE=standard  Auto profile: auto, basic, standard, or full.
   PERFASSESS_QUALITY_PROFILE=mainstream  Backend quality: auto, builtin, or mainstream.
   PERFASSESS_NETWORK_PROFILE=standard  Network profile: auto, quick, standard, or full.
+  PERFASSESS_STREAMING_PROFILE=full  Streaming profile: auto, quick, standard, or full.
   PERFASSESS_AUTO_STRESS=1          Include stress test when profile is standard.
   PERFASSESS_AUTO_OPTIONAL=auto  Let acceptance run optional checks when dependencies exist.
   PERFASSESS_IPERF3_SERVER=1.2.3.4:5201  Use iperf3 network backend with this server.

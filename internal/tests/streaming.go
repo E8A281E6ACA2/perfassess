@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 
@@ -36,6 +37,12 @@ type StreamingDetector struct {
 
 	// platforms 支持的平台配置
 	platforms map[string]StreamingPlatform
+
+	// platformOrder 固定检测顺序，避免 map 遍历顺序导致报告抖动
+	platformOrder []string
+
+	// profile 当前检测档位
+	profile string
 }
 
 // NewStreamingDetector 创建新的流媒体检测器
@@ -52,13 +59,32 @@ func NewStreamingDetector(logger *logger.Logger) *StreamingDetector {
 				return nil
 			},
 		},
-		platforms: make(map[string]StreamingPlatform),
+		platforms:     make(map[string]StreamingPlatform),
+		platformOrder: []string{},
+		profile:       "quick",
 	}
 
 	// 初始化默认平台
 	detector.initDefaultPlatforms()
 
 	return detector
+}
+
+// NewStreamingDetectorWithProfile 创建指定档位的流媒体检测器
+func NewStreamingDetectorWithProfile(logger *logger.Logger, profile string) *StreamingDetector {
+	detector := NewStreamingDetector(logger)
+	detector.SetProfile(profile)
+	return detector
+}
+
+// SetProfile 设置检测档位。quick 保持低耗时，standard 覆盖主流平台，full 增加区域型平台。
+func (sd *StreamingDetector) SetProfile(profile string) {
+	switch profile {
+	case "quick", "standard", "full":
+		sd.profile = profile
+	default:
+		sd.profile = "quick"
+	}
 }
 
 // initDefaultPlatforms 初始化默认支持的流媒体平台
@@ -183,6 +209,116 @@ func (sd *StreamingDetector) initDefaultPlatforms() {
 			return false, "", fmt.Sprintf("HTTP %d", resp.StatusCode)
 		},
 	}
+
+	sd.platforms["Apple TV+"] = StreamingPlatform{
+		Name:      "Apple TV+",
+		TestURL:   "https://tv.apple.com/",
+		CheckFunc: basicStatusCheck("Unknown"),
+	}
+
+	sd.platforms["Spotify"] = StreamingPlatform{
+		Name:      "Spotify",
+		TestURL:   "https://www.spotify.com/",
+		CheckFunc: basicStatusCheck("Unknown"),
+	}
+
+	sd.platforms["TikTok"] = StreamingPlatform{
+		Name:      "TikTok",
+		TestURL:   "https://www.tiktok.com/",
+		CheckFunc: basicStatusCheck("Unknown"),
+	}
+
+	sd.platforms["DAZN"] = StreamingPlatform{
+		Name:      "DAZN",
+		TestURL:   "https://www.dazn.com/",
+		CheckFunc: basicStatusCheck("Unknown"),
+	}
+
+	sd.platforms["Abema"] = StreamingPlatform{
+		Name:      "Abema",
+		TestURL:   "https://abema.tv/",
+		CheckFunc: basicStatusCheck("JP"),
+	}
+
+	sd.platforms["Niconico"] = StreamingPlatform{
+		Name:      "Niconico",
+		TestURL:   "https://www.nicovideo.jp/",
+		CheckFunc: basicStatusCheck("JP"),
+	}
+
+	sd.platforms["Bilibili"] = StreamingPlatform{
+		Name:      "Bilibili",
+		TestURL:   "https://www.bilibili.com/",
+		CheckFunc: basicStatusCheck("CN"),
+	}
+
+	sd.platforms["TVB Anywhere"] = StreamingPlatform{
+		Name:      "TVB Anywhere",
+		TestURL:   "https://www.tvbanywhere.com/",
+		CheckFunc: basicStatusCheck("HK"),
+	}
+
+	sd.platformOrder = []string{
+		"Netflix",
+		"YouTube",
+		"Disney+",
+		"Prime Video",
+		"HBO Max",
+		"Hulu",
+		"Paramount+",
+		"BBC iPlayer",
+		"Apple TV+",
+		"Spotify",
+		"TikTok",
+		"DAZN",
+		"Abema",
+		"Niconico",
+		"Bilibili",
+		"TVB Anywhere",
+	}
+}
+
+func basicStatusCheck(region string) func(*http.Response, string) (bool, string, string) {
+	return func(resp *http.Response, body string) (bool, string, string) {
+		if resp.StatusCode >= 200 && resp.StatusCode < 400 {
+			lowered := strings.ToLower(body)
+			if strings.Contains(lowered, "not available") || strings.Contains(lowered, "unavailable in your") || strings.Contains(lowered, "not yet available") {
+				return false, "", "地区限制"
+			}
+			return true, region, "可访问"
+		}
+		return false, "", fmt.Sprintf("HTTP %d", resp.StatusCode)
+	}
+}
+
+func (sd *StreamingDetector) platformsForProfile() []string {
+	switch sd.profile {
+	case "full":
+		return sd.orderedPlatforms()
+	case "standard":
+		return []string{"Netflix", "YouTube", "Disney+", "Prime Video", "HBO Max", "Hulu", "Paramount+", "BBC iPlayer", "Apple TV+", "Spotify", "TikTok", "DAZN"}
+	default:
+		return []string{"Netflix", "YouTube", "Disney+", "Prime Video", "HBO Max", "Hulu", "Paramount+", "BBC iPlayer"}
+	}
+}
+
+func (sd *StreamingDetector) orderedPlatforms() []string {
+	seen := make(map[string]bool, len(sd.platformOrder))
+	platforms := make([]string, 0, len(sd.platforms))
+	for _, name := range sd.platformOrder {
+		if _, exists := sd.platforms[name]; exists {
+			platforms = append(platforms, name)
+			seen[name] = true
+		}
+	}
+	custom := make([]string, 0)
+	for name := range sd.platforms {
+		if !seen[name] {
+			custom = append(custom, name)
+		}
+	}
+	sort.Strings(custom)
+	return append(platforms, custom...)
 }
 
 // CheckPlatform 检测单个平台
@@ -261,12 +397,13 @@ func (sd *StreamingDetector) CheckPlatform(platformName string) (*models.Streami
 //   - map[string]*models.StreamingResult: 所有平台的检测结果
 //   - error: 检测错误
 func (sd *StreamingDetector) CheckAll() (map[string]*models.StreamingResult, error) {
-	sd.logger.Info(fmt.Sprintf("开始检测所有流媒体平台，共 %d 个", len(sd.platforms)))
+	platforms := sd.platformsForProfile()
+	sd.logger.Info(fmt.Sprintf("开始检测流媒体平台，档位: %s，数量: %d", sd.profile, len(platforms)))
 
 	results := make(map[string]*models.StreamingResult)
 
 	// 串行检测（避免并发请求被识别为攻击）
-	for platformName := range sd.platforms {
+	for _, platformName := range platforms {
 		result, err := sd.CheckPlatform(platformName)
 		if err != nil {
 			sd.logger.Error(fmt.Sprintf("检测 %s 出错", platformName), err)
@@ -279,7 +416,7 @@ func (sd *StreamingDetector) CheckAll() (map[string]*models.StreamingResult, err
 		time.Sleep(500 * time.Millisecond)
 	}
 
-	sd.logger.Info(fmt.Sprintf("流媒体检测完成，成功: %d/%d", len(results), len(sd.platforms)))
+	sd.logger.Info(fmt.Sprintf("流媒体检测完成，成功: %d/%d", len(results), len(platforms)))
 
 	return results, nil
 }
@@ -289,6 +426,7 @@ func (sd *StreamingDetector) CheckAll() (map[string]*models.StreamingResult, err
 //   - platform: 平台配置
 func (sd *StreamingDetector) AddCustomPlatform(platform StreamingPlatform) {
 	sd.platforms[platform.Name] = platform
+	sd.platformOrder = append(sd.platformOrder, platform.Name)
 	sd.logger.Info(fmt.Sprintf("添加自定义平台: %s", platform.Name))
 }
 
@@ -296,11 +434,7 @@ func (sd *StreamingDetector) AddCustomPlatform(platform StreamingPlatform) {
 // 返回:
 //   - []string: 平台名称列表
 func (sd *StreamingDetector) GetSupportedPlatforms() []string {
-	platforms := make([]string, 0, len(sd.platforms))
-	for name := range sd.platforms {
-		platforms = append(platforms, name)
-	}
-	return platforms
+	return sd.orderedPlatforms()
 }
 
 // CheckConnectivity 检查网络连接性
