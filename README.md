@@ -35,6 +35,19 @@ cat /tmp/perfassess-auto/summary.md
 
 执行过程中会实时显示当前进度，例如系统信息、CPU、内存、磁盘、网络、验收步骤；完整输出仍会保存到 `/tmp/perfassess-auto/`。如果只想后台静默保存日志，可以设置 `PERFASSESS_AUTO_PROGRESS=0`。
 
+启动前脚本会探测 CPU 线程数、内存、swap 和可用磁盘，并选择自动测评档位。有交互终端时会显示选项；通过 `curl | bash` 这类无人值守方式运行时会自动选择推荐档位：
+
+- `basic`：基础测评，CPU、内存、磁盘、网络，适合低配或 512MB 机器。
+- `full`：完整报告，基础测评加路由追踪、流媒体解锁、AI 服务、IP 质量和安全体检，不跑压力测试。
+- `stress`：压力模式，完整报告加压力测试，耗时更长且会明显占用资源。
+
+可以手动指定档位：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/E8A281E6ACA2/perfassess/main/scripts/bootstrap.sh | bash -s -- --profile full
+curl -fsSL https://raw.githubusercontent.com/E8A281E6ACA2/perfassess/main/scripts/bootstrap.sh | bash -s -- --profile stress
+```
+
 512MB 等低内存机器会自动进入低内存模式：Go 构建并发会降到 1，Linux 主机会尽量创建临时 swap，默认跳过 `go test ./...`，但仍会构建二进制并运行完整测评和验收摘要。临时 swap 会在脚本退出时清理；如需强制跑单元测试可设置 `PERFASSESS_BOOTSTRAP_TESTS=1`，如需禁用临时 swap 可设置 `PERFASSESS_BOOTSTRAP_SWAP=0`。
 
 如果希望启动 Material Design 3 / Google 风格实时 Web 测评页面：

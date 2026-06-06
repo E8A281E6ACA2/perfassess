@@ -9,6 +9,8 @@ BOOTSTRAP_TESTS_SET="${PERFASSESS_BOOTSTRAP_TESTS+x}"
 RUN_TESTS="${PERFASSESS_BOOTSTRAP_TESTS:-1}"
 START_WEB="${PERFASSESS_BOOTSTRAP_WEB:-0}"
 WEB_PORT="${PERFASSESS_WEB_PORT:-8080}"
+AUTO_PROFILE="${PERFASSESS_AUTO_PROFILE:-auto}"
+BOOTSTRAP_INTERACTIVE="${PERFASSESS_BOOTSTRAP_INTERACTIVE:-auto}"
 ACTION="run"
 PROGRESS_SERVER_PID=""
 LOW_MEMORY_THRESHOLD_MB="${PERFASSESS_LOW_MEMORY_THRESHOLD_MB:-768}"
@@ -26,6 +28,7 @@ Options:
   --go VERSION    Go version to install when missing or too old. Default: $GO_VERSION
   --web           Start the realtime Material Design progress page.
   --port PORT     Web report port when --web is used. Default: $WEB_PORT
+  --profile NAME  Auto benchmark profile: auto, basic, full, stress. Default: $AUTO_PROFILE
   --clean         Remove build output and auto-test output.
   --clean-all     Remove build output, auto-test output, and the cloned source directory.
   -h, --help      Show this help.
@@ -36,6 +39,8 @@ Environment:
   PERFASSESS_BOOTSTRAP_SWAP=auto Create temporary swap on low-memory Linux hosts. Set 0 to disable.
   PERFASSESS_LOW_MEMORY_THRESHOLD_MB=768  Memory threshold for low-memory mode.
   PERFASSESS_WEB_PORT=9090       Web report port.
+  PERFASSESS_AUTO_PROFILE=full    Auto profile: auto, basic, full, or stress.
+  PERFASSESS_AUTO_STRESS=1        Include stress test when profile is full.
   PERFASSESS_AUTO_OPTIONAL=auto  Let acceptance run optional checks when dependencies exist.
 EOF
 }
@@ -72,6 +77,11 @@ while [[ $# -gt 0 ]]; do
     --port)
       [[ $# -ge 2 ]] || fail "--port requires a port"
       WEB_PORT="$2"
+      shift 2
+      ;;
+    --profile)
+      [[ $# -ge 2 ]] || fail "--profile requires a value"
+      AUTO_PROFILE="$2"
       shift 2
       ;;
     --clean)
@@ -218,6 +228,20 @@ swap_total_mb() {
   fi
 }
 
+cpu_threads() {
+  if command -v getconf >/dev/null 2>&1; then
+    getconf _NPROCESSORS_ONLN 2>/dev/null || echo 0
+  elif [[ -r /proc/cpuinfo ]]; then
+    awk '/^processor[[:space:]]*:/ { count++ } END { print count + 0 }' /proc/cpuinfo
+  else
+    echo 0
+  fi
+}
+
+disk_available_mb() {
+  df -Pm . 2>/dev/null | awk 'NR == 2 { print $4 }'
+}
+
 configure_low_memory_mode() {
   local mem_mb swap_mb
   mem_mb="$(memory_total_mb)"
@@ -291,6 +315,91 @@ cleanup_bootstrap_swap() {
     "${SUDO[@]}" rm -f "$BOOTSTRAP_SWAP_FILE" >/dev/null 2>&1 || true
     BOOTSTRAP_SWAP_ACTIVE="0"
   fi
+}
+
+recommended_profile() {
+  local mem_mb="$1"
+  local disk_mb="$2"
+  local cpu_count="$3"
+
+  if [[ "$mem_mb" -gt 0 && "$mem_mb" -lt 1024 ]]; then
+    echo "basic"
+  elif [[ "$disk_mb" -gt 0 && "$disk_mb" -lt 2048 ]]; then
+    echo "basic"
+  elif [[ "$cpu_count" -gt 0 && "$cpu_count" -lt 2 ]]; then
+    echo "basic"
+  else
+    echo "full"
+  fi
+}
+
+profile_description() {
+  case "$1" in
+    basic)
+      echo "基础测评：CPU、内存、磁盘、网络，最稳，适合低配或 512MB 机器。"
+      ;;
+    full)
+      echo "完整报告：基础测评 + 路由、流媒体、AI、IP 质量、安全体检，不跑压力测试。"
+      ;;
+    stress)
+      echo "压力模式：完整报告 + 压力测试，耗时更长且会明显占用 CPU、内存和磁盘。"
+      ;;
+  esac
+}
+
+choose_auto_profile() {
+  case "$AUTO_PROFILE" in
+    basic|full|stress)
+      export PERFASSESS_AUTO_PROFILE="$AUTO_PROFILE"
+      info "using requested auto profile: $AUTO_PROFILE"
+      return
+      ;;
+    auto) ;;
+    *)
+      fail "--profile must be auto, basic, full, or stress"
+      ;;
+  esac
+
+  local mem_mb swap_mb disk_mb cpu_count recommended selected
+  mem_mb="$(memory_total_mb)"
+  swap_mb="$(swap_total_mb)"
+  disk_mb="$(disk_available_mb)"
+  disk_mb="${disk_mb:-0}"
+  cpu_count="$(cpu_threads)"
+  cpu_count="${cpu_count:-0}"
+  recommended="$(recommended_profile "$mem_mb" "$disk_mb" "$cpu_count")"
+
+  echo ""
+  info "machine probe before benchmark"
+  echo "CPU threads: ${cpu_count}"
+  echo "Memory: ${mem_mb}MB RAM, ${swap_mb}MB swap"
+  echo "Available disk: ${disk_mb}MB"
+  echo "Recommended profile: ${recommended} - $(profile_description "$recommended")"
+
+  if [[ "$BOOTSTRAP_INTERACTIVE" != "0" && "$BOOTSTRAP_INTERACTIVE" != "false" && -t 0 && -t 1 ]]; then
+    echo ""
+    echo "Choose benchmark profile:"
+    echo "  1) basic  - $(profile_description basic)"
+    echo "  2) full   - $(profile_description full)"
+    echo "  3) stress - $(profile_description stress)"
+    printf "Selection [recommended: %s]: " "$recommended"
+    read -r selected || selected=""
+    case "${selected:-$recommended}" in
+      1|basic) AUTO_PROFILE="basic" ;;
+      2|full) AUTO_PROFILE="full" ;;
+      3|stress) AUTO_PROFILE="stress" ;;
+      *) AUTO_PROFILE="$recommended" ;;
+    esac
+  else
+    AUTO_PROFILE="$recommended"
+    info "non-interactive mode selected profile: $AUTO_PROFILE"
+  fi
+
+  export PERFASSESS_AUTO_PROFILE="$AUTO_PROFILE"
+  if [[ "$AUTO_PROFILE" == "stress" ]]; then
+    export PERFASSESS_AUTO_STRESS="1"
+  fi
+  success "auto profile selected: $AUTO_PROFILE"
 }
 
 checkout_repo() {
@@ -398,6 +507,7 @@ run_all() {
     go test ./...
   fi
 
+  choose_auto_profile
   start_progress_server
 
   info "running full non-interactive benchmark and acceptance"

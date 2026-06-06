@@ -7,7 +7,44 @@ skip_build="${PERFASSESS_SKIP_BUILD:-0}"
 optional_mode="${PERFASSESS_AUTO_OPTIONAL:-never}"
 show_progress="${PERFASSESS_AUTO_PROGRESS:-1}"
 progress_file="${PERFASSESS_PROGRESS_FILE:-$output_dir/progress.json}"
+auto_profile="${PERFASSESS_AUTO_PROFILE:-full}"
+extra_args="${PERFASSESS_AUTO_ARGS:-}"
+stress_enabled="${PERFASSESS_AUTO_STRESS:-0}"
 current_progress_step="prepare"
+
+case "$auto_profile" in
+  auto) auto_profile="full" ;;
+  basic|full|stress) ;;
+  *)
+    echo "perfassess auto failed: PERFASSESS_AUTO_PROFILE must be auto, basic, full, or stress" >&2
+    exit 1
+    ;;
+esac
+
+if [[ "$auto_profile" == "stress" ]]; then
+  stress_enabled="1"
+fi
+
+default_args=(--output-format json -o "$output_dir/default.json")
+default_text_args=(-o "$output_dir/default.txt")
+case "$auto_profile" in
+  basic)
+    ;;
+  full|stress)
+    default_args+=(--route-trace --streaming --ai-services --ip-quality --security)
+    default_text_args+=(--route-trace --streaming --ai-services --ip-quality --security)
+    ;;
+esac
+if [[ "$stress_enabled" == "1" || "$stress_enabled" == "true" ]]; then
+  default_args+=(--stress)
+  default_text_args+=(--stress)
+fi
+if [[ -n "$extra_args" ]]; then
+  # shellcheck disable=SC2206
+  user_args=($extra_args)
+  default_args+=("${user_args[@]}")
+  default_text_args+=("${user_args[@]}")
+fi
 
 progress_update() {
   local step_id="$1"
@@ -34,8 +71,8 @@ step_defs = [
     ("prepare", "准备输出目录"),
     ("build", "构建二进制"),
     ("deps", "检查版本和依赖"),
-    ("default_json", "默认测评 JSON 报告"),
-    ("default_text", "默认测评文本报告"),
+    ("default_json", "自动测评 JSON 报告"),
+    ("default_text", "自动测评文本报告"),
     ("quick", "快速测评"),
     ("acceptance", "验收流程"),
     ("summary", "生成汇总"),
@@ -177,12 +214,12 @@ progress_update "deps" "running" "检查版本和依赖"
 "$binary" check-deps >"$output_dir/check-deps.txt"
 progress_update "deps" "success" "版本和依赖检查完成"
 
-run_capture "default_json" "running default benchmark (json report)" "$output_dir/default.stdout.txt" \
-  "$binary" --output-format json -o "$output_dir/default.json"
+run_capture "default_json" "running auto benchmark profile: $auto_profile (json report)" "$output_dir/default.stdout.txt" \
+  "$binary" "${default_args[@]}"
 python3 -m json.tool "$output_dir/default.json" >/dev/null
 
-run_capture "default_text" "running default benchmark (text report)" "$output_dir/default-text.stdout.txt" \
-  "$binary" -o "$output_dir/default.txt"
+run_capture "default_text" "running auto benchmark profile: $auto_profile (text report)" "$output_dir/default-text.stdout.txt" \
+  "$binary" "${default_text_args[@]}"
 
 run_capture "quick" "running quick benchmark" "$output_dir/quick.stdout.txt" \
   "$binary" --quick --output-format json -o "$output_dir/quick.json"
@@ -228,6 +265,7 @@ lines = [
     "",
     f"- binary_version: {(out / 'version.txt').read_text(encoding='utf-8').strip()}",
     f"- output_dir: {out}",
+    f"- auto_profile: {default_summary['benchmark_profile'].get('name')}",
     f"- default_total_score: {default_summary.get('total_score')}",
     f"- default_grade: {default_summary.get('grade')}",
     f"- default_confidence: {default_summary['confidence_level'].get('level')}",
