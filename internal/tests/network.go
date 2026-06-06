@@ -9,9 +9,9 @@ import (
 	"strings"
 	"time"
 
-	"performance-assessment-system/internal/models"
-	"performance-assessment-system/pkg/logger"
-	"performance-assessment-system/pkg/utils"
+	"github.com/E8A281E6ACA2/perfassess/internal/models"
+	"github.com/E8A281E6ACA2/perfassess/pkg/logger"
+	"github.com/E8A281E6ACA2/perfassess/pkg/utils"
 )
 
 // NetworkBenchmarkBackend 定义网络评测后端接口

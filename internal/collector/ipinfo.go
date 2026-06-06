@@ -12,8 +12,8 @@ import (
 
 	"github.com/oschwald/geoip2-golang"
 
-	"performance-assessment-system/internal/models"
-	"performance-assessment-system/pkg/utils"
+	"github.com/E8A281E6ACA2/perfassess/internal/models"
+	"github.com/E8A281E6ACA2/perfassess/pkg/utils"
 )
 
 // IPInfoCollector IP信息收集器

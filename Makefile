@@ -1,4 +1,4 @@
-# Makefile for Performance Assessment System
+# Makefile for Perfassess
 
 # 变量定义
 APP_NAME=perfassess
@@ -174,7 +174,7 @@ release-check: validate release-smoke build-all
 
 # 显示帮助信息
 help:
-	@echo "Performance Assessment System - Makefile"
+	@echo "Perfassess - Makefile"
 	@echo ""
 	@echo "可用目标:"
 	@echo "  make build          - 构建当前平台的可执行文件"

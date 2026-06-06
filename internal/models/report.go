@@ -4,7 +4,7 @@ package models
 import (
 	"time"
 
-	"performance-assessment-system/internal/config"
+	"github.com/E8A281E6ACA2/perfassess/internal/config"
 )
 
 // Report 表示完整的性能评估报告

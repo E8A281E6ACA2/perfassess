@@ -1,4 +1,4 @@
-module performance-assessment-system
+module github.com/E8A281E6ACA2/perfassess
 
 go 1.25.3
 

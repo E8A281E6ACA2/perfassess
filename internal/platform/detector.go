@@ -5,7 +5,7 @@ package platform
 import (
 	"runtime"
 
-	"performance-assessment-system/pkg/utils"
+	"github.com/E8A281E6ACA2/perfassess/pkg/utils"
 )
 
 // PlatformType 定义平台类型常量

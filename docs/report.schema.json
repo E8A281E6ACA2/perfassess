@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/E8A281E6ACA2/high-performance-multi-terminal-automated-performance-evaluation-system/docs/report.schema.json",
+  "$id": "https://github.com/E8A281E6ACA2/perfassess/docs/report.schema.json",
   "title": "Performance Assessment Report",
   "type": "object",
   "required": [

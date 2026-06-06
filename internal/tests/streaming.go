@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"performance-assessment-system/internal/models"
-	"performance-assessment-system/pkg/logger"
+	"github.com/E8A281E6ACA2/perfassess/internal/models"
+	"github.com/E8A281E6ACA2/perfassess/pkg/logger"
 )
 
 // StreamingPlatform 表示一个流媒体平台的检测配置

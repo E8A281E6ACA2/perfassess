@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"performance-assessment-system/internal/models"
-	"performance-assessment-system/pkg/logger"
+	"github.com/E8A281E6ACA2/perfassess/internal/models"
+	"github.com/E8A281E6ACA2/perfassess/pkg/logger"
 )
 
 // AIService 表示单个 AI 服务的检测配置

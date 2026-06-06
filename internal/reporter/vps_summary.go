@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"performance-assessment-system/internal/models"
+	"github.com/E8A281E6ACA2/perfassess/internal/models"
 )
 
 func (rg *ReportGenerator) buildVPSBenchmarkSummary(report *models.Report, overallScore *models.OverallScore) map[string]interface{} {

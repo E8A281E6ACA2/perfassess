@@ -622,7 +622,7 @@ const HTMLTemplate = `<!DOCTYPE html>
         </section>
 
         <footer class="footer">
-            <p>高性能多终端自动化性能评估系统 Web 报告</p>
+            <p>Perfassess Web 报告</p>
         </footer>
     </main>
 </body>

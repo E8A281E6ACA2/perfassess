@@ -7,7 +7,7 @@ import (
 	"os"
 	"strings"
 
-	"performance-assessment-system/internal/config"
+	"github.com/E8A281E6ACA2/perfassess/internal/config"
 )
 
 // InteractiveMenu 交互式菜单
@@ -55,11 +55,11 @@ func (im *InteractiveMenu) Show() (*config.Config, error) {
 // printWelcome 打印欢迎信息
 func (im *InteractiveMenu) printWelcome() {
 	fmt.Println("╔════════════════════════════════════════════════════════════════╗")
-	fmt.Println("║          高性能多终端自动化性能评估系统                       ║")
-	fmt.Println("║          Performance Assessment System v1.0                    ║")
+	fmt.Println("║          Perfassess                       ║")
+	fmt.Println("║          Perfassess v1.0                    ║")
 	fmt.Println("╚════════════════════════════════════════════════════════════════╝")
 	fmt.Println()
-	fmt.Println("欢迎使用性能评估系统！")
+	fmt.Println("欢迎使用Perfassess！")
 	fmt.Println("本工具将帮助您全面评估系统性能。")
 	fmt.Println()
 }

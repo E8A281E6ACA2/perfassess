@@ -10,11 +10,11 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"performance-assessment-system/internal/compare"
-	"performance-assessment-system/internal/config"
-	"performance-assessment-system/internal/controller"
-	"performance-assessment-system/internal/doctor"
-	"performance-assessment-system/internal/history"
+	"github.com/E8A281E6ACA2/perfassess/internal/compare"
+	"github.com/E8A281E6ACA2/perfassess/internal/config"
+	"github.com/E8A281E6ACA2/perfassess/internal/controller"
+	"github.com/E8A281E6ACA2/perfassess/internal/doctor"
+	"github.com/E8A281E6ACA2/perfassess/internal/history"
 )
 
 // CLI 命令行界面结构体
@@ -85,8 +85,8 @@ func (c *CLI) RunInteractive() error {
 func (c *CLI) setupCommands() {
 	c.rootCmd = &cobra.Command{
 		Use:   "perfassess",
-		Short: "高性能多终端自动化性能评估系统",
-		Long: `高性能多终端自动化性能评估系统
+		Short: "Perfassess",
+		Long: `Perfassess
 		
 一款用于自动化评估计算机和服务器性能的工具。
 支持 CPU、内存、磁盘、网络等多项性能测试。
@@ -724,7 +724,7 @@ func (c *CLI) validateFlags() error {
 // printWelcome 打印欢迎信息
 func (c *CLI) printWelcome() {
 	fmt.Println("╔════════════════════════════════════════════════════════════════╗")
-	fmt.Println("║          高性能多终端自动化性能评估系统                       ║")
+	fmt.Println("║          Perfassess                       ║")
 	fmt.Println("╚════════════════════════════════════════════════════════════════╝")
 	fmt.Println()
 

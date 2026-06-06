@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strconv"
 
-	"performance-assessment-system/internal/models"
+	"github.com/E8A281E6ACA2/perfassess/internal/models"
 )
 
 func metricFloat64(metrics map[string]interface{}, key string) (float64, bool) {

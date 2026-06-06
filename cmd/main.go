@@ -1,4 +1,4 @@
-// Package main 是性能评估系统的主入口点
+// Package main 是Perfassess的主入口点
 // 负责初始化应用程序并启动命令行界面
 package main
 
@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"os"
 
-	"performance-assessment-system/internal/cli"
+	"github.com/E8A281E6ACA2/perfassess/internal/cli"
 )
 
 // Version 应用程序版本号，可在发布构建时通过 -ldflags 注入。

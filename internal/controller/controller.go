@@ -10,14 +10,14 @@ import (
 
 	"go.uber.org/zap"
 
-	"performance-assessment-system/internal/collector"
-	"performance-assessment-system/internal/config"
-	"performance-assessment-system/internal/models"
-	"performance-assessment-system/internal/platform"
-	"performance-assessment-system/internal/reporter"
-	"performance-assessment-system/internal/tests"
-	"performance-assessment-system/pkg/logger"
-	"performance-assessment-system/pkg/utils"
+	"github.com/E8A281E6ACA2/perfassess/internal/collector"
+	"github.com/E8A281E6ACA2/perfassess/internal/config"
+	"github.com/E8A281E6ACA2/perfassess/internal/models"
+	"github.com/E8A281E6ACA2/perfassess/internal/platform"
+	"github.com/E8A281E6ACA2/perfassess/internal/reporter"
+	"github.com/E8A281E6ACA2/perfassess/internal/tests"
+	"github.com/E8A281E6ACA2/perfassess/pkg/logger"
+	"github.com/E8A281E6ACA2/perfassess/pkg/utils"
 )
 
 // AssessmentController 核心控制器

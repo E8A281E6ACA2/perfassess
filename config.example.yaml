@@ -1,4 +1,4 @@
-# 性能评估系统配置文件示例
+# Perfassess配置文件示例
 # 复制此文件为 config.yaml 并根据需要修改配置
 
 # 日志级别：debug, info, warn, error

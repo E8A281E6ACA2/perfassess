@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	"performance-assessment-system/internal/models"
+	"github.com/E8A281E6ACA2/perfassess/internal/models"
 )
 
 type SpeedtestNetworkBackend struct {

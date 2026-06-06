@@ -4,8 +4,8 @@ package reporter
 import (
 	"fmt"
 
-	"performance-assessment-system/internal/config"
-	"performance-assessment-system/internal/models"
+	"github.com/E8A281E6ACA2/perfassess/internal/config"
+	"github.com/E8A281E6ACA2/perfassess/internal/models"
 )
 
 const scoreCalibrationVersion = "2026-06-v1"

@@ -13,8 +13,8 @@ import (
 	"github.com/shirou/gopsutil/v3/host"
 	"github.com/shirou/gopsutil/v3/mem"
 
-	"performance-assessment-system/internal/models"
-	"performance-assessment-system/pkg/logger"
+	"github.com/E8A281E6ACA2/perfassess/internal/models"
+	"github.com/E8A281E6ACA2/perfassess/pkg/logger"
 )
 
 // StressTest 提供长时间压力测试

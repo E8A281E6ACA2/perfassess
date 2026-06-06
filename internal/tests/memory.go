@@ -11,9 +11,9 @@ import (
 
 	"github.com/shirou/gopsutil/v3/mem"
 
-	"performance-assessment-system/internal/models"
-	"performance-assessment-system/pkg/logger"
-	"performance-assessment-system/pkg/utils"
+	"github.com/E8A281E6ACA2/perfassess/internal/models"
+	"github.com/E8A281E6ACA2/perfassess/pkg/logger"
+	"github.com/E8A281E6ACA2/perfassess/pkg/utils"
 )
 
 const memorySampleRuns = 3

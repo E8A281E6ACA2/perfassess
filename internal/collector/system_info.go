@@ -12,9 +12,9 @@ import (
 	"github.com/shirou/gopsutil/v3/host"
 	"github.com/shirou/gopsutil/v3/mem"
 
-	"performance-assessment-system/internal/models"
-	"performance-assessment-system/internal/platform"
-	"performance-assessment-system/pkg/utils"
+	"github.com/E8A281E6ACA2/perfassess/internal/models"
+	"github.com/E8A281E6ACA2/perfassess/internal/platform"
+	"github.com/E8A281E6ACA2/perfassess/pkg/utils"
 )
 
 // SystemInfoCollector 系统信息收集器

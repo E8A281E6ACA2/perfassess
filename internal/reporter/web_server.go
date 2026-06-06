@@ -11,8 +11,8 @@ import (
 	"syscall"
 	"time"
 
-	"performance-assessment-system/internal/models"
-	"performance-assessment-system/pkg/logger"
+	"github.com/E8A281E6ACA2/perfassess/internal/models"
+	"github.com/E8A281E6ACA2/perfassess/pkg/logger"
 )
 
 // WebServer Web 服务器

@@ -7,7 +7,7 @@ import (
 	"os"
 	"strings"
 
-	"performance-assessment-system/internal/models"
+	"github.com/E8A281E6ACA2/perfassess/internal/models"
 )
 
 // OutputFormatter 输出格式化器

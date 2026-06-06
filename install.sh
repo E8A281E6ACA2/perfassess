@@ -1,5 +1,5 @@
 #!/bin/bash
-# 高性能多终端自动化性能评估系统 - 一键安装脚本
+# Perfassess - 一键安装脚本
 
 set -e
 
@@ -11,7 +11,7 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 # 项目信息
-REPO="E8A281E6ACA2/high-performance-multi-terminal-automated-performance-evaluation-system"
+REPO="E8A281E6ACA2/perfassess"
 VERSION="latest"
 BINARY_NAME="perfassess"
 INSTALL_DIR="/usr/local/bin"
@@ -132,7 +132,7 @@ verify_installation() {
         print_success "安装成功！"
         echo ""
         echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-        echo "  🎉 高性能多终端自动化性能评估系统已安装"
+        echo "  🎉 Perfassess已安装"
         echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
         echo ""
         echo "快速开始："
@@ -159,8 +159,8 @@ cleanup() {
 main() {
     echo ""
     echo "╔════════════════════════════════════════════════════════════════╗"
-    echo "║          高性能多终端自动化性能评估系统                       ║"
-    echo "║          Performance Assessment System                         ║"
+    echo "║          Perfassess                       ║"
+    echo "║          Perfassess                         ║"
     echo "╚════════════════════════════════════════════════════════════════╝"
     echo ""
     

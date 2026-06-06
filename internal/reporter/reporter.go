@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
-	"performance-assessment-system/internal/config"
-	"performance-assessment-system/internal/models"
+	"github.com/E8A281E6ACA2/perfassess/internal/config"
+	"github.com/E8A281E6ACA2/perfassess/internal/models"
 )
 
 // ReportGenerator 报告生成器
@@ -700,7 +700,7 @@ func (rg *ReportGenerator) FormatReport(report *models.Report) string {
 
 	// 报告标题
 	sb.WriteString("╔════════════════════════════════════════════════════════════════╗\n")
-	sb.WriteString("║          高性能多终端自动化性能评估系统 - 评估报告            ║\n")
+	sb.WriteString("║          Perfassess - 评估报告            ║\n")
 	sb.WriteString("╚════════════════════════════════════════════════════════════════╝\n\n")
 
 	// 会话信息

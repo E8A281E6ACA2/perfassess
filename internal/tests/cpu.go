@@ -9,8 +9,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"performance-assessment-system/internal/models"
-	"performance-assessment-system/pkg/logger"
+	"github.com/E8A281E6ACA2/perfassess/internal/models"
+	"github.com/E8A281E6ACA2/perfassess/pkg/logger"
 )
 
 const cpuSampleRuns = 3

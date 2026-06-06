@@ -1,4 +1,4 @@
-# 高性能多终端自动化性能评估系统
+# Perfassess
 
 一款用于自动化评估计算机和服务器性能的工具。支持 CPU、内存、磁盘、网络等多项性能测试，提供清晰的性能报告和综合评分。
 
@@ -122,23 +122,23 @@ cat /tmp/perfassess-auto/summary.md
 
 **Linux / macOS**:
 ```bash
-curl -fsSL https://raw.githubusercontent.com/E8A281E6ACA2/high-performance-multi-terminal-automated-performance-evaluation-system/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/E8A281E6ACA2/perfassess/main/install.sh | bash
 ```
 
 或使用 wget:
 ```bash
-wget -qO- https://raw.githubusercontent.com/E8A281E6ACA2/high-performance-multi-terminal-automated-performance-evaluation-system/main/install.sh | bash
+wget -qO- https://raw.githubusercontent.com/E8A281E6ACA2/perfassess/main/install.sh | bash
 ```
 
 **Windows (PowerShell)**:
 ```powershell
 # 下载最新版本
-Invoke-WebRequest -Uri "https://github.com/E8A281E6ACA2/high-performance-multi-terminal-automated-performance-evaluation-system/releases/latest/download/perfassess.exe" -OutFile "perfassess.exe"
+Invoke-WebRequest -Uri "https://github.com/E8A281E6ACA2/perfassess/releases/latest/download/perfassess.exe" -OutFile "perfassess.exe"
 ```
 
 ### 📦 方式二：下载预编译二进制文件
 
-从 [Releases 页面](https://github.com/E8A281E6ACA2/high-performance-multi-terminal-automated-performance-evaluation-system/releases) 下载对应平台的文件：
+从 [Releases 页面](https://github.com/E8A281E6ACA2/perfassess/releases) 下载对应平台的文件：
 
 | 平台 | 文件名 |
 |------|--------|
@@ -167,8 +167,8 @@ perfassess --help
 
 ```bash
 # 克隆仓库
-git clone https://github.com/E8A281E6ACA2/high-performance-multi-terminal-automated-performance-evaluation-system.git
-cd high-performance-multi-terminal-automated-performance-evaluation-system
+git clone https://github.com/E8A281E6ACA2/perfassess.git
+cd perfassess
 
 # 下载依赖
 make deps
@@ -200,7 +200,7 @@ make install
 
 ```bash
 # 使用卸载脚本
-curl -fsSL https://raw.githubusercontent.com/E8A281E6ACA2/high-performance-multi-terminal-automated-performance-evaluation-system/main/uninstall.sh | bash
+curl -fsSL https://raw.githubusercontent.com/E8A281E6ACA2/perfassess/main/uninstall.sh | bash
 
 # 或手动删除
 sudo rm /usr/local/bin/perfassess
@@ -480,7 +480,7 @@ Flags:
 
 # 程序会显示友好的菜单：
 # ╔════════════════════════════════════════════════════════════════╗
-# ║          高性能多终端自动化性能评估系统                       ║
+# ║          Perfassess                       ║
 # ╚════════════════════════════════════════════════════════════════╝
 # 
 # 【步骤 1/2】选择检测项目
@@ -539,7 +539,7 @@ make run-verbose    # 详细模式运行
 
 ```
 ╔════════════════════════════════════════════════════════════════╗
-║          高性能多终端自动化性能评估系统 - 评估报告            ║
+║          Perfassess - 评估报告            ║
 ╚════════════════════════════════════════════════════════════════╝
 
 会话ID:         session_1762170027

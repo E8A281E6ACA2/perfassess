@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	"performance-assessment-system/pkg/logger"
+	"github.com/E8A281E6ACA2/perfassess/pkg/logger"
 )
 
 // ErrorAction 定义错误处理动作类型
