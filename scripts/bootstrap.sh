@@ -495,25 +495,43 @@ start_progress_server() {
   [[ "$START_WEB" == "1" ]] || return
 
   mkdir -p "$OUTPUT_DIR"
-  info "starting realtime web progress on port $WEB_PORT"
+  local requested_port="$WEB_PORT"
+  local candidate_port
+  [[ "$requested_port" =~ ^[0-9]+$ ]] || fail "Web port must be a number: $requested_port"
+  rm -f "$OUTPUT_DIR/progress-server.log"
+  for candidate_port in $(seq "$requested_port" $((requested_port + 20))); do
+    info "starting realtime web progress on port $candidate_port"
+    python3 "$WORK_DIR/scripts/perfassess-progress-server.py" \
+      --dir "$OUTPUT_DIR" \
+      --progress-file "$OUTPUT_DIR/progress.json" \
+      --port "$candidate_port" >>"$OUTPUT_DIR/progress-server.log" 2>&1 &
+    PROGRESS_SERVER_PID="$!"
+    sleep 1
+    if kill -0 "$PROGRESS_SERVER_PID" >/dev/null 2>&1; then
+      WEB_PORT="$candidate_port"
+      if [[ "$WEB_PORT" != "$requested_port" ]]; then
+        info "requested port $requested_port is unavailable; using $WEB_PORT instead"
+      fi
+      print_web_access
+      echo "The page will update during the benchmark and expose generated report files."
+      break
+    fi
+    wait "$PROGRESS_SERVER_PID" >/dev/null 2>&1 || true
+    PROGRESS_SERVER_PID=""
+  done
+
+  trap 'stop_progress_server; cleanup_bootstrap_swap' EXIT
+  trap 'stop_progress_server; cleanup_bootstrap_swap; exit 130' INT TERM
+  if [[ -z "$PROGRESS_SERVER_PID" ]] || ! kill -0 "$PROGRESS_SERVER_PID" >/dev/null 2>&1; then
+    fail "Realtime web progress failed to start. Tried ports $requested_port-$((requested_port + 20)). See $OUTPUT_DIR/progress-server.log"
+  fi
+}
+
+print_web_access() {
   echo "Listening on all interfaces: http://0.0.0.0:$WEB_PORT"
   echo "Open http://<server-public-ip>:$WEB_PORT in your browser, or use SSH port forwarding."
   if public_ip="$(detect_public_ip)"; [[ -n "$public_ip" ]]; then
     echo "Detected public IP: http://$(format_url_host "$public_ip"):$WEB_PORT"
-  fi
-  echo "The page will update during the benchmark and expose generated report files."
-
-  python3 "$WORK_DIR/scripts/perfassess-progress-server.py" \
-    --dir "$OUTPUT_DIR" \
-    --progress-file "$OUTPUT_DIR/progress.json" \
-    --port "$WEB_PORT" &
-  PROGRESS_SERVER_PID="$!"
-
-  trap 'stop_progress_server; cleanup_bootstrap_swap' EXIT
-  trap 'stop_progress_server; cleanup_bootstrap_swap; exit 130' INT TERM
-  sleep 1
-  if ! kill -0 "$PROGRESS_SERVER_PID" >/dev/null 2>&1; then
-    fail "Realtime web progress failed to start. Check whether port $WEB_PORT is already in use."
   fi
 }
 
@@ -573,11 +591,7 @@ run_all() {
   if [[ "$START_WEB" == "1" ]]; then
     echo ""
     info "realtime web progress remains available until this script exits"
-    echo "Listening on all interfaces: http://0.0.0.0:$WEB_PORT"
-    echo "Open http://<server-public-ip>:$WEB_PORT in your browser, or use SSH port forwarding."
-    if public_ip="$(detect_public_ip)"; [[ -n "$public_ip" ]]; then
-      echo "Detected public IP: http://$(format_url_host "$public_ip"):$WEB_PORT"
-    fi
+    print_web_access
     echo "Press Ctrl+C to stop the progress server."
     wait "$PROGRESS_SERVER_PID"
   fi

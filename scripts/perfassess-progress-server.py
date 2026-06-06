@@ -504,6 +504,85 @@ def optional_section(section_id: str, title: str, subtitle: str, value: Any, hin
     }
 
 
+def route_section(value: Any) -> dict[str, Any]:
+    hint = "本次未启用路由追踪。使用 --route-trace、--full 或 bootstrap 的 standard/full 档位启用。"
+    if not isinstance(value, list) or not value:
+        return optional_section("route", "路由追踪", "到主要地区和节点的网络路径质量。", None, hint)
+
+    success_count = sum(1 for item in value if isinstance(item, dict) and item.get("success"))
+    total_hops = sum(int(item.get("total_hops") or len(item.get("hops") or [])) for item in value if isinstance(item, dict) and item.get("success"))
+    avg_hops = total_hops / success_count if success_count else 0
+    status = "success" if success_count == len(value) else "warning" if success_count else "failed"
+    tables = [
+        table("追踪目标", ["目标", "状态", "跳数", "最后一跳", "错误"], [
+            [
+                item.get("target"),
+                "成功" if item.get("success") else "失败",
+                item.get("total_hops") or len(item.get("hops") or []),
+                last_route_hop(item),
+                item.get("error_message") or "-",
+            ]
+            for item in value if isinstance(item, dict)
+        ])
+    ]
+    for item in value:
+        if not isinstance(item, dict):
+            continue
+        hops = item.get("hops") if isinstance(item.get("hops"), list) else []
+        if not hops:
+            continue
+        rows = [
+            [
+                hop.get("number"),
+                hop.get("ip"),
+                hop.get("hostname"),
+                format_route_latency(hop.get("latency")),
+            ]
+            for hop in hops if isinstance(hop, dict)
+        ]
+        if rows:
+            tables.append(table(f"{text(item.get('target'))} 路由跳点", ["跳数", "IP", "主机名", "延迟"], rows))
+    return {
+        "id": "route",
+        "title": "路由追踪",
+        "subtitle": "到主要地区和节点的网络路径质量。",
+        "status": status,
+        "status_text": f"{success_count}/{len(value)} 成功",
+        "summary": f"完成 {len(value)} 个目标追踪，成功 {success_count} 个，平均 {avg_hops:.1f} 跳。",
+        "metrics": [
+            metric("目标数", len(value), "", "primary"),
+            metric("成功", success_count, f"/ {len(value)}", "green" if success_count == len(value) else "amber"),
+            metric("平均跳数", f"{avg_hops:.1f}", "hops", "cyan"),
+        ],
+        "details": [],
+        "tables": tables,
+        "hint": "",
+    }
+
+
+def last_route_hop(item: dict[str, Any]) -> str:
+    hops = item.get("hops") if isinstance(item.get("hops"), list) else []
+    for hop in reversed(hops):
+        if not isinstance(hop, dict):
+            continue
+        ip = text(hop.get("ip"), "")
+        if not ip or ip == "*":
+            continue
+        hostname = text(hop.get("hostname"), "")
+        return f"{ip} ({hostname})" if hostname else ip
+    return "-"
+
+
+def format_route_latency(value: Any) -> str:
+    if isinstance(value, bool) or value is None:
+        return "-"
+    if isinstance(value, (int, float)):
+        if value <= 0:
+            return "-"
+        return f"{float(value) / 1_000_000:.2f} ms"
+    return text(value)
+
+
 def ip_quality_section(summary: dict[str, Any]) -> dict[str, Any]:
     report = summary.get("ip_quality_report")
     hint = "本次未启用 IP 质量检测。使用 --ip-quality 或 --full 启用。"
@@ -608,6 +687,46 @@ def ip_quality_basis(report: dict[str, Any], blacklist: dict[str, Any], mail_che
     if mail_checks:
         parts.append(f"邮件端口可连 {count_reachable_mail(mail_checks)}/{len(mail_checks)}")
     return " + ".join(parts)
+
+
+REPORT_GROUPS = [
+    ("overview", "概览", "评分、系统和报告结论。", {"overview", "system"}),
+    ("core", "核心性能", "CPU、内存、磁盘和网络基础测评。", {"cpu", "memory", "disk", "network"}),
+    ("network", "网络扩展", "路由、流媒体、AI 服务、IP 质量和安全体检。", {"route", "streaming", "ai", "ip-quality", "security"}),
+    ("stability", "稳定性", "压力测试和长时间负载表现。", {"stress"}),
+    ("delivery", "交付", "质量提示和分享模板。", {"quality", "share"}),
+]
+
+
+def group_sections(sections: list[dict[str, Any]], extra_ids: Optional[set[str]] = None) -> list[dict[str, Any]]:
+    remaining = list(sections)
+    groups = []
+    extra_ids = extra_ids or set()
+    for group_id, title, subtitle, ids in REPORT_GROUPS:
+        selected = [section for section in remaining if section.get("id") in ids]
+        if group_id == "delivery" and extra_ids:
+            selected.extend({"id": item_id, "title": "质量提示" if item_id == "quality" else "分享模板", "status": "success", "status_text": "可用"} for item_id in sorted(extra_ids))
+        if selected:
+            groups.append({"id": group_id, "title": title, "subtitle": subtitle, "sections": selected})
+            remaining = [section for section in remaining if section.get("id") not in ids]
+    if remaining:
+        groups.append({"id": "other", "title": "其他", "subtitle": "其他报告模块。", "sections": remaining})
+    return groups
+
+
+def report_status_counts(sections: list[dict[str, Any]]) -> dict[str, int]:
+    counts = {"success": 0, "warning": 0, "failed": 0, "skipped": 0, "total": len(sections)}
+    for section in sections:
+        status = status_class(text(section.get("status"), "unknown"))
+        if status in {"success", "running"}:
+            counts["success"] += 1
+        elif status in {"warning", "degraded"}:
+            counts["warning"] += 1
+        elif status == "failed":
+            counts["failed"] += 1
+        else:
+            counts["skipped"] += 1
+    return counts
 
 
 def build_report_sections(report: dict[str, Any]) -> list[dict[str, Any]]:
@@ -717,12 +836,12 @@ def build_report_sections(report: dict[str, Any]) -> list[dict[str, Any]]:
     ], [], "本次未执行网络测试。"))
 
     sections.extend([
-        optional_section("route", "路由追踪", "到主要地区和节点的网络路径质量。", summary.get("route_trace_results"), "本次未启用路由追踪。"),
-        optional_section("streaming", "流媒体解锁", "Netflix、Disney+、YouTube 等平台的区域访问能力。", summary.get("streaming_results"), "本次未启用流媒体检测。"),
-        optional_section("ai", "AI 服务检测", "OpenAI、Gemini 等 AI 服务的可访问性。", summary.get("ai_results"), "本次未启用 AI 服务检测。"),
+        route_section(summary.get("route_trace_results")),
+        optional_section("streaming", "流媒体解锁", "Netflix、Disney+、YouTube 等平台的区域访问能力。", summary.get("streaming_results"), "本次未启用流媒体检测。使用 --streaming、--full 或 bootstrap 的 standard/full 档位启用。"),
+        optional_section("ai", "AI 服务检测", "OpenAI、Gemini 等 AI 服务的可访问性。", summary.get("ai_results"), "本次未启用 AI 服务检测。使用 --ai-services、--full 或 bootstrap 的 standard/full 档位启用。"),
         ip_quality_section(summary),
-        optional_section("stress", "压力测试", "长时间 CPU、内存、磁盘压力下的稳定性。", summary.get("stress_report"), "本次未启用压力测试。"),
-        optional_section("security", "安全体检", "端口、SSH 配置和基础安全风险检查。", summary.get("security_report"), "本次未启用安全体检。"),
+        optional_section("stress", "压力测试", "长时间 CPU、内存、磁盘压力下的稳定性。", summary.get("stress_report"), "本次未启用压力测试。使用 --stress、--full 或 bootstrap 的 full 档位启用。"),
+        optional_section("security", "安全体检", "端口、SSH 配置和基础安全风险检查。", summary.get("security_report"), "本次未启用安全体检。使用 --security、--full 或 bootstrap 的 standard/full 档位启用。"),
     ])
     return sections
 
@@ -735,31 +854,56 @@ def render_report(report: dict[str, Any]) -> str:
     total_score = fmt_number(summary.get("total_score") or overall.get("total_score"), 0)
     grade = text(summary.get("grade") or overall.get("grade"))
     sections = build_report_sections(report)
-    nav = "".join(
-        f'<a class="nav-link" href="#{esc(section["id"])}"><span>{esc(section["title"])}</span>'
-        f'<span class="status-badge status-{esc(section["status"])}">{esc(section["status_text"])}</span></a>'
-        for section in sections
-    )
-    cards = []
-    for section in sections:
-        hint = f'<div class="hint-box">{esc(section.get("hint"))}</div>' if section.get("hint") else ""
-        cards.append(
-            f'<section id="{esc(section["id"])}" class="module-card">'
-            '<div class="module-head"><div>'
-            f'<h2 class="module-title">{esc(section["title"])}</h2>'
-            f'<p class="module-subtitle">{esc(section["subtitle"])}</p>'
-            f'</div><span class="status-badge status-{esc(section["status"])}">{esc(section["status_text"])}</span></div>'
-            f'<p class="module-summary">{esc(section["summary"])}</p>'
-            f'{render_metrics(section.get("metrics", []))}'
-            f'{render_details(section.get("details", []))}'
-            f'{render_tables(section.get("tables", []))}'
-            f'{hint}</section>'
-        )
-
     quality_notes = summary.get("quality_notes") if isinstance(summary.get("quality_notes"), list) else []
+    share = data_get(summary, "share_templates", "plain_text", default="")
+    extra_ids = set()
+    if quality_notes:
+        extra_ids.add("quality")
+    if share:
+        extra_ids.add("share")
+    groups = group_sections(sections, extra_ids)
+    status_counts = report_status_counts(sections)
+    nav_groups = []
+    for group in groups:
+        links = []
+        for section in group["sections"]:
+            links.append(
+                f'<a class="nav-link" href="#{esc(section["id"])}"><span>{esc(section["title"])}</span>'
+                f'<span class="status-badge status-{esc(status_class(text(section.get("status"))))}">{esc(section.get("status_text"))}</span></a>'
+            )
+        nav_groups.append(
+            f'<div class="nav-group"><div class="nav-group-title">{esc(group["title"])}</div>{"".join(links)}</div>'
+        )
+    nav = "".join(nav_groups)
+    cards = []
+    for group in groups:
+        group_cards = []
+        for section in group["sections"]:
+            section_id = section.get("id")
+            if section_id in {"quality", "share"}:
+                continue
+            hint = f'<div class="hint-box">{esc(section.get("hint"))}</div>' if section.get("hint") else ""
+            group_cards.append(
+                f'<section id="{esc(section["id"])}" class="module-card module-{esc(status_class(text(section.get("status"))))}">'
+                '<div class="module-head"><div>'
+                f'<h2 class="module-title">{esc(section["title"])}</h2>'
+                f'<p class="module-subtitle">{esc(section["subtitle"])}</p>'
+                f'</div><span class="status-badge status-{esc(status_class(text(section.get("status"))))}">{esc(section["status_text"])}</span></div>'
+                f'<p class="module-summary">{esc(section["summary"])}</p>'
+                f'{render_metrics(section.get("metrics", []))}'
+                f'{render_details(section.get("details", []))}'
+                f'{render_tables(section.get("tables", []))}'
+                f'{hint}</section>'
+            )
+        if group_cards:
+            cards.append(
+                f'<div class="section-group" id="group-{esc(group["id"])}">'
+                f'<div class="section-group-head"><h2>{esc(group["title"])}</h2><p>{esc(group["subtitle"])}</p></div>'
+                f'{"".join(group_cards)}</div>'
+            )
+
     if quality_notes:
         items = "".join(f"<li>{esc(note)}</li>" for note in quality_notes)
-        nav += '<a class="nav-link" href="#quality"><span>质量提示</span><span class="status-badge status-skipped">提示</span></a>'
         cards.append(
             '<section id="quality" class="module-card quality-notes"><div class="module-head"><div>'
             '<h2 class="module-title">质量提示</h2><p class="module-subtitle">影响报告置信度和可比性的说明。</p>'
@@ -767,9 +911,7 @@ def render_report(report: dict[str, Any]) -> str:
             f"<ul>{items}</ul></section>"
         )
 
-    share = data_get(summary, "share_templates", "plain_text", default="")
     if share:
-        nav += '<a class="nav-link" href="#share"><span>分享模板</span><span class="status-badge status-success">可复制</span></a>'
         cards.append(
             '<section id="share" class="module-card"><div class="module-head"><div>'
             '<h2 class="module-title">分享模板</h2><p class="module-subtitle">可直接复制到论坛、工单或聊天窗口。</p>'
@@ -829,10 +971,21 @@ def render_report(report: dict[str, Any]) -> str:
     .report-layout {{ display: grid; grid-template-columns: 260px minmax(0, 1fr); gap: 22px; align-items: start; margin-top: 22px; }}
     .sidebar {{ position: sticky; top: 18px; max-height: calc(100vh - 36px); overflow: auto; border-radius: 8px; padding: 14px; background: rgba(255, 255, 255, 0.86); border: 1px solid var(--outline); box-shadow: 0 1px 2px rgba(60, 64, 67, 0.10); }}
     .sidebar-title {{ padding: 8px 10px 12px; color: var(--muted); font-size: 12px; font-weight: 800; }}
+    .nav-group + .nav-group {{ margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--outline); }}
+    .nav-group-title {{ padding: 4px 10px 8px; color: var(--muted); font-size: 11px; font-weight: 820; text-transform: uppercase; }}
     .nav-link {{ display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 38px; padding: 8px 10px; border-radius: 8px; color: var(--text); text-decoration: none; font-size: 14px; font-weight: 680; }}
     .nav-link:hover {{ background: var(--primary-container); color: #041e49; }}
     .content-stack {{ display: grid; gap: 18px; }}
+    .report-health {{ display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-top: 18px; }}
+    .health-item {{ min-height: 74px; border-radius: 8px; padding: 12px; color: var(--text); background: rgba(255, 255, 255, 0.16); border: 1px solid rgba(255, 255, 255, 0.24); }}
+    .health-label {{ font-size: 12px; color: rgba(255, 255, 255, 0.78); font-weight: 720; }}
+    .health-value {{ margin-top: 6px; font-size: 26px; font-weight: 820; }}
+    .section-group {{ display: grid; gap: 14px; }}
+    .section-group-head {{ padding: 2px 2px 0; }}
+    .section-group-head h2 {{ margin: 0; font-size: 18px; }}
+    .section-group-head p {{ margin: 5px 0 0; color: var(--muted); font-size: 13px; line-height: 1.6; }}
     .module-card {{ scroll-margin-top: 20px; border-radius: 8px; padding: 22px; background: rgba(255, 255, 255, 0.86); border: 1px solid var(--outline); box-shadow: 0 1px 2px rgba(60, 64, 67, 0.10); }}
+    .module-skipped {{ background: rgba(255, 250, 240, 0.88); border-color: #fdd663; }}
     .module-head {{ display: flex; justify-content: space-between; gap: 16px; align-items: flex-start; margin-bottom: 18px; }}
     .module-title {{ margin: 0; font-size: 24px; line-height: 1.2; }}
     .module-subtitle {{ margin: 7px 0 0; color: var(--muted); font-size: 14px; line-height: 1.6; }}
@@ -876,11 +1029,12 @@ def render_report(report: dict[str, Any]) -> str:
       .app-shell {{ width: min(100% - 20px, 1440px); padding-top: 12px; }}
       .hero, .module-card {{ padding: 18px; }}
       .hero-content, .detail-grid {{ grid-template-columns: 1fr; }}
+      .report-health {{ grid-template-columns: repeat(2, minmax(0, 1fr)); }}
       .hero-score {{ width: 100%; min-height: 130px; }}
       .metric-grid {{ grid-template-columns: repeat(2, minmax(0, 1fr)); }}
       .module-head {{ flex-direction: column; }}
     }}
-    @media (max-width: 480px) {{ .metric-grid {{ grid-template-columns: 1fr; }} }}
+    @media (max-width: 480px) {{ .metric-grid, .report-health {{ grid-template-columns: 1fr; }} }}
   </style>
 </head>
 <body>
@@ -909,6 +1063,12 @@ def render_report(report: dict[str, Any]) -> str:
             <span class="chip">评测档位 {esc(data_get(summary, "benchmark_profile", "name"))}</span>
             <span class="chip">置信度 {esc(data_get(summary, "confidence_level", "level"))}</span>
             <span class="chip">校准 {esc(data_get(summary, "score_calibration", "version"))}</span>
+          </div>
+          <div class="report-health">
+            <div class="health-item"><div class="health-label">成功模块</div><div class="health-value">{status_counts["success"]}</div></div>
+            <div class="health-item"><div class="health-label">注意模块</div><div class="health-value">{status_counts["warning"]}</div></div>
+            <div class="health-item"><div class="health-label">失败模块</div><div class="health-value">{status_counts["failed"]}</div></div>
+            <div class="health-item"><div class="health-label">未执行模块</div><div class="health-value">{status_counts["skipped"]}</div></div>
           </div>
         </div>
         <div class="hero-score">

@@ -56,15 +56,15 @@ curl -fsSL https://raw.githubusercontent.com/E8A281E6ACA2/perfassess/main/script
 curl -fsSL https://raw.githubusercontent.com/E8A281E6ACA2/perfassess/main/scripts/bootstrap.sh | bash -s -- --web --port 8080
 ```
 
-`--web` 会在测评开始前启动实时进度页，浏览器打开 `http://服务器公网IP:8080` 后可看到当前步骤、完成状态和已生成报告文件。脚本中显示的 `0.0.0.0:8080` 只是服务监听所有网卡的地址，不是浏览器访问地址；浏览器应使用服务器公网 IP、内网 IP，或本地 SSH 端口转发地址。
+`--web` 会在测评开始前启动实时进度页，浏览器打开 `http://服务器公网IP:8080` 后可看到当前步骤、完成状态和已生成报告文件。脚本中显示的 `0.0.0.0:8080` 只是服务监听所有网卡的地址，不是浏览器访问地址；浏览器应使用服务器公网 IP、内网 IP，或本地 SSH 端口转发地址。如果指定端口已被占用，bootstrap 会自动尝试后续端口，并在终端打印最终可访问地址。
 
-如果服务器安全组或防火墙已经开放 8080 端口，把 `SERVER_PUBLIC_IP` 替换为你的服务器公网 IP：
+如果服务器安全组或防火墙已经开放终端显示的端口，把 `SERVER_PUBLIC_IP` 替换为你的服务器公网 IP：
 
 ```bash
 http://SERVER_PUBLIC_IP:8080
 ```
 
-如果不想开放端口，可以在本地电脑执行 SSH 端口转发：
+如果不想开放端口，可以在本地电脑执行 SSH 端口转发。端口以 bootstrap 终端最终显示的端口为准：
 
 ```bash
 ssh -L 8080:localhost:8080 root@SERVER_PUBLIC_IP
@@ -524,8 +524,10 @@ IP 质量检测会写入文本报告、JSON `summary.ip_quality_report` 和 Web 
 - 📈 可视化性能评分和分项进度
 - 💻 响应式设计，支持手机/平板
 - 🎨 Surface、Card、Chip、Tonal 区块等现代视觉层级
-- 📋 左侧模块导航，展示评分基准、置信度、校准版本、分享模板、测试结果和扩展检测
+- 📋 左侧分组目录，按概览、核心性能、网络扩展、稳定性和交付内容组织报告
 - 🧭 路由、流媒体、AI、IP 质量、压力和安全体检都有专用指标与表格视图
+
+提示：`basic` 档位只展示 CPU、内存、磁盘和网络核心测评；如需路由、流媒体、AI、IP 质量和安全体检，请使用 `scripts/bootstrap.sh --web --profile standard`。如需压力测试，再使用 `--profile full`。
 
 **使用流程**：
 1. 运行带 `--web` 参数的命令

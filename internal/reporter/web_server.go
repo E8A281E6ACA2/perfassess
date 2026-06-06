@@ -56,6 +56,13 @@ type webReportSection struct {
 	Tables     []webTable
 }
 
+type webReportGroup struct {
+	ID       string
+	Title    string
+	Subtitle string
+	Sections []webReportSection
+}
+
 // NewWebServer 创建新的 Web 服务器
 func NewWebServer(port int, logger *logger.Logger) *WebServer {
 	return &WebServer{
@@ -151,7 +158,10 @@ func (ws *WebServer) prepareTemplateData() map[string]interface{} {
 	data["ConfidenceLevel"] = ws.confidenceLevel()
 	data["CalibrationVersion"] = ws.calibrationVersion()
 	data["SharePlainText"] = ws.sharePlainText()
-	data["ReportSections"] = ws.buildReportSections(overallScore)
+	reportSections := ws.buildReportSections(overallScore)
+	data["ReportSections"] = reportSections
+	data["ReportGroups"] = groupWebReportSections(reportSections, ws.getQualityNotes(), ws.sharePlainText())
+	data["ReportStatusCounts"] = countWebReportStatuses(reportSections, ws.getQualityNotes(), ws.sharePlainText())
 
 	// 测试结果列表
 	testResultsList := []map[string]interface{}{}
@@ -204,6 +214,80 @@ func (ws *WebServer) buildReportSections(overallScore *models.OverallScore) []we
 	)
 
 	return sections
+}
+
+func groupWebReportSections(sections []webReportSection, qualityNotes []string, shareText string) []webReportGroup {
+	definitions := []struct {
+		id       string
+		title    string
+		subtitle string
+		ids      map[string]bool
+	}{
+		{"overview", "概览", "评分、系统和报告结论。", map[string]bool{"overview": true, "system": true}},
+		{"core", "核心性能", "CPU、内存、磁盘和网络基础测评。", map[string]bool{"cpu": true, "memory": true, "disk": true, "network": true}},
+		{"network", "网络扩展", "路由、流媒体、AI 服务、IP 质量和安全体检。", map[string]bool{"route": true, "streaming": true, "ai": true, "ip-quality": true, "security": true}},
+		{"stability", "稳定性", "压力测试和长时间负载表现。", map[string]bool{"stress": true}},
+	}
+
+	used := map[string]bool{}
+	groups := []webReportGroup{}
+	for _, definition := range definitions {
+		group := webReportGroup{ID: definition.id, Title: definition.title, Subtitle: definition.subtitle}
+		for _, section := range sections {
+			if definition.ids[section.ID] {
+				group.Sections = append(group.Sections, section)
+				used[section.ID] = true
+			}
+		}
+		if len(group.Sections) > 0 {
+			groups = append(groups, group)
+		}
+	}
+
+	delivery := webReportGroup{ID: "delivery", Title: "交付", Subtitle: "质量提示和分享模板。"}
+	if len(qualityNotes) > 0 {
+		delivery.Sections = append(delivery.Sections, webReportSection{ID: "quality", Title: "质量提示", Status: "success", StatusText: "提示"})
+	}
+	if shareText != "" {
+		delivery.Sections = append(delivery.Sections, webReportSection{ID: "share", Title: "分享模板", Status: "success", StatusText: "可复制"})
+	}
+	if len(delivery.Sections) > 0 {
+		groups = append(groups, delivery)
+	}
+
+	other := webReportGroup{ID: "other", Title: "其他", Subtitle: "其他报告模块。"}
+	for _, section := range sections {
+		if !used[section.ID] {
+			other.Sections = append(other.Sections, section)
+		}
+	}
+	if len(other.Sections) > 0 {
+		groups = append(groups, other)
+	}
+
+	return groups
+}
+
+func countWebReportStatuses(sections []webReportSection, qualityNotes []string, shareText string) map[string]int {
+	counts := map[string]int{
+		"success": 0,
+		"warning": 0,
+		"failed":  0,
+		"skipped": 0,
+	}
+	for _, section := range sections {
+		switch section.Status {
+		case "success":
+			counts["success"]++
+		case "warning", "degraded":
+			counts["warning"]++
+		case "failed":
+			counts["failed"]++
+		default:
+			counts["skipped"]++
+		}
+	}
+	return counts
 }
 
 func (ws *WebServer) overviewSection(overallScore *models.OverallScore) webReportSection {

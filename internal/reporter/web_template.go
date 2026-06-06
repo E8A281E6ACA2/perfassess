@@ -206,6 +206,19 @@ const HTMLTemplate = `<!DOCTYPE html>
             font-weight: 800;
         }
 
+        .nav-group + .nav-group {
+            margin-top: 14px;
+            padding-top: 12px;
+            border-top: 1px solid var(--md-outline-variant);
+        }
+
+        .nav-group-title {
+            padding: 4px 10px 8px;
+            color: var(--md-muted);
+            font-size: 11px;
+            font-weight: 820;
+        }
+
         .nav-link {
             display: flex;
             align-items: center;
@@ -230,6 +243,54 @@ const HTMLTemplate = `<!DOCTYPE html>
             gap: 18px;
         }
 
+        .report-health {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 10px;
+            margin-top: 18px;
+        }
+
+        .health-item {
+            min-height: 74px;
+            border-radius: 18px;
+            padding: 12px;
+            background: rgba(255, 255, 255, 0.16);
+            border: 1px solid rgba(255, 255, 255, 0.24);
+        }
+
+        .health-label {
+            color: rgba(255, 255, 255, 0.78);
+            font-size: 12px;
+            font-weight: 720;
+        }
+
+        .health-value {
+            margin-top: 6px;
+            font-size: 26px;
+            font-weight: 820;
+        }
+
+        .section-group {
+            display: grid;
+            gap: 14px;
+        }
+
+        .section-group-head {
+            padding: 2px 2px 0;
+        }
+
+        .section-group-head h2 {
+            margin: 0;
+            font-size: 18px;
+        }
+
+        .section-group-head p {
+            margin: 5px 0 0;
+            color: var(--md-muted);
+            font-size: 13px;
+            line-height: 1.6;
+        }
+
         .module-card {
             scroll-margin-top: 20px;
             border-radius: 24px;
@@ -237,6 +298,11 @@ const HTMLTemplate = `<!DOCTYPE html>
             background: rgba(255, 255, 255, 0.80);
             border: 1px solid rgba(196, 199, 197, 0.72);
             box-shadow: var(--md-shadow-1);
+        }
+
+        .module-skipped {
+            background: rgba(255, 250, 240, 0.88);
+            border-color: #fdd663;
         }
 
         .module-head {
@@ -506,6 +572,10 @@ const HTMLTemplate = `<!DOCTYPE html>
                 grid-template-columns: 1fr;
             }
 
+            .report-health {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+
             .hero-score {
                 width: 100%;
                 min-height: 130px;
@@ -521,7 +591,8 @@ const HTMLTemplate = `<!DOCTYPE html>
         }
 
         @media (max-width: 480px) {
-            .metric-grid {
+            .metric-grid,
+            .report-health {
                 grid-template-columns: 1fr;
             }
         }
@@ -552,6 +623,24 @@ const HTMLTemplate = `<!DOCTYPE html>
                         <span class="chip">置信度 {{.ConfidenceLevel}}</span>
                         <span class="chip">校准 {{.CalibrationVersion}}</span>
                     </div>
+                    <div class="report-health">
+                        <div class="health-item">
+                            <div class="health-label">成功模块</div>
+                            <div class="health-value">{{index .ReportStatusCounts "success"}}</div>
+                        </div>
+                        <div class="health-item">
+                            <div class="health-label">注意模块</div>
+                            <div class="health-value">{{index .ReportStatusCounts "warning"}}</div>
+                        </div>
+                        <div class="health-item">
+                            <div class="health-label">失败模块</div>
+                            <div class="health-value">{{index .ReportStatusCounts "failed"}}</div>
+                        </div>
+                        <div class="health-item">
+                            <div class="health-label">未执行模块</div>
+                            <div class="health-value">{{index .ReportStatusCounts "skipped"}}</div>
+                        </div>
+                    </div>
                 </div>
                 <div class="hero-score">
                     <div class="score-number">{{printf "%.0f" .OverallScore.TotalScore}}</div>
@@ -564,20 +653,29 @@ const HTMLTemplate = `<!DOCTYPE html>
         <section class="report-layout">
             <nav class="sidebar" aria-label="报告目录">
                 <div class="sidebar-title">报告目录</div>
-                {{range .ReportSections}}
-                <a class="nav-link" href="#{{.ID}}">
-                    <span>{{.Title}}</span>
-                    <span class="status-badge status-{{.Status}}">{{.StatusText}}</span>
-                </a>
-                {{end}}
-                {{if .SharePlainText}}
-                <a class="nav-link" href="#share"><span>分享模板</span><span class="status-badge status-success">可复制</span></a>
+                {{range .ReportGroups}}
+                <div class="nav-group">
+                    <div class="nav-group-title">{{.Title}}</div>
+                    {{range .Sections}}
+                    <a class="nav-link" href="#{{.ID}}">
+                        <span>{{.Title}}</span>
+                        <span class="status-badge status-{{.Status}}">{{.StatusText}}</span>
+                    </a>
+                    {{end}}
+                </div>
                 {{end}}
             </nav>
 
             <div class="content-stack">
-                {{range .ReportSections}}
-                <section id="{{.ID}}" class="module-card">
+                {{range .ReportGroups}}
+                {{if ne .ID "delivery"}}
+                <div class="section-group" id="group-{{.ID}}">
+                    <div class="section-group-head">
+                        <h2>{{.Title}}</h2>
+                        <p>{{.Subtitle}}</p>
+                    </div>
+                    {{range .Sections}}
+                    <section id="{{.ID}}" class="module-card module-{{.Status}}">
                     <div class="module-head">
                         <div>
                             <h2 class="module-title">{{.Title}}</h2>
@@ -634,7 +732,10 @@ const HTMLTemplate = `<!DOCTYPE html>
                     {{if .Hint}}
                     <div class="hint-box">{{.Hint}}</div>
                     {{end}}
-                </section>
+                    </section>
+                    {{end}}
+                </div>
+                {{end}}
                 {{end}}
 
                 {{if .QualityNotes}}
