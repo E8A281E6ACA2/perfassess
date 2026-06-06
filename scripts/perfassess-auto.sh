@@ -199,6 +199,7 @@ artifacts = [
     ("硬件质量报告", "hardware_quality.json"),
     ("网络质量报告", "net_quality.json"),
     ("路由追踪报告", "route_trace.json"),
+    ("国内方向参考报告", "backroute_trace.json"),
     ("IP 质量报告", "ip_quality.json"),
     ("快速 JSON 报告", "quick.json"),
     ("依赖检查", "check-deps.txt"),
@@ -496,6 +497,29 @@ def route_rows(results):
 def has_china_route_reference(rows):
     return any(row and row[0] == "国内方向参考" for row in rows)
 
+def split_route_results(results):
+    grouped = {"public": [], "china_reference": []}
+    if not isinstance(results, list):
+        return grouped
+    for item in results:
+        if not isinstance(item, dict):
+            continue
+        key = "china_reference" if route_group(item.get("target")) == "国内方向参考" else "public"
+        grouped[key].append(item)
+    return grouped
+
+def route_direction_summary(results):
+    grouped = split_route_results(results)
+    summary = {}
+    for key, items in grouped.items():
+        ok = sum(1 for item in items if isinstance(item, dict) and item.get("success"))
+        summary[key] = {
+            "total": len(items),
+            "success": ok,
+            "failed": len(items) - ok,
+        }
+    return summary
+
 def iperf3_matrix_nodes(metrics):
     if not isinstance(metrics, dict):
         return []
@@ -610,6 +634,8 @@ def write_report_archive():
         "net_quality.txt",
         "route_trace.json",
         "route_trace.txt",
+        "backroute_trace.json",
+        "backroute_trace.txt",
         "ip_quality.json",
         "ip_quality.txt",
         "streaming_unlock.json",
@@ -682,7 +708,17 @@ def write_module_artifacts():
     route_payload = {
         **module_common,
         "note": route_note,
+        "direction_summary": route_direction_summary(default_summary.get("route_trace_results")),
+        "groups": split_route_results(default_summary.get("route_trace_results")),
         "results": default_summary.get("route_trace_results", []),
+    }
+    backroute_payload = {
+        **module_common,
+        "type": "outbound_china_direction_reference",
+        "is_real_return_route": False,
+        "note": "该文件为本机到国内目标的出站方向参考，不是真实回程。真实回程需要远端探针或第三方平台配合。",
+        "summary": route_direction_summary(default_summary.get("route_trace_results")),
+        "results": split_route_results(default_summary.get("route_trace_results")).get("china_reference", []),
     }
     ip_payload = {
         **module_common,
@@ -700,6 +736,7 @@ def write_module_artifacts():
     json_dump(out / "hardware_quality.json", hardware_payload)
     json_dump(out / "net_quality.json", net_payload)
     json_dump(out / "route_trace.json", route_payload)
+    json_dump(out / "backroute_trace.json", backroute_payload)
     json_dump(out / "ip_quality.json", ip_payload)
     json_dump(out / "streaming_unlock.json", streaming_payload)
     json_dump(out / "ai_services.json", ai_payload)
@@ -737,6 +774,18 @@ def write_module_artifacts():
         route_lines.append("未执行")
     route_lines.append("")
     (out / "route_trace.txt").write_text("\n".join(route_lines), encoding="utf-8")
+    backroute_lines = [
+        "Perfassess 国内方向参考摘要",
+        "说明: 本文件不是第三方真实回程，只是本机到国内目标的出站路径参考。",
+        "",
+    ]
+    china_rows = [row for row in route_rows(default_summary.get("route_trace_results")) if row[0] == "国内方向参考"]
+    for row in china_rows:
+        backroute_lines.append(f"{row[1]} | {row[2]} | {row[3]} 跳 | {row[4]}")
+    if not china_rows:
+        backroute_lines.append("未执行或当前网络档位未包含国内方向目标。")
+    backroute_lines.append("")
+    (out / "backroute_trace.txt").write_text("\n".join(backroute_lines), encoding="utf-8")
     (out / "ip_quality.txt").write_text(
         "\n".join([
             "Perfassess IP 质量摘要",
@@ -985,6 +1034,7 @@ def console_report(color=False):
         kv("硬件模块", out / "hardware_quality.json"),
         kv("网络模块", out / "net_quality.json"),
         kv("路由模块", out / "route_trace.json"),
+        kv("国内方向", out / "backroute_trace.json"),
         kv("IP 模块", out / "ip_quality.json"),
         kv("验收摘要", acceptance_summary_path),
     ])
@@ -1077,6 +1127,7 @@ lines.extend([
     f"- 硬件质量模块: {out / 'hardware_quality.json'}",
     f"- 网络质量模块: {out / 'net_quality.json'}",
     f"- 路由追踪模块: {out / 'route_trace.json'}",
+    f"- 国内方向参考模块: {out / 'backroute_trace.json'}",
     f"- IP 质量模块: {out / 'ip_quality.json'}",
     f"- 快速测评 JSON: {out / 'quick.json'}",
     f"- 依赖检查: {out / 'check-deps.txt'}",
