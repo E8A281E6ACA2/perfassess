@@ -22,6 +22,44 @@
 
 ## 快速开始
 
+### 新服务器拉取并测试
+
+适合在一台全新的 Linux/macOS 服务器上直接拉取源码、构建并验证。请先确保服务器已经安装 `git` 和 Go 1.25.3 或更高版本。
+
+```bash
+# 1. 拉取项目
+git clone https://github.com/E8A281E6ACA2/perfassess.git
+cd perfassess
+
+# 2. 下载依赖并构建
+make deps
+make build
+
+# 3. 先跑一遍快速测评
+./build/perfassess --quick
+
+# 4. 运行项目测试，确认代码和构建链路正常
+make test
+```
+
+如果服务器没有安装 `make`，可以直接使用 Go 命令：
+
+```bash
+git clone https://github.com/E8A281E6ACA2/perfassess.git
+cd perfassess
+go mod download
+go build -o build/perfassess cmd/main.go
+./build/perfassess --quick
+go test ./...
+```
+
+如果希望一条命令完成构建、依赖检查、默认测评和验收摘要，可以运行：
+
+```bash
+scripts/perfassess-auto.sh
+cat /tmp/perfassess-auto/summary.md
+```
+
 ### 方式一：一把梭完整检测（默认）
 
 ```bash
@@ -177,6 +215,21 @@ make deps
 make build
 
 # 可执行文件位于 build/perfassess
+
+# 快速运行测评
+./build/perfassess --quick
+
+# 运行项目测试
+make test
+```
+
+没有 `make` 的环境可以使用：
+
+```bash
+go mod download
+go build -o build/perfassess cmd/main.go
+./build/perfassess --quick
+go test ./...
 ```
 
 **跨平台编译**：
