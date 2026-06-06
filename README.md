@@ -31,6 +31,14 @@ curl -fsSL https://raw.githubusercontent.com/E8A281E6ACA2/perfassess/main/script
 cat /tmp/perfassess-auto/summary.md
 ```
 
+这条命令默认是非交互测评，不会常驻启动 Web 服务。它会输出 Markdown 摘要和 JSON/text 报告，适合直接复制结果或做服务器验收。
+
+如果希望测评完成后临时启动 Material Design 3 / Google 风格 Web 报告：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/E8A281E6ACA2/perfassess/main/scripts/bootstrap.sh | bash -s -- --web --port 8080
+```
+
 如果机器没有 `curl`，可以用 `wget`：
 
 ```bash
@@ -44,6 +52,12 @@ cat /tmp/perfassess-auto/summary.md
 cd perfassess
 scripts/bootstrap.sh
 cat /tmp/perfassess-auto/summary.md
+```
+
+已克隆仓库并希望启动 Web 报告：
+
+```bash
+scripts/bootstrap.sh --web --port 8080
 ```
 
 清理构建产物和测评输出：
@@ -471,6 +485,14 @@ make run
 3. 看到提示：`🌐 Web 服务器已启动: http://localhost:8080`
 4. 在浏览器打开该地址查看报告
 5. 按 `Ctrl+C` 停止服务器
+
+远程服务器访问时，请用服务器公网 IP 和端口访问，例如 `http://SERVER_IP:8080`。如果不想开放端口，可以在本地使用 SSH 端口转发：
+
+```bash
+ssh -L 8080:localhost:8080 root@SERVER_IP
+```
+
+然后在本地浏览器打开 `http://localhost:8080`。
 
 #### 输出选项
 

@@ -6,6 +6,8 @@ WORK_DIR="${PERFASSESS_BOOTSTRAP_DIR:-$HOME/perfassess}"
 GO_VERSION="${PERFASSESS_GO_VERSION:-1.25.3}"
 OUTPUT_DIR="${PERFASSESS_AUTO_DIR:-/tmp/perfassess-auto}"
 RUN_TESTS="${PERFASSESS_BOOTSTRAP_TESTS:-1}"
+START_WEB="${PERFASSESS_BOOTSTRAP_WEB:-0}"
+WEB_PORT="${PERFASSESS_WEB_PORT:-8080}"
 ACTION="run"
 
 usage() {
@@ -15,12 +17,16 @@ Usage: scripts/bootstrap.sh [options]
 Options:
   --dir PATH       Source directory to clone or use. Default: $WORK_DIR
   --go VERSION    Go version to install when missing or too old. Default: $GO_VERSION
+  --web           Start the Material Design web report after bootstrap.
+  --port PORT     Web report port when --web is used. Default: $WEB_PORT
   --clean         Remove build output and auto-test output.
   --clean-all     Remove build output, auto-test output, and the cloned source directory.
   -h, --help      Show this help.
 
 Environment:
   PERFASSESS_BOOTSTRAP_TESTS=0   Skip go test ./...
+  PERFASSESS_BOOTSTRAP_WEB=1     Start the Material Design web report after bootstrap.
+  PERFASSESS_WEB_PORT=9090       Web report port.
   PERFASSESS_AUTO_OPTIONAL=auto  Let acceptance run optional checks when dependencies exist.
 EOF
 }
@@ -48,6 +54,15 @@ while [[ $# -gt 0 ]]; do
     --go)
       [[ $# -ge 2 ]] || fail "--go requires a version"
       GO_VERSION="$2"
+      shift 2
+      ;;
+    --web)
+      START_WEB="1"
+      shift
+      ;;
+    --port)
+      [[ $# -ge 2 ]] || fail "--port requires a port"
+      WEB_PORT="$2"
       shift 2
       ;;
     --clean)
@@ -242,6 +257,14 @@ run_all() {
   echo "Summary: $OUTPUT_DIR/summary.md"
   echo ""
   cat "$OUTPUT_DIR/summary.md"
+
+  if [[ "$START_WEB" == "1" ]]; then
+    echo ""
+    info "starting Material Design web report on port $WEB_PORT"
+    echo "Open http://SERVER_IP:$WEB_PORT in your browser, or use SSH port forwarding."
+    echo "Press Ctrl+C to stop the web server."
+    "$WORK_DIR/build/perfassess" --web --port "$WEB_PORT"
+  fi
 }
 
 case "$ACTION" in
