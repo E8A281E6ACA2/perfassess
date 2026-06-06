@@ -614,6 +614,27 @@ func (ws *WebServer) routeSection() webReportSection {
 		})
 	}
 	section.Tables = append(section.Tables, table)
+
+	for _, result := range results {
+		if result == nil || len(result.Hops) == 0 {
+			continue
+		}
+		hopTable := webTable{Title: fmt.Sprintf("%s 路由跳点", result.Target), Headers: []string{"跳数", "IP", "主机名", "延迟"}}
+		for _, hop := range result.Hops {
+			if hop == nil {
+				continue
+			}
+			hopTable.Rows = append(hopTable.Rows, []string{
+				fmt.Sprintf("%d", hop.Number),
+				fallback(hop.IP, "-"),
+				fallback(hop.Hostname, "-"),
+				formatHopLatency(hop.Latency),
+			})
+		}
+		if len(hopTable.Rows) > 0 {
+			section.Tables = append(section.Tables, hopTable)
+		}
+	}
 	return section
 }
 
@@ -665,6 +686,13 @@ func lastTraceHop(result *models.TraceResult) string {
 		return hop.IP
 	}
 	return "-"
+}
+
+func formatHopLatency(latency time.Duration) string {
+	if latency <= 0 {
+		return "-"
+	}
+	return fmt.Sprintf("%.2f ms", float64(latency)/float64(time.Millisecond))
 }
 
 func (ws *WebServer) streamingSection() webReportSection {

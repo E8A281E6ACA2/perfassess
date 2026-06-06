@@ -60,12 +60,12 @@ func NewLogger(logDir string, level string) (*Logger, error) {
 		zapLevel = zapcore.InfoLevel
 	}
 
-	// 配置编码器（日志格式）
+	// 控制台输出面向人工阅读，详细时间和调用位置保留给会话日志文件。
 	encoderConfig := zapcore.EncoderConfig{
-		TimeKey:        "time",
+		TimeKey:        "",
 		LevelKey:       "level",
 		NameKey:        "logger",
-		CallerKey:      "caller",
+		CallerKey:      "",
 		MessageKey:     "msg",
 		StacktraceKey:  "stacktrace",
 		LineEnding:     zapcore.DefaultLineEnding,
@@ -110,8 +110,21 @@ func (l *Logger) CreateSessionLog() (string, error) {
 	}
 	logFile.Close()
 
-	// 更新 logger 配置，同时输出到控制台和文件
-	encoderConfig := zapcore.EncoderConfig{
+	// 更新 logger 配置，同时输出到控制台和文件。控制台保持简洁，文件保留完整诊断信息。
+	consoleEncoderConfig := zapcore.EncoderConfig{
+		TimeKey:        "",
+		LevelKey:       "level",
+		NameKey:        "logger",
+		CallerKey:      "",
+		MessageKey:     "msg",
+		StacktraceKey:  "stacktrace",
+		LineEnding:     zapcore.DefaultLineEnding,
+		EncodeLevel:    zapcore.CapitalLevelEncoder,
+		EncodeTime:     zapcore.ISO8601TimeEncoder,
+		EncodeDuration: zapcore.StringDurationEncoder,
+		EncodeCaller:   zapcore.ShortCallerEncoder,
+	}
+	fileEncoderConfig := zapcore.EncoderConfig{
 		TimeKey:        "time",
 		LevelKey:       "level",
 		NameKey:        "logger",
@@ -133,13 +146,13 @@ func (l *Logger) CreateSessionLog() (string, error) {
 
 	// 创建多输出核心（控制台 + 文件）
 	consoleCore := zapcore.NewCore(
-		zapcore.NewConsoleEncoder(encoderConfig),
+		zapcore.NewConsoleEncoder(consoleEncoderConfig),
 		zapcore.AddSync(os.Stdout),
 		l.level,
 	)
 
 	fileCore := zapcore.NewCore(
-		zapcore.NewConsoleEncoder(encoderConfig),
+		zapcore.NewConsoleEncoder(fileEncoderConfig),
 		zapcore.AddSync(file),
 		l.level,
 	)

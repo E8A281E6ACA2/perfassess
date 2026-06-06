@@ -155,8 +155,15 @@ mark_failed() {
 trap mark_failed EXIT
 
 step() {
+  [[ "$show_progress" == "1" ]] || return 0
   echo
   echo "==> $*"
+}
+
+finish_step() {
+  local label="$1"
+  [[ "$show_progress" == "1" ]] || return 0
+  echo "[OK] $label 完成"
 }
 
 run_capture() {
@@ -168,14 +175,9 @@ run_capture() {
   step "$label"
   current_progress_step="$step_id"
   progress_update "$step_id" "running" "$label"
-  if [[ "$show_progress" == "1" ]]; then
-    "$@" \
-      > >(tee "$stdout_file" | awk '/^[0-9]{4}-[0-9]{2}-[0-9]{2}T.*[[:space:]](DEBUG|INFO|WARN|ERROR)[[:space:]]/ { print; fflush() }' >&2) \
-      2> >(tee "$output_dir/${stdout_file##*/}.stderr.log" >&2)
-  else
-    "$@" >"$stdout_file" 2>"$output_dir/${stdout_file##*/}.stderr.log"
-  fi
+  "$@" >"$stdout_file" 2>"$output_dir/${stdout_file##*/}.stderr.log"
   progress_update "$step_id" "success" "$label 完成"
+  finish_step "$label"
 }
 
 if ! command -v python3 >/dev/null 2>&1; then
@@ -198,6 +200,7 @@ if [[ "$skip_build" != "1" ]]; then
   progress_update "build" "running" "构建二进制: $binary"
   go build -o "$binary" cmd/main.go
   progress_update "build" "success" "二进制构建完成"
+  finish_step "building: $binary"
 else
   progress_update "build" "success" "跳过构建，使用已有二进制"
 fi
@@ -214,33 +217,28 @@ progress_update "deps" "running" "检查版本和依赖"
 "$binary" version >"$output_dir/version.txt"
 "$binary" check-deps >"$output_dir/check-deps.txt"
 progress_update "deps" "success" "版本和依赖检查完成"
+finish_step "checking version and dependencies"
 
-run_capture "default_json" "running auto benchmark profile: $auto_profile (json report)" "$output_dir/default.stdout.txt" \
+run_capture "default_json" "运行自动测评档位: $auto_profile (JSON 报告)" "$output_dir/default.stdout.txt" \
   "$binary" "${default_args[@]}"
 python3 -m json.tool "$output_dir/default.json" >/dev/null
 
-run_capture "default_text" "running auto benchmark profile: $auto_profile (text report)" "$output_dir/default-text.stdout.txt" \
+run_capture "default_text" "运行自动测评档位: $auto_profile (文本报告)" "$output_dir/default-text.stdout.txt" \
   "$binary" "${default_text_args[@]}"
 
-run_capture "quick" "running quick benchmark" "$output_dir/quick.stdout.txt" \
+run_capture "quick" "运行快速测评" "$output_dir/quick.stdout.txt" \
   "$binary" --quick --output-format json -o "$output_dir/quick.json"
 python3 -m json.tool "$output_dir/quick.json" >/dev/null
 
-step "running acceptance"
+step "运行验收流程"
 current_progress_step="acceptance"
-progress_update "acceptance" "running" "running acceptance"
-if [[ "$show_progress" == "1" ]]; then
-  PERFASSESS_BINARY="$binary" \
-  PERFASSESS_ACCEPTANCE_DIR="$output_dir/acceptance" \
-  PERFASSESS_ACCEPTANCE_OPTIONAL="$optional_mode" \
-  scripts/vps-acceptance.sh > >(tee "$output_dir/acceptance.stdout.txt") 2> >(tee "$output_dir/acceptance.stderr.log" >&2)
-else
-  PERFASSESS_BINARY="$binary" \
-  PERFASSESS_ACCEPTANCE_DIR="$output_dir/acceptance" \
-  PERFASSESS_ACCEPTANCE_OPTIONAL="$optional_mode" \
-  scripts/vps-acceptance.sh >"$output_dir/acceptance.stdout.txt" 2>"$output_dir/acceptance.stderr.log"
-fi
+progress_update "acceptance" "running" "运行验收流程"
+PERFASSESS_BINARY="$binary" \
+PERFASSESS_ACCEPTANCE_DIR="$output_dir/acceptance" \
+PERFASSESS_ACCEPTANCE_OPTIONAL="$optional_mode" \
+scripts/vps-acceptance.sh >"$output_dir/acceptance.stdout.txt" 2>"$output_dir/acceptance.stderr.log"
 progress_update "acceptance" "success" "验收流程完成"
+finish_step "运行验收流程"
 
 current_progress_step="summary"
 progress_update "summary" "running" "生成汇总"

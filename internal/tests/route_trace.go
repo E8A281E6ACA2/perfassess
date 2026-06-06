@@ -142,17 +142,21 @@ func (rt *RouteTracer) TraceMultiple(targets []string) ([]*models.TraceResult, e
 
 	// 收集结果
 	results := make([]*models.TraceResult, 0, len(targets))
+	successCount := 0
 	for i := 0; i < len(targets); i++ {
 		select {
 		case result := <-resultChan:
 			results = append(results, result)
+			if result != nil && result.Success {
+				successCount++
+			}
 		case err := <-errorChan:
 			rt.logger.Error("路由追踪错误", err)
 			// 继续收集其他结果
 		}
 	}
 
-	rt.logger.Info(fmt.Sprintf("并发路由追踪完成，成功: %d/%d", len(results), len(targets)))
+	rt.logger.Info(fmt.Sprintf("并发路由追踪完成，成功: %d/%d", successCount, len(targets)))
 
 	return results, nil
 }

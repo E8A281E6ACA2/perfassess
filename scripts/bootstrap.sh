@@ -146,6 +146,48 @@ install_packages() {
   fi
 }
 
+install_named_packages() {
+  local packages=("$@")
+  [[ ${#packages[@]} -gt 0 ]] || return 0
+
+  need_sudo
+  info "installing profile dependencies: ${packages[*]}"
+
+  if command -v apt-get >/dev/null 2>&1; then
+    "${SUDO[@]}" apt-get update
+    "${SUDO[@]}" apt-get install -y "${packages[@]}"
+  elif command -v dnf >/dev/null 2>&1; then
+    "${SUDO[@]}" dnf install -y "${packages[@]}"
+  elif command -v yum >/dev/null 2>&1; then
+    "${SUDO[@]}" yum install -y "${packages[@]}"
+  elif command -v apk >/dev/null 2>&1; then
+    "${SUDO[@]}" apk add --no-cache "${packages[@]}"
+  elif command -v pacman >/dev/null 2>&1; then
+    "${SUDO[@]}" pacman -Sy --noconfirm "${packages[@]}"
+  else
+    fail "No supported package manager found. Install these first: ${packages[*]}"
+  fi
+}
+
+install_profile_packages() {
+  local packages=()
+
+  case "$AUTO_PROFILE" in
+    standard|full)
+      if [[ "$(uname -s)" == "Linux" ]] && ! command -v traceroute >/dev/null 2>&1; then
+        packages+=(traceroute)
+      fi
+      ;;
+  esac
+
+  if [[ ${#packages[@]} -eq 0 ]]; then
+    success "profile dependencies are present"
+    return
+  fi
+
+  install_named_packages "${packages[@]}"
+}
+
 version_ge() {
   local current="$1"
   local required="$2"
@@ -514,6 +556,7 @@ run_all() {
   fi
 
   choose_auto_profile
+  install_profile_packages
   start_progress_server
 
   info "running selected benchmark profile and acceptance"

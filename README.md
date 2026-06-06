@@ -24,7 +24,7 @@
 
 ### 新服务器拉取并测试
 
-适合在一台全新的 Linux/macOS 服务器上直接准备环境、拉取源码、构建、测试并跑一遍默认测评。脚本会检测缺失的基础工具并尝试安装，包括 `git`、`curl`、`make`、`python3` 和 Go 1.25.3。
+适合在一台全新的 Linux/macOS 服务器上直接准备环境、拉取源码、构建、测试并跑一遍默认测评。脚本会检测缺失的基础工具并尝试安装，包括 `git`、`curl`、`make`、`python3` 和 Go 1.25.3。选择 `standard` 或 `full` 档位时，Linux 主机会额外安装路由追踪所需的 `traceroute`。
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/E8A281E6ACA2/perfassess/main/scripts/bootstrap.sh | bash
@@ -33,7 +33,7 @@ cat /tmp/perfassess-auto/summary.md
 
 这条命令默认是非交互测评，不会常驻启动 Web 服务。它会输出 Markdown 摘要和 JSON/text 完整报告，适合直接复制结果或做服务器验收。
 
-执行过程中会实时显示当前进度，例如系统信息、CPU、内存、磁盘、网络、验收步骤；完整输出仍会保存到 `/tmp/perfassess-auto/`。如果只想后台静默保存日志，可以设置 `PERFASSESS_AUTO_PROGRESS=0`。
+执行过程中会实时显示当前步骤和完成状态；内部测试日志、标准输出和错误输出会保存到 `/tmp/perfassess-auto/`。如果只想后台静默保存日志，可以设置 `PERFASSESS_AUTO_PROGRESS=0`。
 
 启动前脚本会探测 CPU 线程数、内存、swap 和可用磁盘，并选择自动测评档位。有交互终端时会显示选项；通过 `curl | bash` 这类无人值守方式运行时会自动选择推荐档位：
 
@@ -628,7 +628,7 @@ Flags:
 
 注：--tests 参数仍然支持，但推荐使用 --benchmarks
 
-提示：使用 `--route-trace` 时，请确保系统已安装 traceroute（Linux/macOS）或 tracert（Windows），否则将提示缺少依赖。
+提示：直接运行二进制并使用 `--route-trace` 时，请确保系统已安装 traceroute（Linux/macOS）或 tracert（Windows），否则将提示缺少依赖。通过 `scripts/bootstrap.sh --profile standard` 或 `--profile full` 启动时，Linux 主机会自动补装 `traceroute`。
 提示：使用 `--cpu-backend sysbench` 时，请提前安装 sysbench。程序只检测并提示，不会自动安装依赖。
 提示：使用 `--cpu-backend geekbench` 时，请提前安装 Geekbench 6 并确认 `geekbench6` 可通过 PATH 访问。程序只检测并提示，不会自动安装依赖。
 提示：使用 `--memory-backend sysbench` 时，请提前安装 sysbench。程序只检测并提示，不会自动安装依赖。
@@ -1021,7 +1021,7 @@ A: 使用 `--port` 参数指定其他端口：
 | 加入历史 | `./build/perfassess history add report.json` |
 | 趋势分析 | `./build/perfassess history trend` |
 | 查看版本 | `./build/perfassess version` |
-| 路由追踪 | `./build/perfassess --route-trace`（需预装 traceroute/tracert） |
+| 路由追踪 | `./build/perfassess --route-trace`（直接运行需预装 traceroute/tracert；bootstrap 的 standard/full 会自动安装） |
 | 流媒体检测 | `./build/perfassess --streaming` |
 | AI 服务检测 | `./build/perfassess --ai-services` |
 | IP 质量检测 | `./build/perfassess --ip-quality` |
