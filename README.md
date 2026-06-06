@@ -24,7 +24,41 @@
 
 ### 新服务器拉取并测试
 
-适合在一台全新的 Linux/macOS 服务器上直接拉取源码、构建并验证。请先确保服务器已经安装 `git` 和 Go 1.25.3 或更高版本。
+适合在一台全新的 Linux/macOS 服务器上直接准备环境、拉取源码、构建、测试并跑一遍默认测评。脚本会检测缺失的基础工具并尝试安装，包括 `git`、`curl`、`make`、`python3` 和 Go 1.25.3。
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/E8A281E6ACA2/perfassess/main/scripts/bootstrap.sh | bash
+cat /tmp/perfassess-auto/summary.md
+```
+
+如果机器没有 `curl`，可以用 `wget`：
+
+```bash
+wget -qO- https://raw.githubusercontent.com/E8A281E6ACA2/perfassess/main/scripts/bootstrap.sh | bash
+cat /tmp/perfassess-auto/summary.md
+```
+
+如果已经克隆了仓库，在项目目录中运行：
+
+```bash
+cd perfassess
+scripts/bootstrap.sh
+cat /tmp/perfassess-auto/summary.md
+```
+
+清理构建产物和测评输出：
+
+```bash
+scripts/bootstrap.sh --clean
+```
+
+连同默认克隆目录 `~/perfassess` 一起清理：
+
+```bash
+scripts/bootstrap.sh --clean-all
+```
+
+如果不希望脚本安装系统依赖，也可以手动准备 `git`、`make`、Go 1.25.3 和 `python3` 后分步执行：
 
 ```bash
 # 1. 拉取项目
@@ -42,7 +76,7 @@ make build
 make test
 ```
 
-如果服务器没有安装 `make`，可以直接使用 Go 命令：
+如果服务器没有安装 `make`，但已经有 Go，可以直接使用 Go 命令：
 
 ```bash
 git clone https://github.com/E8A281E6ACA2/perfassess.git
@@ -59,6 +93,8 @@ go test ./...
 scripts/perfassess-auto.sh
 cat /tmp/perfassess-auto/summary.md
 ```
+
+注意：`scripts/perfassess-auto.sh` 不会安装 Go 或系统依赖；全新服务器建议优先使用 `scripts/bootstrap.sh`。
 
 ### 方式一：一把梭完整检测（默认）
 
@@ -201,7 +237,7 @@ perfassess --help
 
 ### 🔧 方式三：从源码构建
 
-确保已安装 Go 1.25.3 或更高版本。
+确保已安装 Go 1.25.3 或更高版本。全新服务器可先运行 `scripts/bootstrap.sh` 自动准备环境。
 
 ```bash
 # 克隆仓库
@@ -230,6 +266,12 @@ go mod download
 go build -o build/perfassess cmd/main.go
 ./build/perfassess --quick
 go test ./...
+```
+
+如需自动安装缺失依赖、构建并跑验收：
+
+```bash
+scripts/bootstrap.sh
 ```
 
 **跨平台编译**：

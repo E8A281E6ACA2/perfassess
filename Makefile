@@ -23,7 +23,7 @@ BINARY_LINUX=$(APP_NAME)_linux
 BINARY_DARWIN=$(APP_NAME)_darwin
 BINARY_WINDOWS=$(APP_NAME).exe
 
-.PHONY: all build build-all build-linux build-darwin build-windows clean test test-coverage deps install run run-verbose run-cpu run-all auto fmt fmt-check lint schema-check cli-smoke json-smoke release-smoke vps-acceptance validate release-check help
+.PHONY: all build build-all build-linux build-darwin build-windows clean test test-coverage deps install run run-verbose run-cpu run-all bootstrap auto fmt fmt-check lint schema-check cli-smoke json-smoke release-smoke vps-acceptance validate release-check help
 
 # 默认目标
 all: clean deps build
@@ -120,6 +120,11 @@ auto:
 	@echo "运行一键非交互测评与验收..."
 	@scripts/perfassess-auto.sh
 
+# 新服务器一键准备环境、构建、测试与验收
+bootstrap:
+	@echo "准备环境并运行一键测评..."
+	@scripts/bootstrap.sh
+
 # 格式化代码
 fmt:
 	@echo "格式化代码..."
@@ -191,6 +196,7 @@ help:
 	@echo "  make run-verbose    - 运行程序（详细模式）"
 	@echo "  make run-cpu        - 运行 CPU 测试"
 	@echo "  make run-all        - 运行所有测试"
+	@echo "  make bootstrap      - 准备环境并运行一键测评"
 	@echo "  make auto           - 一键非交互测评与验收"
 	@echo "  make fmt            - 格式化代码"
 	@echo "  make fmt-check      - 检查 Go 代码格式"
