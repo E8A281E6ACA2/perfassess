@@ -7,6 +7,7 @@
 - 项目分析与优化路线图: [docs/project-analysis-and-roadmap.md](docs/project-analysis-and-roadmap.md)
 - 发布前检查清单: [docs/release-checklist.md](docs/release-checklist.md)
 - 真实 VPS 验收流程: [docs/vps-acceptance.md](docs/vps-acceptance.md)
+- 真实回程探针设计: [docs/return-route-probe-design.md](docs/return-route-probe-design.md)
 
 ## 当前状态
 
