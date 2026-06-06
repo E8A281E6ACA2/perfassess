@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"sort"
 	"strings"
 	"syscall"
 	"time"
@@ -192,12 +193,12 @@ func (ws *WebServer) buildReportSections(overallScore *models.OverallScore) []we
 		ws.memorySection(memoryResult, overallScore),
 		ws.diskSection(diskResult, overallScore),
 		ws.networkSection(networkResult, overallScore),
-		ws.optionalSection("route", "路由追踪", "到主要地区和节点的网络路径质量。", "route_trace_results", "本次未启用路由追踪。使用 --route-trace 启用。"),
-		ws.optionalSection("streaming", "流媒体解锁", "Netflix、Disney+、YouTube 等平台的区域访问能力。", "streaming_results", "本次未启用流媒体检测。使用 --streaming 启用。"),
-		ws.optionalSection("ai", "AI 服务检测", "OpenAI、Gemini 等 AI 服务的可访问性。", "ai_results", "本次未启用 AI 服务检测。使用 --ai-services 启用。"),
+		ws.routeSection(),
+		ws.streamingSection(),
+		ws.aiSection(),
 		ws.ipQualitySection(),
-		ws.optionalSection("stress", "压力测试", "长时间 CPU、内存、磁盘压力下的稳定性。", "stress_report", "本次未启用压力测试。使用 --stress 启用。"),
-		ws.optionalSection("security", "安全体检", "端口、SSH 配置和基础安全风险检查。", "security_report", "本次未启用安全体检。使用 --security 启用。"),
+		ws.stressSection(),
+		ws.securitySection(),
 	)
 
 	return sections
@@ -543,6 +544,253 @@ func (ws *WebServer) optionalSection(id string, title string, subtitle string, s
 	return section
 }
 
+func optionalModuleBase(id string, title string, subtitle string, hint string) webReportSection {
+	return webReportSection{
+		ID:       id,
+		Title:    title,
+		Subtitle: subtitle,
+		Hint:     hint,
+	}
+}
+
+func skippedModule(section webReportSection) webReportSection {
+	section.Status = "skipped"
+	section.StatusText = "未执行"
+	section.Summary = section.Hint
+	return section
+}
+
+func (ws *WebServer) summaryValue(key string) interface{} {
+	if ws.report == nil || ws.report.Summary == nil {
+		return nil
+	}
+	return ws.report.Summary[key]
+}
+
+func (ws *WebServer) routeSection() webReportSection {
+	hint := "本次未启用路由追踪。使用 --route-trace 启用。"
+	section := optionalModuleBase("route", "路由追踪", "到主要地区和节点的网络路径质量。", hint)
+	results, ok := ws.summaryValue("route_trace_results").([]*models.TraceResult)
+	if !ok || len(results) == 0 {
+		return skippedModule(section)
+	}
+
+	successCount := 0
+	totalHops := 0
+	for _, result := range results {
+		if result != nil && result.Success {
+			successCount++
+			totalHops += result.TotalHops
+		}
+	}
+	avgHops := 0.0
+	if successCount > 0 {
+		avgHops = float64(totalHops) / float64(successCount)
+	}
+
+	section.Status = webAvailabilityStatus(successCount, len(results))
+	section.StatusText = fmt.Sprintf("%d/%d 成功", successCount, len(results))
+	section.Summary = fmt.Sprintf("完成 %d 个目标追踪，成功 %d 个，平均 %.1f 跳。", len(results), successCount, avgHops)
+	section.Hint = ""
+	section.Metrics = append(section.Metrics,
+		webMetricCard{Label: "目标数", Value: fmt.Sprintf("%d", len(results)), Tone: "primary"},
+		webMetricCard{Label: "成功", Value: fmt.Sprintf("%d", successCount), Unit: fmt.Sprintf("/ %d", len(results)), Tone: "green"},
+		webMetricCard{Label: "平均跳数", Value: fmt.Sprintf("%.1f", avgHops), Unit: "hops", Tone: "cyan"},
+	)
+
+	table := webTable{Title: "追踪目标", Headers: []string{"目标", "状态", "跳数", "最后一跳", "错误"}}
+	for _, result := range results {
+		if result == nil {
+			continue
+		}
+		table.Rows = append(table.Rows, []string{
+			result.Target,
+			successLabel(result.Success),
+			fmt.Sprintf("%d", result.TotalHops),
+			lastTraceHop(result),
+			fallback(result.ErrorMessage, "-"),
+		})
+	}
+	section.Tables = append(section.Tables, table)
+	return section
+}
+
+func webAvailabilityStatus(available int, total int) string {
+	switch {
+	case total == 0:
+		return "skipped"
+	case available == total:
+		return "success"
+	case available > 0:
+		return "warning"
+	default:
+		return "failed"
+	}
+}
+
+func availabilityTone(available int, total int) string {
+	switch webAvailabilityStatus(available, total) {
+	case "success":
+		return "green"
+	case "warning":
+		return "amber"
+	case "failed":
+		return "red"
+	default:
+		return "primary"
+	}
+}
+
+func successLabel(success bool) string {
+	if success {
+		return "成功"
+	}
+	return "失败"
+}
+
+func lastTraceHop(result *models.TraceResult) string {
+	if result == nil || len(result.Hops) == 0 {
+		return "-"
+	}
+	for i := len(result.Hops) - 1; i >= 0; i-- {
+		hop := result.Hops[i]
+		if hop == nil || hop.IP == "" || hop.IP == "*" {
+			continue
+		}
+		if hop.Hostname != "" {
+			return fmt.Sprintf("%s (%s)", hop.IP, hop.Hostname)
+		}
+		return hop.IP
+	}
+	return "-"
+}
+
+func (ws *WebServer) streamingSection() webReportSection {
+	hint := "本次未启用流媒体检测。使用 --streaming 启用。"
+	section := optionalModuleBase("streaming", "流媒体解锁", "Netflix、Disney+、YouTube 等平台的区域访问能力。", hint)
+	results, ok := ws.summaryValue("streaming_results").(map[string]*models.StreamingResult)
+	if !ok || len(results) == 0 {
+		return skippedModule(section)
+	}
+
+	availableCount := 0
+	for _, result := range results {
+		if result != nil && result.Available {
+			availableCount++
+		}
+	}
+
+	section.Status = webAvailabilityStatus(availableCount, len(results))
+	section.StatusText = fmt.Sprintf("%d/%d 可用", availableCount, len(results))
+	section.Summary = fmt.Sprintf("检测 %d 个流媒体平台，可用 %d 个。", len(results), availableCount)
+	section.Hint = ""
+	section.Metrics = append(section.Metrics,
+		webMetricCard{Label: "平台数", Value: fmt.Sprintf("%d", len(results)), Tone: "primary"},
+		webMetricCard{Label: "可用", Value: fmt.Sprintf("%d", availableCount), Unit: fmt.Sprintf("/ %d", len(results)), Tone: availabilityTone(availableCount, len(results))},
+	)
+
+	table := webTable{Title: "平台结果", Headers: []string{"平台", "状态", "区域", "说明"}}
+	for _, pair := range sortedStreamingResults(results) {
+		table.Rows = append(table.Rows, []string{
+			pair.key,
+			availabilityLabel(pair.result != nil && pair.result.Available),
+			streamingRegion(pair.result),
+			streamingMessage(pair.result),
+		})
+	}
+	section.Tables = append(section.Tables, table)
+	return section
+}
+
+type streamingResultPair struct {
+	key    string
+	result *models.StreamingResult
+}
+
+func sortedStreamingResults(results map[string]*models.StreamingResult) []streamingResultPair {
+	pairs := make([]streamingResultPair, 0, len(results))
+	for key, result := range results {
+		pairs = append(pairs, streamingResultPair{key: key, result: result})
+	}
+	sort.Slice(pairs, func(i, j int) bool {
+		return strings.ToLower(pairs[i].key) < strings.ToLower(pairs[j].key)
+	})
+	return pairs
+}
+
+func streamingRegion(result *models.StreamingResult) string {
+	if result == nil {
+		return "-"
+	}
+	return fallback(result.Region, "-")
+}
+
+func streamingMessage(result *models.StreamingResult) string {
+	if result == nil {
+		return "-"
+	}
+	return fallback(result.Message, "-")
+}
+
+func (ws *WebServer) aiSection() webReportSection {
+	hint := "本次未启用 AI 服务检测。使用 --ai-services 启用。"
+	section := optionalModuleBase("ai", "AI 服务检测", "OpenAI、Gemini 等 AI 服务的可访问性。", hint)
+	results, ok := ws.summaryValue("ai_results").(map[string]*models.AIServiceResult)
+	if !ok || len(results) == 0 {
+		return skippedModule(section)
+	}
+
+	availableCount := 0
+	for _, result := range results {
+		if result != nil && result.Available {
+			availableCount++
+		}
+	}
+
+	section.Status = webAvailabilityStatus(availableCount, len(results))
+	section.StatusText = fmt.Sprintf("%d/%d 可用", availableCount, len(results))
+	section.Summary = fmt.Sprintf("检测 %d 个 AI 服务，可访问 %d 个。", len(results), availableCount)
+	section.Hint = ""
+	section.Metrics = append(section.Metrics,
+		webMetricCard{Label: "服务数", Value: fmt.Sprintf("%d", len(results)), Tone: "primary"},
+		webMetricCard{Label: "可访问", Value: fmt.Sprintf("%d", availableCount), Unit: fmt.Sprintf("/ %d", len(results)), Tone: availabilityTone(availableCount, len(results))},
+	)
+
+	table := webTable{Title: "服务结果", Headers: []string{"服务", "状态", "说明"}}
+	for _, pair := range sortedAIResults(results) {
+		table.Rows = append(table.Rows, []string{
+			pair.key,
+			availabilityLabel(pair.result != nil && pair.result.Available),
+			aiMessage(pair.result),
+		})
+	}
+	section.Tables = append(section.Tables, table)
+	return section
+}
+
+type aiResultPair struct {
+	key    string
+	result *models.AIServiceResult
+}
+
+func sortedAIResults(results map[string]*models.AIServiceResult) []aiResultPair {
+	pairs := make([]aiResultPair, 0, len(results))
+	for key, result := range results {
+		pairs = append(pairs, aiResultPair{key: key, result: result})
+	}
+	sort.Slice(pairs, func(i, j int) bool {
+		return strings.ToLower(pairs[i].key) < strings.ToLower(pairs[j].key)
+	})
+	return pairs
+}
+
+func aiMessage(result *models.AIServiceResult) string {
+	if result == nil {
+		return "-"
+	}
+	return fallback(result.Message, "-")
+}
+
 func (ws *WebServer) ipQualitySection() webReportSection {
 	hint := "本次未启用 IP 质量检测。使用 --ip-quality 启用，或使用 --full / --vps-profile 预设。"
 	section := webReportSection{
@@ -610,6 +858,91 @@ func (ws *WebServer) ipQualitySection() webReportSection {
 	return section
 }
 
+func (ws *WebServer) stressSection() webReportSection {
+	hint := "本次未启用压力测试。使用 --stress 启用。"
+	section := optionalModuleBase("stress", "压力测试", "长时间 CPU、内存、磁盘压力下的稳定性。", hint)
+	report, ok := ws.summaryValue("stress_report").(*models.StressTestReport)
+	if !ok || report == nil {
+		return skippedModule(section)
+	}
+
+	failedCount := 0
+	degradedCount := 0
+	for _, component := range report.Components {
+		if component == nil {
+			continue
+		}
+		switch component.Status {
+		case models.TestStatusFailed:
+			failedCount++
+		case models.TestStatusDegraded:
+			degradedCount++
+		}
+	}
+	section.Status = stressWebStatus(failedCount, degradedCount)
+	section.StatusText = stressWebStatusText(failedCount, degradedCount)
+	section.Summary = fmt.Sprintf("压力测试持续 %.0f 秒，组件 %d 个，温度数据%s。", report.TotalDurationSeconds, len(report.Components), temperatureStatus(report.TemperatureAvailable))
+	section.Hint = ""
+	section.Metrics = append(section.Metrics,
+		webMetricCard{Label: "总耗时", Value: fmt.Sprintf("%.0f", report.TotalDurationSeconds), Unit: "秒", Tone: "primary"},
+		webMetricCard{Label: "组件数", Value: fmt.Sprintf("%d", len(report.Components)), Tone: "cyan"},
+		webMetricCard{Label: "异常组件", Value: fmt.Sprintf("%d", failedCount+degradedCount), Unit: fmt.Sprintf("/ %d", len(report.Components)), Tone: stressMetricTone(failedCount, degradedCount)},
+	)
+
+	table := webTable{Title: "压力组件", Headers: []string{"组件", "状态", "耗时", "平均温度", "峰值温度", "备注"}}
+	for _, component := range report.Components {
+		if component == nil {
+			continue
+		}
+		table.Rows = append(table.Rows, []string{
+			component.Name,
+			ws.getStatusText(component.Status),
+			fmt.Sprintf("%.0f 秒", component.DurationSeconds),
+			temperatureValue(component.AverageTemperature),
+			temperatureValue(component.PeakTemperature),
+			fallback(component.Notes, "-"),
+		})
+	}
+	section.Tables = append(section.Tables, table)
+	return section
+}
+
+func (ws *WebServer) securitySection() webReportSection {
+	hint := "本次未启用安全体检。使用 --security 启用。"
+	section := optionalModuleBase("security", "安全体检", "端口、SSH 配置和基础安全风险检查。", hint)
+	report, ok := ws.summaryValue("security_report").(*models.SecurityReport)
+	if !ok || report == nil {
+		return skippedModule(section)
+	}
+
+	counts := countSecuritySeverities(report.Findings)
+	section.Status = securityWebStatus(counts)
+	section.StatusText = securityWebStatusText(counts)
+	section.Summary = fmt.Sprintf("发现 %d 条安全提示：高危 %d，中危 %d，低危 %d，信息 %d。", len(report.Findings), counts["high"], counts["medium"], counts["low"], counts["info"])
+	section.Hint = ""
+	section.Metrics = append(section.Metrics,
+		webMetricCard{Label: "提示数", Value: fmt.Sprintf("%d", len(report.Findings)), Tone: "primary"},
+		webMetricCard{Label: "高危", Value: fmt.Sprintf("%d", counts["high"]), Tone: severityTone("high")},
+		webMetricCard{Label: "中危", Value: fmt.Sprintf("%d", counts["medium"]), Tone: severityTone("medium")},
+	)
+
+	table := webTable{Title: "安全发现", Headers: []string{"类别", "级别", "标题", "详情", "建议"}}
+	for _, finding := range report.Findings {
+		if finding == nil {
+			continue
+		}
+		table.Rows = append(table.Rows, []string{
+			finding.Category,
+			securitySeverityLabel(finding.Severity),
+			finding.Title,
+			fallback(finding.Detail, "-"),
+			fallback(finding.Advice, "-"),
+		})
+	}
+	section.Tables = append(section.Tables, table)
+	return section
+}
+
 func (ws *WebServer) placeholderSection(id string, title string, subtitle string, hint string) webReportSection {
 	return webReportSection{
 		ID:         id,
@@ -660,6 +993,121 @@ func countReachableMailChecks(checks []*models.MailPortCheck) int {
 		}
 	}
 	return count
+}
+
+func stressWebStatus(failedCount int, degradedCount int) string {
+	if failedCount > 0 {
+		return "failed"
+	}
+	if degradedCount > 0 {
+		return "warning"
+	}
+	return "success"
+}
+
+func stressWebStatusText(failedCount int, degradedCount int) string {
+	if failedCount > 0 {
+		return fmt.Sprintf("%d 个失败", failedCount)
+	}
+	if degradedCount > 0 {
+		return fmt.Sprintf("%d 个降级", degradedCount)
+	}
+	return "稳定"
+}
+
+func stressMetricTone(failedCount int, degradedCount int) string {
+	if failedCount > 0 {
+		return "red"
+	}
+	if degradedCount > 0 {
+		return "amber"
+	}
+	return "green"
+}
+
+func temperatureStatus(available bool) string {
+	if available {
+		return "可获取"
+	}
+	return "未提供"
+}
+
+func temperatureValue(value float64) string {
+	if value <= 0 {
+		return "-"
+	}
+	return fmt.Sprintf("%.1f°C", value)
+}
+
+func countSecuritySeverities(findings []*models.SecurityFinding) map[string]int {
+	counts := map[string]int{
+		"high":   0,
+		"medium": 0,
+		"low":    0,
+		"info":   0,
+	}
+	for _, finding := range findings {
+		if finding == nil {
+			continue
+		}
+		severity := strings.ToLower(strings.TrimSpace(finding.Severity))
+		if severity == "" {
+			severity = "info"
+		}
+		if _, ok := counts[severity]; !ok {
+			severity = "info"
+		}
+		counts[severity]++
+	}
+	return counts
+}
+
+func securityWebStatus(counts map[string]int) string {
+	if counts["high"] > 0 {
+		return "failed"
+	}
+	if counts["medium"] > 0 {
+		return "warning"
+	}
+	return "success"
+}
+
+func securityWebStatusText(counts map[string]int) string {
+	if counts["high"] > 0 {
+		return fmt.Sprintf("%d 高危", counts["high"])
+	}
+	if counts["medium"] > 0 {
+		return fmt.Sprintf("%d 中危", counts["medium"])
+	}
+	return "无明显风险"
+}
+
+func severityTone(severity string) string {
+	switch severity {
+	case "high":
+		return "red"
+	case "medium":
+		return "amber"
+	case "low":
+		return "cyan"
+	default:
+		return "green"
+	}
+}
+
+func securitySeverityLabel(severity string) string {
+	switch strings.ToLower(strings.TrimSpace(severity)) {
+	case "high":
+		return "高危"
+	case "medium":
+		return "中危"
+	case "low":
+		return "低危"
+	case "info":
+		return "信息"
+	default:
+		return fallback(severity, "信息")
+	}
 }
 
 func (ws *WebServer) summaryString(key string) string {

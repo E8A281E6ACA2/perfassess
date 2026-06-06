@@ -735,6 +735,37 @@ func TestWebReportTemplateRendersMaterialSummary(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected report generation to succeed, got %v", err)
 	}
+	report.Summary["route_trace_results"] = []*models.TraceResult{
+		{
+			Target:    "cloudflare.com",
+			Success:   true,
+			TotalHops: 8,
+			Hops: []*models.Hop{
+				{Number: 1, IP: "192.0.2.1"},
+				{Number: 8, IP: "1.1.1.1", Hostname: "one.one.one.one"},
+			},
+		},
+	}
+	report.Summary["streaming_results"] = map[string]*models.StreamingResult{
+		"Netflix": {Platform: "Netflix", Available: true, Region: "US", Message: "可用"},
+		"Disney+": {Platform: "Disney+", Available: false, Message: "地区限制"},
+	}
+	report.Summary["ai_results"] = map[string]*models.AIServiceResult{
+		"ChatGPT": {Service: "ChatGPT", Available: true, Message: "需要登录"},
+		"Gemini":  {Service: "Gemini", Available: false, Message: "地区限制"},
+	}
+	report.Summary["stress_report"] = &models.StressTestReport{
+		TotalDurationSeconds: 60,
+		TemperatureAvailable: true,
+		Components: []*models.StressComponentResult{
+			{Name: "CPU", Status: models.TestStatusSuccess, DurationSeconds: 60, AverageTemperature: 55.2, PeakTemperature: 68.5},
+		},
+	}
+	report.Summary["security_report"] = &models.SecurityReport{
+		Findings: []*models.SecurityFinding{
+			{Category: "SSH 配置", Severity: "medium", Title: "检测到潜在风险配置", Detail: "开启密码认证", Advice: "建议启用密钥认证"},
+		},
+	}
 
 	server := &WebServer{report: report}
 	tmpl, err := template.New("report").Parse(HTMLTemplate)
@@ -757,7 +788,14 @@ func TestWebReportTemplateRendersMaterialSummary(t *testing.T) {
 		"磁盘测试",
 		"网络测试",
 		"IP 质量",
-		"本次未启用流媒体检测",
+		"追踪目标",
+		"平台结果",
+		"服务结果",
+		"压力组件",
+		"安全发现",
+		"one.one.one.one",
+		"ChatGPT",
+		"检测到潜在风险配置",
 		"分享模板",
 		"VPS测评: Snapshot CPU",
 	} {
