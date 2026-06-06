@@ -242,12 +242,13 @@ finish_step "运行验收流程"
 
 current_progress_step="summary"
 progress_update "summary" "running" "生成汇总"
-python3 - "$output_dir" <<'PY'
+python3 - "$output_dir" "$auto_profile" <<'PY'
 import json
 import pathlib
 import sys
 
 out = pathlib.Path(sys.argv[1])
+auto_profile = sys.argv[2]
 
 def load(name):
     with (out / name).open(encoding="utf-8") as f:
@@ -259,34 +260,127 @@ default_summary = default_report["summary"]
 quick_summary = quick_report["summary"]
 acceptance_summary_path = out / "acceptance" / "summary.md"
 
+def text(value, default="-"):
+    if value is None:
+        return default
+    if isinstance(value, str):
+        value = value.strip()
+        return value if value else default
+    return str(value)
+
+def num(value, digits=2, default="-"):
+    if isinstance(value, bool) or value is None:
+        return default
+    try:
+        return f"{float(value):.{digits}f}"
+    except (TypeError, ValueError):
+        return default
+
+def metric(result_name, key, digits=2):
+    result = default_report.get("test_results", {}).get(result_name, {})
+    metrics = result.get("metrics", {}) if isinstance(result, dict) else {}
+    return num(metrics.get(key), digits)
+
+def availability_count(value):
+    if not isinstance(value, dict):
+        return (0, 0)
+    items = [item for item in value.values() if isinstance(item, dict)]
+    return (sum(1 for item in items if item.get("available")), len(items))
+
+def route_count(value):
+    if not isinstance(value, list):
+        return (0, 0)
+    return (sum(1 for item in value if isinstance(item, dict) and item.get("success")), len(value))
+
+def security_count(value):
+    findings = value.get("findings", []) if isinstance(value, dict) else []
+    severity = {"high": 0, "medium": 0, "low": 0, "info": 0}
+    for item in findings:
+        if not isinstance(item, dict):
+            continue
+        key = text(item.get("severity"), "info").lower()
+        severity[key if key in severity else "info"] += 1
+    return len(findings), severity
+
+def ratio_or_skipped(ok, total, suffix):
+    if total <= 0:
+        return "未执行"
+    return f"{ok}/{total} {suffix}"
+
+def ip_quality_summary(value):
+    if not isinstance(value, dict) or not value:
+        return "未执行"
+    return f"{text(value.get('public_ip'))} / 风险 {text(value.get('risk_level'))} / 评分 {text(value.get('risk_score'))}/100"
+
+def security_summary(value, total, severity):
+    if not isinstance(value, dict):
+        return "未执行"
+    return f"{total} 条提示，高危 {severity['high']}，中危 {severity['medium']}"
+
+def stress_summary(value):
+    if not isinstance(value, dict):
+        return "未执行"
+    return f"{num(value.get('total_duration_seconds'), 0)} 秒"
+
+route_ok, route_total = route_count(default_summary.get("route_trace_results"))
+stream_ok, stream_total = availability_count(default_summary.get("streaming_results"))
+ai_ok, ai_total = availability_count(default_summary.get("ai_results"))
+security_total, security_severity = security_count(default_summary.get("security_report"))
+ip_report = default_summary.get("ip_quality_report") if isinstance(default_summary.get("ip_quality_report"), dict) else {}
+stress_report = default_summary.get("stress_report") if isinstance(default_summary.get("stress_report"), dict) else {}
+version = (out / "version.txt").read_text(encoding="utf-8").strip()
+confidence = default_summary.get("confidence_level", {}).get("level")
+calibration = default_summary.get("score_calibration", {}).get("version")
+
 lines = [
-    "# Perfassess Auto Summary",
+    "# Perfassess 自动测评报告",
     "",
-    f"- binary_version: {(out / 'version.txt').read_text(encoding='utf-8').strip()}",
-    f"- output_dir: {out}",
-    f"- auto_profile: {default_summary['benchmark_profile'].get('name')}",
-    f"- default_total_score: {default_summary.get('total_score')}",
-    f"- default_grade: {default_summary.get('grade')}",
-    f"- default_confidence: {default_summary['confidence_level'].get('level')}",
-    f"- default_benchmark_profile: {default_summary['benchmark_profile'].get('name')}",
-    f"- default_score_profile: {default_summary.get('score_profile')}",
-    f"- calibration_version: {default_summary['score_calibration'].get('version')}",
-    f"- quick_total_score: {quick_summary.get('total_score')}",
-    f"- quick_grade: {quick_summary.get('grade')}",
-    f"- acceptance_summary: {acceptance_summary_path}",
+    "## 总览",
     "",
-    "## Output Files",
+    "| 项目 | 值 |",
+    "|------|----|",
+    f"| 版本 | {version} |",
+    f"| 自动档位 | {auto_profile} |",
+    f"| 综合评分 | {num(default_summary.get('total_score'))} / 100 |",
+    f"| 等级 | {text(default_summary.get('grade'))} |",
+    f"| 置信度 | {text(confidence)} |",
+    f"| 评分基准 | {text(default_summary.get('score_profile'))} |",
+    f"| 校准版本 | {text(calibration)} |",
+    f"| 输出目录 | {out} |",
     "",
-    "- default.json",
-    "- default.txt",
-    "- quick.json",
-    "- check-deps.txt",
-    "- acceptance/summary.md",
+    "## 核心性能",
+    "",
+    "| 模块 | 关键结果 |",
+    "|------|----------|",
+    f"| CPU | 单核 {metric('cpu_result', 'single_core_score')} / 多核 {metric('cpu_result', 'multi_core_score')} / 总分 {metric('cpu_result', 'total_score')} |",
+    f"| 内存 | 读 {metric('memory_result', 'read_speed_mbps')} MB/s / 写 {metric('memory_result', 'write_speed_mbps')} MB/s |",
+    f"| 磁盘 | 读 {metric('disk_result', 'sequential_read_mbps')} MB/s / 写 {metric('disk_result', 'sequential_write_mbps')} MB/s / 随机 {metric('disk_result', 'random_iops', 0)} IOPS |",
+    f"| 网络 | 延迟 {metric('network_result', 'latency_ms')} ms / 下载 {metric('network_result', 'download_speed_mbps')} Mbps / 上传 {metric('network_result', 'upload_speed_mbps')} Mbps |",
+    "",
+    "## 扩展检测",
+    "",
+    "| 模块 | 结果 |",
+    "|------|------|",
+    f"| 路由追踪 | {ratio_or_skipped(route_ok, route_total, '成功')} |",
+    f"| 流媒体解锁 | {ratio_or_skipped(stream_ok, stream_total, '可用')} |",
+    f"| AI 服务 | {ratio_or_skipped(ai_ok, ai_total, '可用')} |",
+    f"| IP 质量 | {ip_quality_summary(ip_report)} |",
+    f"| 安全体检 | {security_summary(default_summary.get('security_report'), security_total, security_severity)} |",
+    f"| 压力测试 | {stress_summary(stress_report)} |",
+    "",
+    "## 输出文件",
+    "",
+    f"- Markdown 摘要: {out / 'summary.md'}",
+    f"- JSON 完整报告: {out / 'default.json'}",
+    f"- 文本完整报告: {out / 'default.txt'}",
+    f"- 快速测评 JSON: {out / 'quick.json'}",
+    f"- 依赖检查: {out / 'check-deps.txt'}",
+    f"- 验收摘要: {acceptance_summary_path}",
 ]
 
 share = default_summary.get("share_templates", {}).get("plain_text")
 if share:
-    lines.extend(["", "## Share Template", "", "```text", share, "```"])
+    lines.extend(["", "## 分享模板", "", "```text", share, "```"])
 
 (out / "summary.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
 PY

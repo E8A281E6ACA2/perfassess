@@ -368,8 +368,6 @@ recommended_profile() {
     echo "basic"
   elif [[ "$disk_mb" -gt 0 && "$disk_mb" -lt 2048 ]]; then
     echo "basic"
-  elif [[ "$cpu_count" -gt 0 && "$cpu_count" -lt 2 ]]; then
-    echo "basic"
   else
     echo "standard"
   fi

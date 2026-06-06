@@ -504,6 +504,130 @@ def optional_section(section_id: str, title: str, subtitle: str, value: Any, hin
     }
 
 
+def availability_section(section_id: str, title: str, subtitle: str, value: Any, hint: str, name_key: str, region_label: str) -> dict[str, Any]:
+    if not isinstance(value, dict) or not value:
+        return optional_section(section_id, title, subtitle, None, hint)
+
+    items = [item for item in value.values() if isinstance(item, dict)]
+    available_count = sum(1 for item in items if item.get("available"))
+    status = "success" if available_count == len(items) else "warning" if available_count else "failed"
+    rows = [
+        [
+            item.get(name_key) or item.get("platform") or item.get("service"),
+            "可用" if item.get("available") else "不可用",
+            item.get("region") or "-",
+            item.get("message") or "-",
+        ]
+        for item in sorted(items, key=lambda row: text(row.get(name_key) or row.get("platform") or row.get("service")))
+    ]
+    return {
+        "id": section_id,
+        "title": title,
+        "subtitle": subtitle,
+        "status": status,
+        "status_text": f"{available_count}/{len(items)} 可用",
+        "summary": f"检测 {len(items)} 项，可用 {available_count} 项。",
+        "metrics": [
+            metric("检测项", len(items), "", "primary"),
+            metric("可用", available_count, f"/ {len(items)}", "green" if available_count else "red"),
+            metric("不可用", len(items) - available_count, "", "amber" if available_count else "red"),
+        ],
+        "details": [],
+        "tables": [table("检测结果", ["项目", "状态", region_label, "说明"], rows)],
+        "hint": "",
+    }
+
+
+def stress_section(value: Any) -> dict[str, Any]:
+    hint = "本次未启用压力测试。使用 --stress、--full 或 bootstrap 的 full 档位启用。"
+    if not isinstance(value, dict):
+        return optional_section("stress", "压力测试", "长时间 CPU、内存、磁盘压力下的稳定性。", None, hint)
+
+    components = value.get("components") if isinstance(value.get("components"), list) else []
+    failed_count = sum(1 for item in components if isinstance(item, dict) and item.get("status") == "failed")
+    degraded_count = sum(1 for item in components if isinstance(item, dict) and item.get("status") == "degraded")
+    status = "failed" if failed_count else "warning" if degraded_count else "success"
+    rows = [
+        [
+            item.get("name"),
+            status_text(text(item.get("status"))),
+            f"{fmt_number(item.get('duration_seconds'), 0)} 秒",
+            item.get("notes") or "-",
+        ]
+        for item in components if isinstance(item, dict)
+    ]
+    return {
+        "id": "stress",
+        "title": "压力测试",
+        "subtitle": "长时间 CPU、内存、磁盘压力下的稳定性。",
+        "status": status,
+        "status_text": "稳定" if status == "success" else "注意",
+        "summary": f"压力测试持续 {fmt_number(value.get('total_duration_seconds'), 0)} 秒，组件 {len(components)} 个。",
+        "metrics": [
+            metric("总耗时", fmt_number(value.get("total_duration_seconds"), 0), "秒", "primary"),
+            metric("组件数", len(components), "", "primary"),
+            metric("失败", failed_count, "", "red" if failed_count else "green"),
+            metric("温度数据", "有" if value.get("temperature_available") else "无", "", "cyan"),
+        ],
+        "details": [],
+        "tables": [table("压力组件", ["组件", "状态", "耗时", "备注"], rows)] if rows else [],
+        "hint": "",
+    }
+
+
+def security_section(value: Any) -> dict[str, Any]:
+    hint = "本次未启用安全体检。使用 --security、--full 或 bootstrap 的 standard/full 档位启用。"
+    if not isinstance(value, dict):
+        return optional_section("security", "安全体检", "端口、SSH 配置和基础安全风险检查。", None, hint)
+
+    findings = value.get("findings") if isinstance(value.get("findings"), list) else []
+    severity_counts = {"high": 0, "medium": 0, "low": 0, "info": 0}
+    for item in findings:
+        if not isinstance(item, dict):
+            continue
+        severity = text(item.get("severity"), "info").lower()
+        if severity not in severity_counts:
+            severity = "info"
+        severity_counts[severity] += 1
+    status = "failed" if severity_counts["high"] else "warning" if severity_counts["medium"] else "success"
+    rows = [
+        [
+            item.get("category"),
+            severity_label(item.get("severity")),
+            item.get("title"),
+            item.get("detail") or "-",
+            item.get("advice") or "-",
+        ]
+        for item in findings if isinstance(item, dict)
+    ]
+    return {
+        "id": "security",
+        "title": "安全体检",
+        "subtitle": "端口、SSH 配置和基础安全风险检查。",
+        "status": status,
+        "status_text": "无明显风险" if status == "success" else "注意",
+        "summary": f"发现 {len(findings)} 条安全提示：高危 {severity_counts['high']}，中危 {severity_counts['medium']}，低危 {severity_counts['low']}，信息 {severity_counts['info']}。",
+        "metrics": [
+            metric("提示数", len(findings), "", "primary"),
+            metric("高危", severity_counts["high"], "", "red" if severity_counts["high"] else "green"),
+            metric("中危", severity_counts["medium"], "", "amber" if severity_counts["medium"] else "green"),
+            metric("信息", severity_counts["info"], "", "cyan"),
+        ],
+        "details": [],
+        "tables": [table("安全发现", ["类别", "级别", "标题", "详情", "建议"], rows)] if rows else [],
+        "hint": "",
+    }
+
+
+def severity_label(value: Any) -> str:
+    return {
+        "high": "高危",
+        "medium": "中危",
+        "low": "低危",
+        "info": "信息",
+    }.get(text(value, "info").lower(), text(value, "信息"))
+
+
 def route_section(value: Any) -> dict[str, Any]:
     hint = "本次未启用路由追踪。使用 --route-trace、--full 或 bootstrap 的 standard/full 档位启用。"
     if not isinstance(value, list) or not value:
@@ -837,11 +961,11 @@ def build_report_sections(report: dict[str, Any]) -> list[dict[str, Any]]:
 
     sections.extend([
         route_section(summary.get("route_trace_results")),
-        optional_section("streaming", "流媒体解锁", "Netflix、Disney+、YouTube 等平台的区域访问能力。", summary.get("streaming_results"), "本次未启用流媒体检测。使用 --streaming、--full 或 bootstrap 的 standard/full 档位启用。"),
-        optional_section("ai", "AI 服务检测", "OpenAI、Gemini 等 AI 服务的可访问性。", summary.get("ai_results"), "本次未启用 AI 服务检测。使用 --ai-services、--full 或 bootstrap 的 standard/full 档位启用。"),
+        availability_section("streaming", "流媒体解锁", "Netflix、Disney+、YouTube 等平台的区域访问能力。", summary.get("streaming_results"), "本次未启用流媒体检测。使用 --streaming、--full 或 bootstrap 的 standard/full 档位启用。", "platform", "区域"),
+        availability_section("ai", "AI 服务检测", "OpenAI、Gemini 等 AI 服务的可访问性。", summary.get("ai_results"), "本次未启用 AI 服务检测。使用 --ai-services、--full 或 bootstrap 的 standard/full 档位启用。", "service", "区域"),
         ip_quality_section(summary),
-        optional_section("stress", "压力测试", "长时间 CPU、内存、磁盘压力下的稳定性。", summary.get("stress_report"), "本次未启用压力测试。使用 --stress、--full 或 bootstrap 的 full 档位启用。"),
-        optional_section("security", "安全体检", "端口、SSH 配置和基础安全风险检查。", summary.get("security_report"), "本次未启用安全体检。使用 --security、--full 或 bootstrap 的 standard/full 档位启用。"),
+        stress_section(summary.get("stress_report")),
+        security_section(summary.get("security_report")),
     ])
     return sections
 
