@@ -181,39 +181,39 @@ const HTMLTemplate = `<!DOCTYPE html>
 
         .report-layout {
             display: grid;
-            grid-template-columns: 260px minmax(0, 1fr);
-            gap: 22px;
+            grid-template-columns: 248px minmax(0, 1fr);
+            gap: 28px;
             align-items: start;
-            margin-top: 22px;
+            margin-top: 24px;
         }
 
         .sidebar {
             position: sticky;
-            top: 18px;
-            max-height: calc(100vh - 36px);
-            overflow: auto;
-            border-radius: 22px;
-            padding: 14px;
-            background: rgba(255, 255, 255, 0.78);
-            border: 1px solid rgba(196, 199, 197, 0.72);
-            box-shadow: var(--md-shadow-1);
+            top: 16px;
+            max-height: calc(100vh - 32px);
+            overflow-y: auto;
+            scrollbar-width: thin;
+            padding: 4px 12px 16px 0;
+            background: transparent;
+            border-right: 1px solid var(--md-outline-variant);
+            box-shadow: none;
         }
 
         .sidebar-title {
-            padding: 8px 10px 12px;
+            padding: 6px 8px 14px;
             color: var(--md-muted);
             font-size: 12px;
             font-weight: 800;
         }
 
         .nav-group + .nav-group {
-            margin-top: 14px;
-            padding-top: 12px;
+            margin-top: 18px;
+            padding-top: 16px;
             border-top: 1px solid var(--md-outline-variant);
         }
 
         .nav-group-title {
-            padding: 4px 10px 8px;
+            padding: 2px 8px 8px;
             color: var(--md-muted);
             font-size: 11px;
             font-weight: 820;
@@ -224,9 +224,9 @@ const HTMLTemplate = `<!DOCTYPE html>
             align-items: center;
             justify-content: space-between;
             gap: 8px;
-            min-height: 38px;
-            padding: 8px 10px;
-            border-radius: 14px;
+            min-height: 40px;
+            padding: 8px 10px 8px 12px;
+            border-radius: 999px;
             color: var(--md-text);
             text-decoration: none;
             font-size: 14px;
@@ -543,6 +543,9 @@ const HTMLTemplate = `<!DOCTYPE html>
                 max-height: none;
                 display: flex;
                 gap: 8px;
+                padding: 0 0 10px;
+                border-right: 0;
+                border-bottom: 1px solid var(--md-outline-variant);
                 overflow-x: auto;
             }
 
