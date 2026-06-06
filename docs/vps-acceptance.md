@@ -29,6 +29,19 @@
 
 ## 快速验收
 
+如果希望一条命令完成构建、依赖检查、默认测评、核心验收和摘要生成，使用：
+
+```bash
+scripts/perfassess-auto.sh
+cat /tmp/perfassess-auto/summary.md
+```
+
+该脚本默认不运行可选外部后端，避免缺失依赖或外部服务导致自动化流程失败。如需按已安装工具自动加测可选后端：
+
+```bash
+PERFASSESS_AUTO_OPTIONAL=auto scripts/perfassess-auto.sh
+```
+
 从源码构建后执行：
 
 ```bash

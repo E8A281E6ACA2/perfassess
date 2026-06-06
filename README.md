@@ -37,6 +37,15 @@ make build
 
 默认无参数会直接执行 CPU、内存、磁盘、网络基础检测，适合脚本化和快速评估。
 
+如果希望完全自动化，不想手动分步骤执行版本检查、依赖检查、测评和验收，可以直接运行：
+
+```bash
+scripts/perfassess-auto.sh
+cat /tmp/perfassess-auto/summary.md
+```
+
+该脚本不会安装依赖，也不会进入交互式菜单；默认只跑无可选依赖也应通过的核心链路。
+
 ### 方式二：命令行指定检测项
 
 ```bash
@@ -656,6 +665,9 @@ make release-smoke
 
 # 真实 VPS 验收：保留验收产物并检查报告关键字段
 scripts/vps-acceptance.sh
+
+# 一键非交互测评与验收：构建、依赖检查、默认测评、核心验收、生成汇总
+scripts/perfassess-auto.sh
 
 # 运行测试并生成覆盖率报告
 make test-coverage
