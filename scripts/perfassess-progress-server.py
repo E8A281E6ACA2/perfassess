@@ -395,6 +395,23 @@ def render_tables(tables: list[dict[str, Any]]) -> str:
     return "".join(rendered)
 
 
+def render_artifact_links(artifacts: list[dict[str, str]]) -> str:
+    if not artifacts:
+        return ""
+    links = []
+    for item in artifacts:
+        available = item.get("available") == "true"
+        href = f'/artifacts/{item.get("path", "")}'
+        attrs = f'href="{esc(href)}" target="_blank" rel="noreferrer"' if available else 'aria-disabled="true"'
+        status = "可下载" if available else "未生成"
+        links.append(
+            f'<a class="artifact-link {"artifact-ready" if available else "artifact-missing"}" {attrs}>'
+            f'<span><strong>{esc(item.get("label"))}</strong><small>{esc(item.get("path"))}</small></span>'
+            f'<span>{esc(status)}</span></a>'
+        )
+    return f'<div class="artifact-grid">{"".join(links)}</div>'
+
+
 def result_section(
     section_id: str,
     title: str,
@@ -818,7 +835,7 @@ REPORT_GROUPS = [
     ("core", "核心性能", "CPU、内存、磁盘和网络基础测评。", {"cpu", "memory", "disk", "network"}),
     ("network", "网络扩展", "路由、流媒体、AI 服务、IP 质量和安全体检。", {"route", "streaming", "ai", "ip-quality", "security"}),
     ("stability", "稳定性", "压力测试和长时间负载表现。", {"stress"}),
-    ("delivery", "交付", "质量提示和分享模板。", {"quality", "share"}),
+    ("delivery", "交付", "报告产物、质量提示和分享模板。", {"artifacts", "quality", "share"}),
 ]
 
 
@@ -853,7 +870,52 @@ def report_status_counts(sections: list[dict[str, Any]]) -> dict[str, int]:
     return counts
 
 
-def build_report_sections(report: dict[str, Any]) -> list[dict[str, Any]]:
+def artifact_section(output_dir: Optional[Path]) -> dict[str, Any]:
+    artifact_defs = [
+        ("终端彩色报告", "console.ansi"),
+        ("终端纯文本报告", "console.txt"),
+        ("Markdown 摘要", "summary.md"),
+        ("报告压缩包", "perfassess-report.zip"),
+        ("完整 JSON", "default.json"),
+        ("完整文本报告", "default.txt"),
+        ("硬件质量模块", "hardware_quality.json"),
+        ("网络质量模块", "net_quality.json"),
+        ("路由追踪模块", "route_trace.json"),
+        ("国内方向参考", "backroute_trace.json"),
+        ("IP 质量模块", "ip_quality.json"),
+        ("流媒体模块", "streaming_unlock.json"),
+        ("AI 服务模块", "ai_services.json"),
+        ("安全体检模块", "security_scan.json"),
+        ("压力测试模块", "stress_test.json"),
+        ("快速测评 JSON", "quick.json"),
+        ("验收摘要", "acceptance/summary.md"),
+    ]
+    artifacts = []
+    for label, path in artifact_defs:
+        available = bool(output_dir and (output_dir / path).is_file())
+        artifacts.append({"label": label, "path": path, "available": "true" if available else "false"})
+    available_count = sum(1 for item in artifacts if item["available"] == "true")
+    return {
+        "id": "artifacts",
+        "title": "报告产物",
+        "subtitle": "控制台、Markdown、JSON、模块化报告和压缩包。",
+        "status": "success" if available_count else "skipped",
+        "status_text": f"{available_count}/{len(artifacts)} 可下载" if available_count else "未生成",
+        "summary": "测评完成后可直接下载结构化报告、终端报告和模块化产物。",
+        "metrics": [
+            metric("可下载", available_count, "files", "primary"),
+            metric("总产物", len(artifacts), "files", "primary"),
+            metric("模块 JSON", sum(1 for item in artifacts if item["path"].endswith(".json") and item["available"] == "true"), "files", "green"),
+            metric("压缩包", "有" if any(item["path"] == "perfassess-report.zip" and item["available"] == "true" for item in artifacts) else "无", "", "amber"),
+        ],
+        "details": [],
+        "tables": [],
+        "artifacts": artifacts,
+        "hint": "",
+    }
+
+
+def build_report_sections(report: dict[str, Any], output_dir: Optional[Path] = None) -> list[dict[str, Any]]:
     summary = report.get("summary") if isinstance(report.get("summary"), dict) else {}
     test_results = report.get("test_results") if isinstance(report.get("test_results"), dict) else {}
     system = report.get("system_info") if isinstance(report.get("system_info"), dict) else {}
@@ -966,18 +1028,19 @@ def build_report_sections(report: dict[str, Any]) -> list[dict[str, Any]]:
         ip_quality_section(summary),
         stress_section(summary.get("stress_report")),
         security_section(summary.get("security_report")),
+        artifact_section(output_dir),
     ])
     return sections
 
 
-def render_report(report: dict[str, Any]) -> str:
+def render_report(report: dict[str, Any], output_dir: Optional[Path] = None) -> str:
     summary = report.get("summary") if isinstance(report.get("summary"), dict) else {}
     overall = summary.get("overall_score") if isinstance(summary.get("overall_score"), dict) else {}
     session_id = text(report.get("session_id"))
     timestamp = text(report.get("timestamp"))
     total_score = fmt_number(summary.get("total_score") or overall.get("total_score"), 0)
     grade = text(summary.get("grade") or overall.get("grade"))
-    sections = build_report_sections(report)
+    sections = build_report_sections(report, output_dir)
     quality_notes = summary.get("quality_notes") if isinstance(summary.get("quality_notes"), list) else []
     share = data_get(summary, "share_templates", "plain_text", default="")
     extra_ids = set()
@@ -992,7 +1055,7 @@ def render_report(report: dict[str, Any]) -> str:
         links = []
         for section in group["sections"]:
             links.append(
-                f'<a class="nav-link" href="#{esc(section["id"])}"><span>{esc(section["title"])}</span>'
+                f'<a class="nav-link" href="#{esc(section["id"])}" data-section="{esc(section["id"])}"><span>{esc(section["title"])}</span>'
                 f'<span class="status-badge status-{esc(status_class(text(section.get("status"))))}">{esc(section.get("status_text"))}</span></a>'
             )
         nav_groups.append(
@@ -1000,36 +1063,26 @@ def render_report(report: dict[str, Any]) -> str:
         )
     nav = "".join(nav_groups)
     cards = []
-    for group in groups:
-        group_cards = []
-        for section in group["sections"]:
-            section_id = section.get("id")
-            if section_id in {"quality", "share"}:
-                continue
-            hint = f'<div class="hint-box">{esc(section.get("hint"))}</div>' if section.get("hint") else ""
-            group_cards.append(
-                f'<section id="{esc(section["id"])}" class="module-card module-{esc(status_class(text(section.get("status"))))}">'
-                '<div class="module-head"><div>'
-                f'<h2 class="module-title">{esc(section["title"])}</h2>'
-                f'<p class="module-subtitle">{esc(section["subtitle"])}</p>'
-                f'</div><span class="status-badge status-{esc(status_class(text(section.get("status"))))}">{esc(section["status_text"])}</span></div>'
-                f'<p class="module-summary">{esc(section["summary"])}</p>'
-                f'{render_metrics(section.get("metrics", []))}'
-                f'{render_details(section.get("details", []))}'
-                f'{render_tables(section.get("tables", []))}'
-                f'{hint}</section>'
-            )
-        if group_cards:
-            cards.append(
-                f'<div class="section-group" id="group-{esc(group["id"])}">'
-                f'<div class="section-group-head"><h2>{esc(group["title"])}</h2><p>{esc(group["subtitle"])}</p></div>'
-                f'{"".join(group_cards)}</div>'
-            )
+    for section in sections:
+        hint = f'<div class="hint-box">{esc(section.get("hint"))}</div>' if section.get("hint") else ""
+        cards.append(
+            f'<section id="{esc(section["id"])}" class="module-card module-panel module-{esc(status_class(text(section.get("status"))))}" data-panel="{esc(section["id"])}">'
+            '<div class="module-head"><div>'
+            f'<h2 class="module-title">{esc(section["title"])}</h2>'
+            f'<p class="module-subtitle">{esc(section["subtitle"])}</p>'
+            f'</div><span class="status-badge status-{esc(status_class(text(section.get("status"))))}">{esc(section["status_text"])}</span></div>'
+            f'<p class="module-summary">{esc(section["summary"])}</p>'
+            f'{render_metrics(section.get("metrics", []))}'
+            f'{render_details(section.get("details", []))}'
+            f'{render_tables(section.get("tables", []))}'
+            f'{render_artifact_links(section.get("artifacts", []))}'
+            f'{hint}</section>'
+        )
 
     if quality_notes:
         items = "".join(f"<li>{esc(note)}</li>" for note in quality_notes)
         cards.append(
-            '<section id="quality" class="module-card quality-notes"><div class="module-head"><div>'
+            '<section id="quality" class="module-card module-panel quality-notes" data-panel="quality"><div class="module-head"><div>'
             '<h2 class="module-title">质量提示</h2><p class="module-subtitle">影响报告置信度和可比性的说明。</p>'
             '</div><span class="status-badge status-skipped">提示</span></div>'
             f"<ul>{items}</ul></section>"
@@ -1037,7 +1090,7 @@ def render_report(report: dict[str, Any]) -> str:
 
     if share:
         cards.append(
-            '<section id="share" class="module-card"><div class="module-head"><div>'
+            '<section id="share" class="module-card module-panel" data-panel="share"><div class="module-head"><div>'
             '<h2 class="module-title">分享模板</h2><p class="module-subtitle">可直接复制到论坛、工单或聊天窗口。</p>'
             '</div><span class="status-badge status-success">可复制</span></div>'
             f'<div class="share-box">{esc(share)}</div></section>'
@@ -1098,7 +1151,8 @@ def render_report(report: dict[str, Any]) -> str:
     .nav-group + .nav-group {{ margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--outline); }}
     .nav-group-title {{ padding: 4px 10px 8px; color: var(--muted); font-size: 11px; font-weight: 820; text-transform: uppercase; }}
     .nav-link {{ display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 38px; padding: 8px 10px; border-radius: 8px; color: var(--text); text-decoration: none; font-size: 14px; font-weight: 680; }}
-    .nav-link:hover {{ background: var(--primary-container); color: #041e49; }}
+    .nav-link:hover, .nav-link.active {{ background: var(--primary-container); color: #041e49; }}
+    .nav-link.active {{ box-shadow: inset 3px 0 0 var(--primary); }}
     .content-stack {{ display: grid; gap: 18px; }}
     .report-health {{ display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-top: 18px; }}
     .health-item {{ min-height: 74px; border-radius: 8px; padding: 12px; color: var(--text); background: rgba(255, 255, 255, 0.16); border: 1px solid rgba(255, 255, 255, 0.24); }}
@@ -1109,6 +1163,7 @@ def render_report(report: dict[str, Any]) -> str:
     .section-group-head h2 {{ margin: 0; font-size: 18px; }}
     .section-group-head p {{ margin: 5px 0 0; color: var(--muted); font-size: 13px; line-height: 1.6; }}
     .module-card {{ scroll-margin-top: 20px; border-radius: 8px; padding: 22px; background: rgba(255, 255, 255, 0.86); border: 1px solid var(--outline); box-shadow: 0 1px 2px rgba(60, 64, 67, 0.10); }}
+    .module-panel[hidden] {{ display: none; }}
     .module-skipped {{ background: rgba(255, 250, 240, 0.88); border-color: #fdd663; }}
     .module-head {{ display: flex; justify-content: space-between; gap: 16px; align-items: flex-start; margin-bottom: 18px; }}
     .module-title {{ margin: 0; font-size: 24px; line-height: 1.2; }}
@@ -1142,6 +1197,12 @@ def render_report(report: dict[str, Any]) -> str:
     .quality-notes {{ border-color: #fdd663; background: #fffaf0; }}
     .quality-notes ul {{ margin: 10px 0 0; padding-left: 20px; color: #4a3000; line-height: 1.7; }}
     .share-box {{ white-space: pre-wrap; overflow-x: auto; border-radius: 8px; padding: 16px; color: var(--text); background: var(--surface-2); border: 1px solid var(--outline); font: 13px/1.65 "Roboto Mono", Consolas, monospace; }}
+    .artifact-grid {{ display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 16px; }}
+    .artifact-link {{ display: flex; align-items: center; justify-content: space-between; gap: 14px; min-height: 64px; padding: 12px 14px; border-radius: 8px; color: var(--text); text-decoration: none; border: 1px solid var(--outline); background: var(--surface-2); }}
+    .artifact-link strong {{ display: block; font-size: 13px; }}
+    .artifact-link small {{ display: block; margin-top: 4px; color: var(--muted); font-size: 11px; overflow-wrap: anywhere; }}
+    .artifact-ready:hover {{ border-color: var(--primary); background: var(--primary-container); }}
+    .artifact-missing {{ color: var(--muted); pointer-events: none; opacity: 0.72; }}
     .footer {{ margin-top: 24px; padding: 22px; text-align: center; color: var(--muted); font-size: 13px; }}
     @media (max-width: 1100px) {{
       .report-layout {{ grid-template-columns: 1fr; }}
@@ -1155,10 +1216,10 @@ def render_report(report: dict[str, Any]) -> str:
       .hero-content, .detail-grid {{ grid-template-columns: 1fr; }}
       .report-health {{ grid-template-columns: repeat(2, minmax(0, 1fr)); }}
       .hero-score {{ width: 100%; min-height: 130px; }}
-      .metric-grid {{ grid-template-columns: repeat(2, minmax(0, 1fr)); }}
+      .metric-grid, .artifact-grid {{ grid-template-columns: repeat(2, minmax(0, 1fr)); }}
       .module-head {{ flex-direction: column; }}
     }}
-    @media (max-width: 480px) {{ .metric-grid, .report-health {{ grid-template-columns: 1fr; }} }}
+    @media (max-width: 480px) {{ .metric-grid, .report-health, .artifact-grid {{ grid-template-columns: 1fr; }} }}
   </style>
 </head>
 <body>
@@ -1181,7 +1242,7 @@ def render_report(report: dict[str, Any]) -> str:
         <div>
           <span class="eyebrow">VPS Benchmark Report</span>
           <h1>性能评估报告</h1>
-          <p>生成时间 {esc(timestamp)}。报告按模块组织系统信息、CPU、内存、磁盘、网络和扩展检测，左侧目录可快速跳转。</p>
+          <p>生成时间 {esc(timestamp)}。报告按模块组织系统信息、CPU、内存、磁盘、网络和扩展检测，左侧目录点击后右侧只显示当前模块。</p>
           <div class="chip-row">
             <span class="chip">评分基准 {esc(summary.get("score_profile"))}</span>
             <span class="chip">评测档位 {esc(data_get(summary, "benchmark_profile", "name"))}</span>
@@ -1211,6 +1272,29 @@ def render_report(report: dict[str, Any]) -> str:
     </section>
     <footer class="footer">Perfassess Web 报告</footer>
   </main>
+  <script>
+    const panels = Array.from(document.querySelectorAll(".module-panel"));
+    const links = Array.from(document.querySelectorAll(".nav-link[data-section]"));
+    function showPanel(id) {{
+      const target = panels.some((panel) => panel.dataset.panel === id) ? id : (panels[0]?.dataset.panel || "");
+      panels.forEach((panel) => {{
+        panel.hidden = panel.dataset.panel !== target;
+      }});
+      links.forEach((link) => {{
+        link.classList.toggle("active", link.dataset.section === target);
+      }});
+      if (target && location.hash !== "#" + target) {{
+        history.replaceState(null, "", "#" + target);
+      }}
+    }}
+    links.forEach((link) => {{
+      link.addEventListener("click", (event) => {{
+        event.preventDefault();
+        showPanel(link.dataset.section);
+      }});
+    }});
+    showPanel((location.hash || "").replace("#", ""));
+  </script>
 </body>
 </html>"""
 
@@ -1262,7 +1346,7 @@ class ProgressHandler(BaseHTTPRequestHandler):
             if report_ready(self.output_dir, self.progress_file):
                 report = load_json_file(self.output_dir / "default.json")
                 if report is not None:
-                    self.send_bytes(render_report(report).encode("utf-8"), "text/html; charset=utf-8")
+                    self.send_bytes(render_report(report, self.output_dir).encode("utf-8"), "text/html; charset=utf-8")
                     return
             self.send_bytes(PROGRESS_HTML.encode("utf-8"), "text/html; charset=utf-8")
             return
@@ -1274,7 +1358,7 @@ class ProgressHandler(BaseHTTPRequestHandler):
             if report is None:
                 self.send_bytes(PROGRESS_HTML.encode("utf-8"), "text/html; charset=utf-8")
                 return
-            self.send_bytes(render_report(report).encode("utf-8"), "text/html; charset=utf-8")
+            self.send_bytes(render_report(report, self.output_dir).encode("utf-8"), "text/html; charset=utf-8")
             return
         if parsed.path == "/api/progress":
             if self.progress_file.exists():
