@@ -212,7 +212,7 @@ func (c *CLI) setupCommands() {
 
 	// --port 参数：Web 服务器端口
 	flags.Int("port", 8080,
-		"Web 服务器端口 (默认: 8080)")
+		"Web 服务器起始端口，占用时自动尝试后续端口 (默认: 8080)")
 
 	// --log-level 参数：设置日志级别
 	flags.String("log-level", "info",

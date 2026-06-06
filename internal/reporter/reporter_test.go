@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"html/template"
 	"math"
+	"net"
 	"strings"
 	"testing"
 	"time"
@@ -802,6 +803,29 @@ func TestWebReportTemplateRendersMaterialSummary(t *testing.T) {
 		if !strings.Contains(html, snippet) {
 			t.Fatalf("expected rendered web report to contain %q", snippet)
 		}
+	}
+}
+
+func TestWebServerListenAvailablePortSkipsOccupiedPort(t *testing.T) {
+	occupied, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("failed to reserve test port: %v", err)
+	}
+	defer occupied.Close()
+
+	startPort := occupied.Addr().(*net.TCPAddr).Port
+	server := &WebServer{port: startPort, startPort: startPort}
+	listener, err := server.listenAvailablePort()
+	if err != nil {
+		t.Fatalf("expected fallback port to be available, got %v", err)
+	}
+	defer listener.Close()
+
+	if server.port == startPort {
+		t.Fatalf("expected occupied port %d to be skipped", startPort)
+	}
+	if server.port < startPort || server.port > 65535 {
+		t.Fatalf("unexpected fallback port %d", server.port)
 	}
 }
 

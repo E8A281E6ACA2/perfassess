@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"html/template"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -19,10 +20,11 @@ import (
 
 // WebServer Web 服务器
 type WebServer struct {
-	port   int
-	logger *logger.Logger
-	server *http.Server
-	report *models.Report
+	port      int
+	startPort int
+	logger    *logger.Logger
+	server    *http.Server
+	report    *models.Report
 }
 
 type webMetricCard struct {
@@ -66,8 +68,9 @@ type webReportGroup struct {
 // NewWebServer 创建新的 Web 服务器
 func NewWebServer(port int, logger *logger.Logger) *WebServer {
 	return &WebServer{
-		port:   port,
-		logger: logger,
+		port:      port,
+		startPort: port,
+		logger:    logger,
 	}
 }
 
@@ -79,16 +82,20 @@ func (ws *WebServer) Start(report *models.Report) error {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", ws.handleReport)
 
+	listener, err := ws.listenAvailablePort()
+	if err != nil {
+		return err
+	}
+
 	// 创建服务器
 	ws.server = &http.Server{
-		Addr:    fmt.Sprintf(":%d", ws.port),
 		Handler: mux,
 	}
 
 	// 启动服务器
 	go func() {
 		ws.logger.Info(fmt.Sprintf("Web 服务器启动在端口 %d", ws.port))
-		if err := ws.server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		if err := ws.server.Serve(listener); err != nil && err != http.ErrServerClosed {
 			ws.logger.Error("Web 服务器错误", err)
 		}
 	}()
@@ -109,6 +116,28 @@ func (ws *WebServer) Start(report *models.Report) error {
 	ws.waitForShutdown()
 
 	return nil
+}
+
+func (ws *WebServer) listenAvailablePort() (net.Listener, error) {
+	if ws.port <= 0 || ws.port > 65535 {
+		return nil, fmt.Errorf("无效的 Web 端口: %d", ws.port)
+	}
+	for port := ws.port; port <= 65535; port++ {
+		listener, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
+		if err == nil {
+			ws.port = port
+			if ws.startPort != 0 && ws.port != ws.startPort {
+				if ws.logger != nil {
+					ws.logger.Info(fmt.Sprintf("Web 端口 %d 被占用，已自动切换到 %d", ws.startPort, ws.port))
+				}
+			}
+			return listener, nil
+		}
+		if ws.logger != nil {
+			ws.logger.Warn(fmt.Sprintf("Web 端口 %d 不可用，尝试下一个端口", port))
+		}
+	}
+	return nil, fmt.Errorf("无法找到可用 Web 端口，已从 %d 探测到 65535", ws.startPort)
 }
 
 // handleReport 处理报告请求

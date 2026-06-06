@@ -9,6 +9,7 @@ BOOTSTRAP_TESTS_SET="${PERFASSESS_BOOTSTRAP_TESTS+x}"
 RUN_TESTS="${PERFASSESS_BOOTSTRAP_TESTS:-1}"
 START_WEB="${PERFASSESS_BOOTSTRAP_WEB:-0}"
 WEB_PORT="${PERFASSESS_WEB_PORT:-8080}"
+WEB_PORT_SCAN_LIMIT="${PERFASSESS_WEB_PORT_SCAN_LIMIT:-0}"
 WEB_TTL_SECONDS="${PERFASSESS_WEB_TTL_SECONDS:-0}"
 AUTO_PROFILE="${PERFASSESS_AUTO_PROFILE:-auto}"
 QUALITY_PROFILE="${PERFASSESS_QUALITY_PROFILE:-auto}"
@@ -36,6 +37,7 @@ Options:
   --go VERSION    Go version to install when missing or too old. Default: $GO_VERSION
   --web           Start the realtime Material Design progress page.
   --port PORT     Web report port when --web is used. Default: $WEB_PORT
+                   If occupied, bootstrap tries PORT+1, PORT+2, and so on.
   --web-ttl SEC   Stop the Web page SEC seconds after benchmark completion. Default: $WEB_TTL_SECONDS.
   --profile NAME  Auto benchmark profile: auto, basic, standard, full. Default: $AUTO_PROFILE
   --quality NAME  Benchmark backend quality: auto, builtin, mainstream. Default: $QUALITY_PROFILE
@@ -53,6 +55,7 @@ Environment:
   PERFASSESS_BOOTSTRAP_TESTS=0   Skip go test ./...
   PERFASSESS_BOOTSTRAP_WEB=1     Start the realtime Material Design progress page.
   PERFASSESS_WEB_TTL_SECONDS=600 Stop Web server 10 minutes after completion.
+  PERFASSESS_WEB_PORT_SCAN_LIMIT=50  Limit automatic port probing attempts. 0 means until 65535.
   PERFASSESS_BOOTSTRAP_SWAP=auto Create temporary swap on low-memory Linux hosts. Set 0 to disable.
   PERFASSESS_BOOTSTRAP_CLEANUP_AFTER_RUN=1  Remove build artifacts after benchmark.
   PERFASSESS_BOOTSTRAP_DESTROY_AFTER_WEB=1  Remove source and reports after Web viewing ends.
@@ -708,9 +711,20 @@ start_progress_server() {
   mkdir -p "$OUTPUT_DIR"
   local requested_port="$WEB_PORT"
   local candidate_port
+  local last_port
   [[ "$requested_port" =~ ^[0-9]+$ ]] || fail "Web port must be a number: $requested_port"
+  (( requested_port >= 1 && requested_port <= 65535 )) || fail "Web port must be between 1 and 65535: $requested_port"
+  [[ "$WEB_PORT_SCAN_LIMIT" =~ ^[0-9]+$ ]] || fail "Web port scan limit must be a number: $WEB_PORT_SCAN_LIMIT"
+  if (( WEB_PORT_SCAN_LIMIT > 0 )); then
+    last_port=$((requested_port + WEB_PORT_SCAN_LIMIT - 1))
+    if (( last_port > 65535 )); then
+      last_port=65535
+    fi
+  else
+    last_port=65535
+  fi
   rm -f "$OUTPUT_DIR/progress-server.log"
-  for candidate_port in $(seq "$requested_port" $((requested_port + 20))); do
+  for candidate_port in $(seq "$requested_port" "$last_port"); do
     info "starting realtime web progress on port $candidate_port"
     python3 "$WORK_DIR/scripts/perfassess-progress-server.py" \
       --dir "$OUTPUT_DIR" \
@@ -721,7 +735,7 @@ start_progress_server() {
     if kill -0 "$PROGRESS_SERVER_PID" >/dev/null 2>&1; then
       WEB_PORT="$candidate_port"
       if [[ "$WEB_PORT" != "$requested_port" ]]; then
-        info "requested port $requested_port is unavailable; using $WEB_PORT instead"
+        info "requested port $requested_port is unavailable; using next available port $WEB_PORT"
       fi
       print_web_access
       echo "The page will update during the benchmark and expose generated report files."
@@ -734,7 +748,7 @@ start_progress_server() {
   trap 'stop_progress_server; cleanup_bootstrap_swap' EXIT
   trap 'stop_progress_server; cleanup_bootstrap_swap; exit 130' INT TERM
   if [[ -z "$PROGRESS_SERVER_PID" ]] || ! kill -0 "$PROGRESS_SERVER_PID" >/dev/null 2>&1; then
-    fail "Realtime web progress failed to start. Tried ports $requested_port-$((requested_port + 20)). See $OUTPUT_DIR/progress-server.log"
+    fail "Realtime web progress failed to start. Tried ports $requested_port-$last_port. See $OUTPUT_DIR/progress-server.log"
   fi
 }
 
