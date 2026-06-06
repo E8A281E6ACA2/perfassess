@@ -8,8 +8,12 @@ optional_mode="${PERFASSESS_AUTO_OPTIONAL:-never}"
 show_progress="${PERFASSESS_AUTO_PROGRESS:-1}"
 progress_file="${PERFASSESS_PROGRESS_FILE:-$output_dir/progress.json}"
 auto_profile="${PERFASSESS_AUTO_PROFILE:-standard}"
+quality_profile="${PERFASSESS_QUALITY_PROFILE:-builtin}"
 extra_args="${PERFASSESS_AUTO_ARGS:-}"
 stress_enabled="${PERFASSESS_AUTO_STRESS:-0}"
+iperf3_server="${PERFASSESS_IPERF3_SERVER:-}"
+iperf3_servers="${PERFASSESS_IPERF3_SERVERS:-}"
+iperf3_server_file="${PERFASSESS_IPERF3_SERVER_FILE:-}"
 current_progress_step="prepare"
 
 case "$auto_profile" in
@@ -22,12 +26,41 @@ case "$auto_profile" in
     ;;
 esac
 
+case "$quality_profile" in
+  auto) quality_profile="builtin" ;;
+  builtin|mainstream) ;;
+  *)
+    echo "perfassess auto failed: PERFASSESS_QUALITY_PROFILE must be auto, builtin, or mainstream" >&2
+    exit 1
+    ;;
+esac
+
 if [[ "$auto_profile" == "full" ]]; then
   stress_enabled="1"
 fi
 
 default_args=(--output-format json -o "$output_dir/default.json")
 default_text_args=(-o "$output_dir/default.txt")
+if [[ "$quality_profile" == "mainstream" ]]; then
+  default_args+=(--cpu-backend sysbench --memory-backend sysbench --disk-backend fio)
+  default_text_args+=(--cpu-backend sysbench --memory-backend sysbench --disk-backend fio)
+  if [[ -n "$iperf3_server" || -n "$iperf3_servers" || -n "$iperf3_server_file" ]]; then
+    default_args+=(--network-backend iperf3)
+    default_text_args+=(--network-backend iperf3)
+    if [[ -n "$iperf3_server" ]]; then
+      default_args+=(--iperf3-server "$iperf3_server")
+      default_text_args+=(--iperf3-server "$iperf3_server")
+    fi
+    if [[ -n "$iperf3_servers" ]]; then
+      default_args+=(--iperf3-servers "$iperf3_servers")
+      default_text_args+=(--iperf3-servers "$iperf3_servers")
+    fi
+    if [[ -n "$iperf3_server_file" ]]; then
+      default_args+=(--iperf3-server-file "$iperf3_server_file")
+      default_text_args+=(--iperf3-server-file "$iperf3_server_file")
+    fi
+  fi
+fi
 case "$auto_profile" in
   basic)
     ;;
@@ -244,7 +277,7 @@ finish_step "运行验收流程"
 
 current_progress_step="summary"
 progress_update "summary" "running" "生成汇总"
-python3 - "$output_dir" "$auto_profile" <<'PY'
+python3 - "$output_dir" "$auto_profile" "$quality_profile" <<'PY'
 import json
 import pathlib
 import sys
@@ -252,6 +285,7 @@ import unicodedata
 
 out = pathlib.Path(sys.argv[1])
 auto_profile = sys.argv[2]
+quality_profile = sys.argv[3]
 
 def load(name):
     with (out / name).open(encoding="utf-8") as f:
@@ -276,14 +310,6 @@ def num(value, digits=2, default="-"):
         return default
     try:
         return f"{float(value):.{digits}f}"
-    except (TypeError, ValueError):
-        return default
-
-def raw_num(value, default=None):
-    if isinstance(value, bool) or value is None:
-        return default
-    try:
-        return float(value)
     except (TypeError, ValueError):
         return default
 
@@ -466,7 +492,7 @@ def console_report(color=False):
     rows = [
         c("bold", "Perfassess 自动测评报告"),
         line("═"),
-        f"{kv('版本', version)}    {kv('档位', auto_profile, 'yellow')}",
+        f"{kv('版本', version)}    {kv('档位', auto_profile, 'yellow')}    {kv('质量', quality_profile, 'yellow')}",
         kv("输出目录", out),
     ]
 
@@ -616,6 +642,7 @@ lines = [
     "|------|----|",
     f"| 版本 | {version} |",
     f"| 自动档位 | {auto_profile} |",
+    f"| 质量档位 | {quality_profile} |",
     f"| 综合评分 | {num(default_summary.get('total_score'))} / 100 |",
     f"| 等级 | {text(default_summary.get('grade'))} |",
     f"| 置信度 | {text(confidence)} |",

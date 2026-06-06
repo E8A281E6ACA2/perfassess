@@ -24,7 +24,7 @@
 
 ### 新服务器拉取并测试
 
-适合在一台全新的 Linux/macOS 服务器上直接准备环境、拉取源码、构建、测试并跑一遍默认测评。脚本会检测缺失的基础工具并尝试安装，包括 `git`、`curl`、`make`、`python3` 和 Go 1.25.3。选择 `standard` 或 `full` 档位时，Linux 主机会额外安装路由追踪所需的 `traceroute`。
+适合在一台全新的 Linux/macOS 服务器上直接准备环境、拉取源码、构建、测试并跑一遍默认测评。脚本会检测缺失的基础工具并尝试安装，包括 `git`、`curl`、`make`、`python3` 和 Go 1.25.3。选择 `standard` 或 `full` 档位时，Linux 主机会额外安装路由追踪所需的 `traceroute`；选择 `mainstream` 质量档位时会安装并使用 `sysbench` 和 `fio`。
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/E8A281E6ACA2/perfassess/main/scripts/bootstrap.sh | bash
@@ -34,17 +34,31 @@ curl -fsSL https://raw.githubusercontent.com/E8A281E6ACA2/perfassess/main/script
 
 执行过程中会实时显示当前步骤和完成状态；内部测试日志、标准输出和错误输出会保存到 `/tmp/perfassess-auto/`。如果只想后台静默保存日志，可以设置 `PERFASSESS_AUTO_PROGRESS=0`。
 
-启动前脚本会探测 CPU 线程数、内存、swap 和可用磁盘，并选择自动测评档位。有交互终端时会显示选项；通过 `curl | bash` 这类无人值守方式运行时会自动选择推荐档位。自动档位只会在内存或磁盘明显不足时降级到 `basic`；单核但内存和磁盘充足的机器会默认跑 `standard`，保留路由、流媒体、AI、IP 质量和安全体检等扩展报告。
+启动前脚本会探测 CPU 线程数、内存、swap 和可用磁盘，并选择自动测评档位和后端质量档位。有交互终端时会在机器探测后、正式测评前显示选项；通过 `curl | bash` 这类无人值守方式运行时会自动选择推荐档位。自动档位只会在内存或磁盘明显不足时降级到 `basic`；单核但内存和磁盘充足的机器会默认跑 `standard`，保留路由、流媒体、AI、IP 质量和安全体检等扩展报告。
 
 - `basic`：基础测评，CPU、内存、磁盘、网络，适合低配或 512MB 机器。
 - `standard`：标准完整报告，基础测评加路由追踪、流媒体解锁、AI 服务、IP 质量和安全体检，不跑压力测试。
 - `full`：全量测评，标准完整报告加压力测试，耗时更长且会明显占用资源。
+
+后端质量档位用于控制报告置信度和可比性：
+
+- `builtin`：使用内置 CPU、内存、磁盘和网络后端，依赖少、最稳，适合低配机器和快速验收。
+- `mainstream`：使用 `sysbench` 测 CPU/内存、`fio` 测磁盘；如果提供 iperf3 服务端，还会使用 `iperf3` 做真实上传/下载，报告更接近主流 VPS 测评口径。
 
 可以手动指定档位：
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/E8A281E6ACA2/perfassess/main/scripts/bootstrap.sh | bash -s -- --profile full
 curl -fsSL https://raw.githubusercontent.com/E8A281E6ACA2/perfassess/main/scripts/bootstrap.sh | bash -s -- --profile standard
+curl -fsSL https://raw.githubusercontent.com/E8A281E6ACA2/perfassess/main/scripts/bootstrap.sh | bash -s -- --quality builtin
+curl -fsSL https://raw.githubusercontent.com/E8A281E6ACA2/perfassess/main/scripts/bootstrap.sh | bash -s -- --quality mainstream
+```
+
+如需让 `mainstream` 使用真实 iperf3 上传/下载，需要提供可访问的 iperf3 服务端：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/E8A281E6ACA2/perfassess/main/scripts/bootstrap.sh \
+  | PERFASSESS_IPERF3_SERVER=1.2.3.4:5201 bash -s -- --quality mainstream
 ```
 
 512MB 等低内存机器会自动进入低内存模式：Go 构建并发会降到 1，Linux 主机会尽量创建临时 swap，默认跳过 `go test ./...`，但仍会构建二进制并运行完整测评和验收摘要。临时 swap 会在脚本退出时清理；如需强制跑单元测试可设置 `PERFASSESS_BOOTSTRAP_TESTS=1`，如需禁用临时 swap 可设置 `PERFASSESS_BOOTSTRAP_SWAP=0`。
@@ -168,7 +182,7 @@ scripts/perfassess-auto.sh
 cat /tmp/perfassess-auto/console.txt
 ```
 
-该脚本不会安装依赖，也不会进入交互式菜单；默认会生成 `console.ansi`、`console.txt`、`summary.md`、JSON 完整报告和验收摘要。
+该脚本不会安装依赖，也不会进入交互式菜单；默认使用 `builtin` 后端并生成 `console.ansi`、`console.txt`、`summary.md`、JSON 完整报告和验收摘要。如需在已安装依赖的机器上直接使用主流后端，可以设置 `PERFASSESS_QUALITY_PROFILE=mainstream`。
 
 ### 方式二：命令行指定检测项
 

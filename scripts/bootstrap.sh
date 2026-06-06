@@ -10,6 +10,7 @@ RUN_TESTS="${PERFASSESS_BOOTSTRAP_TESTS:-1}"
 START_WEB="${PERFASSESS_BOOTSTRAP_WEB:-0}"
 WEB_PORT="${PERFASSESS_WEB_PORT:-8080}"
 AUTO_PROFILE="${PERFASSESS_AUTO_PROFILE:-auto}"
+QUALITY_PROFILE="${PERFASSESS_QUALITY_PROFILE:-auto}"
 BOOTSTRAP_INTERACTIVE="${PERFASSESS_BOOTSTRAP_INTERACTIVE:-auto}"
 ACTION="run"
 PROGRESS_SERVER_PID=""
@@ -18,6 +19,9 @@ BOOTSTRAP_SWAP_MODE="${PERFASSESS_BOOTSTRAP_SWAP:-auto}"
 BOOTSTRAP_SWAP_SIZE_MB="${PERFASSESS_BOOTSTRAP_SWAP_SIZE_MB:-1024}"
 BOOTSTRAP_SWAP_FILE="${PERFASSESS_BOOTSTRAP_SWAP_FILE:-$OUTPUT_DIR/bootstrap.swap}"
 BOOTSTRAP_SWAP_ACTIVE="0"
+IPERF3_SERVER="${PERFASSESS_IPERF3_SERVER:-}"
+IPERF3_SERVERS="${PERFASSESS_IPERF3_SERVERS:-}"
+IPERF3_SERVER_FILE="${PERFASSESS_IPERF3_SERVER_FILE:-}"
 
 usage() {
   cat <<EOF
@@ -29,6 +33,7 @@ Options:
   --web           Start the realtime Material Design progress page.
   --port PORT     Web report port when --web is used. Default: $WEB_PORT
   --profile NAME  Auto benchmark profile: auto, basic, standard, full. Default: $AUTO_PROFILE
+  --quality NAME  Benchmark backend quality: auto, builtin, mainstream. Default: $QUALITY_PROFILE
   --clean         Remove build output and auto-test output.
   --clean-all     Remove build output, auto-test output, and the cloned source directory.
   -h, --help      Show this help.
@@ -40,8 +45,10 @@ Environment:
   PERFASSESS_LOW_MEMORY_THRESHOLD_MB=768  Memory threshold for low-memory mode.
   PERFASSESS_WEB_PORT=9090       Web report port.
   PERFASSESS_AUTO_PROFILE=standard  Auto profile: auto, basic, standard, or full.
+  PERFASSESS_QUALITY_PROFILE=mainstream  Backend quality: auto, builtin, or mainstream.
   PERFASSESS_AUTO_STRESS=1          Include stress test when profile is standard.
   PERFASSESS_AUTO_OPTIONAL=auto  Let acceptance run optional checks when dependencies exist.
+  PERFASSESS_IPERF3_SERVER=1.2.3.4:5201  Use iperf3 network backend with this server.
 EOF
 }
 
@@ -82,6 +89,11 @@ while [[ $# -gt 0 ]]; do
     --profile)
       [[ $# -ge 2 ]] || fail "--profile requires a value"
       AUTO_PROFILE="$2"
+      shift 2
+      ;;
+    --quality)
+      [[ $# -ge 2 ]] || fail "--quality requires a value"
+      QUALITY_PROFILE="$2"
       shift 2
       ;;
     --clean)
@@ -141,6 +153,8 @@ install_packages() {
     "${SUDO[@]}" apk add --no-cache "${packages[@]}"
   elif command -v pacman >/dev/null 2>&1; then
     "${SUDO[@]}" pacman -Sy --noconfirm "${packages[@]}"
+  elif command -v brew >/dev/null 2>&1; then
+    brew install "${packages[@]}"
   else
     fail "No supported package manager found. Install these first: ${packages[*]}"
   fi
@@ -164,6 +178,8 @@ install_named_packages() {
     "${SUDO[@]}" apk add --no-cache "${packages[@]}"
   elif command -v pacman >/dev/null 2>&1; then
     "${SUDO[@]}" pacman -Sy --noconfirm "${packages[@]}"
+  elif command -v brew >/dev/null 2>&1; then
+    brew install "${packages[@]}"
   else
     fail "No supported package manager found. Install these first: ${packages[*]}"
   fi
@@ -179,6 +195,14 @@ install_profile_packages() {
       fi
       ;;
   esac
+
+  if [[ "$QUALITY_PROFILE" == "mainstream" ]]; then
+    command -v sysbench >/dev/null 2>&1 || packages+=(sysbench)
+    command -v fio >/dev/null 2>&1 || packages+=(fio)
+    if [[ -n "$IPERF3_SERVER" || -n "$IPERF3_SERVERS" || -n "$IPERF3_SERVER_FILE" ]]; then
+      command -v iperf3 >/dev/null 2>&1 || packages+=(iperf3)
+    fi
+  fi
 
   if [[ ${#packages[@]} -eq 0 ]]; then
     success "profile dependencies are present"
@@ -284,6 +308,15 @@ disk_available_mb() {
   df -Pm . 2>/dev/null | awk 'NR == 2 { print $4 }'
 }
 
+can_prompt() {
+  [[ "$BOOTSTRAP_INTERACTIVE" != "0" && "$BOOTSTRAP_INTERACTIVE" != "false" && -t 1 && -r /dev/tty ]]
+}
+
+read_tty() {
+  local var_name="$1"
+  IFS= read -r "$var_name" </dev/tty || printf -v "$var_name" ''
+}
+
 configure_low_memory_mode() {
   local mem_mb swap_mb
   mem_mb="$(memory_total_mb)"
@@ -362,7 +395,7 @@ cleanup_bootstrap_swap() {
 recommended_profile() {
   local mem_mb="$1"
   local disk_mb="$2"
-  local cpu_count="$3"
+  local _cpu_count="$3"
 
   if [[ "$mem_mb" -gt 0 && "$mem_mb" -lt 1024 ]]; then
     echo "basic"
@@ -370,6 +403,22 @@ recommended_profile() {
     echo "basic"
   else
     echo "standard"
+  fi
+}
+
+recommended_quality_profile() {
+  local mem_mb="$1"
+  local disk_mb="$2"
+  local cpu_count="$3"
+
+  if [[ "$mem_mb" -gt 0 && "$mem_mb" -lt 2048 ]]; then
+    echo "builtin"
+  elif [[ "$disk_mb" -gt 0 && "$disk_mb" -lt 4096 ]]; then
+    echo "builtin"
+  elif [[ "$cpu_count" -gt 0 && "$cpu_count" -lt 2 ]]; then
+    echo "builtin"
+  else
+    echo "mainstream"
   fi
 }
 
@@ -387,18 +436,29 @@ profile_description() {
   esac
 }
 
+quality_description() {
+  case "$1" in
+    builtin)
+      echo "内置后端：依赖少、最稳，适合快速验收；报告置信度通常为 medium。"
+      ;;
+    mainstream)
+      echo "主流后端：安装并使用 sysbench/fio；有 iperf3 服务端时使用真实上传，报告更可比。"
+      ;;
+  esac
+}
+
 choose_auto_profile() {
+  local fixed_profile="0"
+
   case "$AUTO_PROFILE" in
     stress)
       AUTO_PROFILE="full"
-      export PERFASSESS_AUTO_PROFILE="$AUTO_PROFILE"
       info "using requested auto profile: $AUTO_PROFILE"
-      return
+      fixed_profile="1"
       ;;
     basic|standard|full)
-      export PERFASSESS_AUTO_PROFILE="$AUTO_PROFILE"
       info "using requested auto profile: $AUTO_PROFILE"
-      return
+      fixed_profile="1"
       ;;
     auto) ;;
     *)
@@ -406,7 +466,14 @@ choose_auto_profile() {
       ;;
   esac
 
-  local mem_mb swap_mb disk_mb cpu_count recommended selected
+  case "$QUALITY_PROFILE" in
+    auto|builtin|mainstream) ;;
+    *)
+      fail "--quality must be auto, builtin, or mainstream"
+      ;;
+  esac
+
+  local mem_mb swap_mb disk_mb cpu_count recommended recommended_quality selected selected_quality
   mem_mb="$(memory_total_mb)"
   swap_mb="$(swap_total_mb)"
   disk_mb="$(disk_available_mb)"
@@ -414,38 +481,68 @@ choose_auto_profile() {
   cpu_count="$(cpu_threads)"
   cpu_count="${cpu_count:-0}"
   recommended="$(recommended_profile "$mem_mb" "$disk_mb" "$cpu_count")"
+  recommended_quality="$(recommended_quality_profile "$mem_mb" "$disk_mb" "$cpu_count")"
 
   echo ""
   info "machine probe before benchmark"
   echo "CPU threads: ${cpu_count}"
   echo "Memory: ${mem_mb}MB RAM, ${swap_mb}MB swap"
   echo "Available disk: ${disk_mb}MB"
-  echo "Recommended profile: ${recommended} - $(profile_description "$recommended")"
-
-  if [[ "$BOOTSTRAP_INTERACTIVE" != "0" && "$BOOTSTRAP_INTERACTIVE" != "false" && -t 0 && -t 1 ]]; then
-    echo ""
-    echo "Choose benchmark profile:"
-    echo "  1) basic  - $(profile_description basic)"
-    echo "  2) standard - $(profile_description standard)"
-    echo "  3) full   - $(profile_description full)"
-    printf "Selection [recommended: %s]: " "$recommended"
-    read -r selected || selected=""
-    case "${selected:-$recommended}" in
-      1|basic) AUTO_PROFILE="basic" ;;
-      2|standard) AUTO_PROFILE="standard" ;;
-      3|full|stress) AUTO_PROFILE="full" ;;
-      *) AUTO_PROFILE="$recommended" ;;
-    esac
+  if [[ "$fixed_profile" == "1" ]]; then
+    echo "Benchmark profile: ${AUTO_PROFILE} - $(profile_description "$AUTO_PROFILE")"
   else
-    AUTO_PROFILE="$recommended"
+    echo "Recommended profile: ${recommended} - $(profile_description "$recommended")"
+  fi
+  echo "Recommended quality: ${recommended_quality} - $(quality_description "$recommended_quality")"
+
+  if can_prompt; then
+    if [[ "$fixed_profile" != "1" ]]; then
+      echo ""
+      echo "Choose benchmark profile:"
+      echo "  1) basic    - $(profile_description basic)"
+      echo "  2) standard - $(profile_description standard)"
+      echo "  3) full     - $(profile_description full)"
+      printf "Selection [recommended: %s]: " "$recommended"
+      read_tty selected
+      case "${selected:-$recommended}" in
+        1|basic) AUTO_PROFILE="basic" ;;
+        2|standard) AUTO_PROFILE="standard" ;;
+        3|full|stress) AUTO_PROFILE="full" ;;
+        *) AUTO_PROFILE="$recommended" ;;
+      esac
+    fi
+
+    if [[ "$QUALITY_PROFILE" == "auto" ]]; then
+      echo ""
+      echo "Choose backend quality:"
+      echo "  1) builtin    - $(quality_description builtin)"
+      echo "  2) mainstream - $(quality_description mainstream)"
+      printf "Selection [recommended: %s]: " "$recommended_quality"
+      read_tty selected_quality
+      case "${selected_quality:-$recommended_quality}" in
+        1|builtin) QUALITY_PROFILE="builtin" ;;
+        2|mainstream) QUALITY_PROFILE="mainstream" ;;
+        *) QUALITY_PROFILE="$recommended_quality" ;;
+      esac
+    fi
+  else
+    if [[ "$fixed_profile" != "1" ]]; then
+      AUTO_PROFILE="$recommended"
+    fi
+    if [[ "$QUALITY_PROFILE" == "auto" ]]; then
+      QUALITY_PROFILE="$recommended_quality"
+    fi
     info "non-interactive mode selected profile: $AUTO_PROFILE"
+    info "non-interactive mode selected quality: $QUALITY_PROFILE"
   fi
 
   export PERFASSESS_AUTO_PROFILE="$AUTO_PROFILE"
+  export PERFASSESS_QUALITY_PROFILE="$QUALITY_PROFILE"
   if [[ "$AUTO_PROFILE" == "full" ]]; then
     export PERFASSESS_AUTO_STRESS="1"
   fi
   success "auto profile selected: $AUTO_PROFILE"
+  success "quality profile selected: $QUALITY_PROFILE"
 }
 
 checkout_repo() {
@@ -490,7 +587,7 @@ clean_outputs() {
 }
 
 start_progress_server() {
-  [[ "$START_WEB" == "1" ]] || return
+  [[ "$START_WEB" == "1" ]] || return 0
 
   mkdir -p "$OUTPUT_DIR"
   local requested_port="$WEB_PORT"
