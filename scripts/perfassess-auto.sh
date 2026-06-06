@@ -6,6 +6,7 @@ binary="${PERFASSESS_BINARY:-./build/perfassess}"
 skip_build="${PERFASSESS_SKIP_BUILD:-0}"
 optional_mode="${PERFASSESS_AUTO_OPTIONAL:-never}"
 show_progress="${PERFASSESS_AUTO_PROGRESS:-1}"
+heartbeat_interval="${PERFASSESS_AUTO_HEARTBEAT:-10}"
 progress_file="${PERFASSESS_PROGRESS_FILE:-$output_dir/progress.json}"
 auto_profile="${PERFASSESS_AUTO_PROFILE:-standard}"
 quality_profile="${PERFASSESS_QUALITY_PROFILE:-builtin}"
@@ -17,6 +18,7 @@ iperf3_server="${PERFASSESS_IPERF3_SERVER:-}"
 iperf3_servers="${PERFASSESS_IPERF3_SERVERS:-}"
 iperf3_server_file="${PERFASSESS_IPERF3_SERVER_FILE:-}"
 current_progress_step="prepare"
+heartbeat_pid=""
 
 case "$auto_profile" in
   auto) auto_profile="standard" ;;
@@ -157,7 +159,7 @@ data = {
     "updated_at": now,
     "current_step": step_id,
     "steps": [
-        {"id": sid, "label": label, "status": "pending", "message": "", "updated_at": ""}
+        {"id": sid, "label": label, "status": "pending", "message": "", "started_at": "", "updated_at": "", "finished_at": "", "duration_seconds": None}
         for sid, label in step_defs
     ],
 }
@@ -176,9 +178,23 @@ if progress_path.exists():
 
 for step in data["steps"]:
     if step["id"] == step_id:
+        if step_status == "running" and not step.get("started_at"):
+            step["started_at"] = now
+        if step_status in {"success", "failed"} and not step.get("started_at"):
+            step["started_at"] = now
         step["status"] = step_status
         step["message"] = message
         step["updated_at"] = now
+        if step_status in {"success", "failed"}:
+            step["finished_at"] = now
+            started_at = step.get("started_at")
+            if started_at:
+                try:
+                    started = datetime.fromisoformat(started_at.replace("Z", "+00:00"))
+                    finished = datetime.fromisoformat(now.replace("Z", "+00:00"))
+                    step["duration_seconds"] = round(max(0, (finished - started).total_seconds()), 3)
+                except ValueError:
+                    pass
         break
 
 statuses = [step["status"] for step in data["steps"]]
@@ -223,6 +239,7 @@ PY
 
 mark_failed() {
   local code="$?"
+  stop_heartbeat
   if [[ "$code" -ne 0 ]]; then
     progress_update "$current_progress_step" "failed" "步骤失败，退出码: $code"
   fi
@@ -237,10 +254,65 @@ step() {
   echo "==> $*"
 }
 
+format_duration() {
+  local total="${1:-0}"
+  local minutes=$((total / 60))
+  local seconds=$((total % 60))
+  if (( minutes > 0 )); then
+    printf '%dm%02ds' "$minutes" "$seconds"
+  else
+    printf '%ds' "$seconds"
+  fi
+}
+
+time_bar() {
+  local elapsed="${1:-0}"
+  local width=18
+  local filled=$(((elapsed / heartbeat_interval) % (width + 1)))
+  local bar=""
+  local i
+  for ((i = 0; i < width; i++)); do
+    if (( i < filled )); then
+      bar+="#"
+    else
+      bar+="-"
+    fi
+  done
+  printf '[%s]' "$bar"
+}
+
+start_heartbeat() {
+  local label="$1"
+  local start_seconds="$2"
+  [[ "$show_progress" == "1" ]] || return 0
+  [[ "$heartbeat_interval" =~ ^[0-9]+$ && "$heartbeat_interval" -gt 0 ]] || return 0
+  (
+    while true; do
+      sleep "$heartbeat_interval"
+      local elapsed=$((SECONDS - start_seconds))
+      echo "[..] $(time_bar "$elapsed") $label 运行中，已耗时 $(format_duration "$elapsed")"
+    done
+  ) &
+  heartbeat_pid="$!"
+}
+
+stop_heartbeat() {
+  if [[ -n "$heartbeat_pid" ]] && kill -0 "$heartbeat_pid" >/dev/null 2>&1; then
+    kill "$heartbeat_pid" >/dev/null 2>&1 || true
+    wait "$heartbeat_pid" >/dev/null 2>&1 || true
+  fi
+  heartbeat_pid=""
+}
+
 finish_step() {
   local label="$1"
+  local duration="${2:-}"
   [[ "$show_progress" == "1" ]] || return 0
-  echo "[OK] $label 完成"
+  if [[ -n "$duration" ]]; then
+    echo "[OK] $label 完成，用时 $duration"
+  else
+    echo "[OK] $label 完成"
+  fi
 }
 
 run_capture() {
@@ -252,9 +324,21 @@ run_capture() {
   step "$label"
   current_progress_step="$step_id"
   progress_update "$step_id" "running" "$label"
+  local start_seconds="$SECONDS"
+  start_heartbeat "$label" "$start_seconds"
+  set +e
   "$@" >"$stdout_file" 2>"$output_dir/${stdout_file##*/}.stderr.log"
-  progress_update "$step_id" "success" "$label 完成"
-  finish_step "$label"
+  local code="$?"
+  set -e
+  stop_heartbeat
+  local duration
+  duration="$(format_duration "$((SECONDS - start_seconds))")"
+  if [[ "$code" -ne 0 ]]; then
+    progress_update "$step_id" "failed" "$label 失败，用时 $duration，退出码: $code"
+    return "$code"
+  fi
+  progress_update "$step_id" "success" "$label 完成，用时 $duration"
+  finish_step "$label" "$duration"
 }
 
 if ! command -v python3 >/dev/null 2>&1; then
@@ -275,9 +359,11 @@ if [[ "$skip_build" != "1" ]]; then
   mkdir -p "$(dirname "$binary")"
   step "building: $binary"
   progress_update "build" "running" "构建二进制: $binary"
+  build_start="$SECONDS"
   go build -o "$binary" cmd/main.go
-  progress_update "build" "success" "二进制构建完成"
-  finish_step "building: $binary"
+  build_duration="$(format_duration "$((SECONDS - build_start))")"
+  progress_update "build" "success" "二进制构建完成，用时 $build_duration"
+  finish_step "building: $binary" "$build_duration"
 else
   progress_update "build" "success" "跳过构建，使用已有二进制"
 fi
@@ -291,10 +377,12 @@ fi
 step "checking version and dependencies"
 current_progress_step="deps"
 progress_update "deps" "running" "检查版本和依赖"
+deps_start="$SECONDS"
 "$binary" version >"$output_dir/version.txt"
 "$binary" check-deps >"$output_dir/check-deps.txt"
-progress_update "deps" "success" "版本和依赖检查完成"
-finish_step "checking version and dependencies"
+deps_duration="$(format_duration "$((SECONDS - deps_start))")"
+progress_update "deps" "success" "版本和依赖检查完成，用时 $deps_duration"
+finish_step "checking version and dependencies" "$deps_duration"
 
 run_capture "default_json" "运行自动测评档位: $auto_profile (JSON 报告)" "$output_dir/default.stdout.txt" \
   "$binary" "${default_args[@]}"
@@ -310,12 +398,14 @@ python3 -m json.tool "$output_dir/quick.json" >/dev/null
 step "运行验收流程"
 current_progress_step="acceptance"
 progress_update "acceptance" "running" "运行验收流程"
+acceptance_start="$SECONDS"
 PERFASSESS_BINARY="$binary" \
 PERFASSESS_ACCEPTANCE_DIR="$output_dir/acceptance" \
 PERFASSESS_ACCEPTANCE_OPTIONAL="$optional_mode" \
 scripts/vps-acceptance.sh >"$output_dir/acceptance.stdout.txt" 2>"$output_dir/acceptance.stderr.log"
-progress_update "acceptance" "success" "验收流程完成"
-finish_step "运行验收流程"
+acceptance_duration="$(format_duration "$((SECONDS - acceptance_start))")"
+progress_update "acceptance" "success" "验收流程完成，用时 $acceptance_duration"
+finish_step "运行验收流程" "$acceptance_duration"
 
 current_progress_step="summary"
 progress_update "summary" "running" "生成汇总"
@@ -341,6 +431,7 @@ quick_report = load("quick.json")
 default_summary = default_report["summary"]
 quick_summary = quick_report["summary"]
 acceptance_summary_path = out / "acceptance" / "summary.md"
+progress_report = load("progress.json") if (out / "progress.json").exists() else {}
 
 def text(value, default="-"):
     if value is None:
@@ -357,6 +448,18 @@ def num(value, digits=2, default="-"):
         return f"{float(value):.{digits}f}"
     except (TypeError, ValueError):
         return default
+
+def duration_text(value):
+    if isinstance(value, bool) or value is None:
+        return "-"
+    try:
+        seconds = int(round(float(value)))
+    except (TypeError, ValueError):
+        return "-"
+    minutes, remain = divmod(seconds, 60)
+    if minutes:
+        return f"{minutes}m{remain:02d}s"
+    return f"{remain}s"
 
 def as_dict(value):
     return value if isinstance(value, dict) else {}
@@ -452,6 +555,19 @@ def yes_no(value):
     if value is False:
         return "不可用"
     return "-"
+
+def progress_step_rows():
+    rows = []
+    for item in as_dict(progress_report).get("steps", []):
+        if not isinstance(item, dict):
+            continue
+        rows.append([
+            text(item.get("label")),
+            status_text(item.get("status")),
+            duration_text(item.get("duration_seconds")),
+            text(item.get("message")),
+        ])
+    return rows
 
 def status_text(value):
     if value in {"success", True}:
@@ -952,6 +1068,16 @@ def console_report(color=False):
         [10, 52, 12],
     ))
 
+    timing_rows = progress_step_rows()
+    if timing_rows:
+        rows += section("耗时统计")
+        rows.extend(table(
+            ["步骤", "状态", "耗时", "说明"],
+            timing_rows,
+            [20, 10, 10, 34],
+            status_col=1,
+        ))
+
     rows += section("网络质量")
     rows.extend(table(
         ["项目", "结果", "说明"],
@@ -1126,6 +1252,18 @@ lines = [
     f"| 网络 | 延迟 {summary_metric('network', 'latency_ms', 'network_result')} ms / 下载 {summary_metric('network', 'download_mbps', 'network_result', 'download_speed_mbps')} Mbps / 上传 {summary_metric('network', 'upload_mbps', 'network_result', 'upload_speed_mbps')} Mbps |",
     "",
 ]
+
+timing_rows = progress_step_rows()
+if timing_rows:
+    lines.extend([
+        "## 耗时统计",
+        "",
+        "| 步骤 | 状态 | 耗时 | 说明 |",
+        "|------|------|------|------|",
+    ])
+    for row in timing_rows:
+        lines.append(f"| {md_cell(row[0])} | {md_cell(row[1])} | {md_cell(row[2])} | {md_cell(row[3])} |")
+    lines.append("")
 
 iperf3_rows = iperf3_console_rows(network_metrics)
 if iperf3_rows:

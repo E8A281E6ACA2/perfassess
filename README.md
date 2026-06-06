@@ -32,7 +32,7 @@ curl -fsSL https://raw.githubusercontent.com/E8A281E6ACA2/perfassess/main/script
 
 这条命令默认是非交互测评，不会常驻启动 Web 服务。完成后会直接在控制台打印彩色结构化报告，并保存终端纯文本、Markdown 摘要、JSON/text 完整报告、模块化 JSON 报告和报告压缩包，适合直接复制结果或做服务器验收。
 
-执行过程中会实时显示当前步骤和完成状态；内部测试日志、标准输出和错误输出会保存到 `/tmp/perfassess-auto/`。如果只想后台静默保存日志，可以设置 `PERFASSESS_AUTO_PROGRESS=0`。
+执行过程中会实时显示当前步骤和完成状态；耗时较长的步骤会每 10 秒打印一次运行中提示，避免 full 文本报告、流媒体或路由检测阶段长时间无输出。内部测试日志、标准输出和错误输出会保存到 `/tmp/perfassess-auto/`。如果只想后台静默保存日志，可以设置 `PERFASSESS_AUTO_PROGRESS=0`；如需调整心跳间隔，可以设置 `PERFASSESS_AUTO_HEARTBEAT=15`。
 
 启动前脚本会探测 CPU 线程数、内存、swap 和可用磁盘，并选择自动测评档位和后端质量档位。有交互终端时会在机器探测后、正式测评前显示选项；通过 `curl | bash` 这类无人值守方式运行时会自动选择推荐档位。自动档位只会在内存或磁盘明显不足时降级到 `basic`；单核但内存和磁盘充足的机器会默认跑 `standard`，保留路由、流媒体、AI、IP 质量和安全体检等扩展报告。
 
@@ -77,6 +77,8 @@ curl -fsSL https://raw.githubusercontent.com/E8A281E6ACA2/perfassess/main/script
 - `/tmp/perfassess-auto/ip_quality.json`：IP 质量模块，包含 ASN、rDNS、DNSBL、邮件端口和风险评分
 - `/tmp/perfassess-auto/perfassess-report.zip`：报告压缩包，包含报告、日志和验收摘要
 
+最终控制台报告和 `summary.md` 会包含“耗时统计”，列出构建、依赖检查、完整 JSON 报告、完整文本报告、快速测评、验收流程和汇总生成各自耗时。
+
 如果希望跑完后自动清理构建产物但保留报告，可以使用：
 
 ```bash
@@ -92,6 +94,20 @@ curl -fsSL https://raw.githubusercontent.com/E8A281E6ACA2/perfassess/main/script
 ```
 
 `--web` 会在测评开始前启动实时进度页，浏览器打开 `http://服务器公网IP:8080` 后可看到当前步骤、完成状态和已生成报告文件。脚本中显示的 `0.0.0.0:8080` 只是服务监听所有网卡的地址，不是浏览器访问地址；浏览器应使用服务器公网 IP、内网 IP，或本地 SSH 端口转发地址。如果指定端口已被占用，bootstrap 会自动尝试后续端口，并在终端打印最终可访问地址。
+
+如果希望测评完成后 Web 页面只保留一段时间，然后自动停止：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/E8A281E6ACA2/perfassess/main/scripts/bootstrap.sh | bash -s -- --web --port 8080 --web-ttl 600
+```
+
+如果希望 Web 查看窗口结束后自动删除本次克隆源码、构建产物和 `/tmp/perfassess-auto/` 报告，可以显式使用：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/E8A281E6ACA2/perfassess/main/scripts/bootstrap.sh | bash -s -- --destroy-after-web --web-ttl 600
+```
+
+注意：`--destroy-after-web` 会删除报告文件，适合一次性临时测评；如果还需要下载压缩包或保存结果，不要使用这个选项。
 
 如果服务器安全组或防火墙已经开放终端显示的端口，把 `SERVER_PUBLIC_IP` 替换为你的服务器公网 IP：
 

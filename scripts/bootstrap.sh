@@ -9,6 +9,7 @@ BOOTSTRAP_TESTS_SET="${PERFASSESS_BOOTSTRAP_TESTS+x}"
 RUN_TESTS="${PERFASSESS_BOOTSTRAP_TESTS:-1}"
 START_WEB="${PERFASSESS_BOOTSTRAP_WEB:-0}"
 WEB_PORT="${PERFASSESS_WEB_PORT:-8080}"
+WEB_TTL_SECONDS="${PERFASSESS_WEB_TTL_SECONDS:-0}"
 AUTO_PROFILE="${PERFASSESS_AUTO_PROFILE:-auto}"
 QUALITY_PROFILE="${PERFASSESS_QUALITY_PROFILE:-auto}"
 NETWORK_PROFILE="${PERFASSESS_NETWORK_PROFILE:-auto}"
@@ -16,6 +17,7 @@ BOOTSTRAP_INTERACTIVE="${PERFASSESS_BOOTSTRAP_INTERACTIVE:-auto}"
 ACTION="run"
 PROGRESS_SERVER_PID=""
 BOOTSTRAP_CLEANUP_AFTER_RUN="${PERFASSESS_BOOTSTRAP_CLEANUP_AFTER_RUN:-0}"
+BOOTSTRAP_DESTROY_AFTER_WEB="${PERFASSESS_BOOTSTRAP_DESTROY_AFTER_WEB:-0}"
 LOW_MEMORY_THRESHOLD_MB="${PERFASSESS_LOW_MEMORY_THRESHOLD_MB:-768}"
 BOOTSTRAP_SWAP_MODE="${PERFASSESS_BOOTSTRAP_SWAP:-auto}"
 BOOTSTRAP_SWAP_SIZE_MB="${PERFASSESS_BOOTSTRAP_SWAP_SIZE_MB:-1024}"
@@ -34,12 +36,15 @@ Options:
   --go VERSION    Go version to install when missing or too old. Default: $GO_VERSION
   --web           Start the realtime Material Design progress page.
   --port PORT     Web report port when --web is used. Default: $WEB_PORT
+  --web-ttl SEC   Stop the Web page SEC seconds after benchmark completion. Default: $WEB_TTL_SECONDS.
   --profile NAME  Auto benchmark profile: auto, basic, standard, full. Default: $AUTO_PROFILE
   --quality NAME  Benchmark backend quality: auto, builtin, mainstream. Default: $QUALITY_PROFILE
   --network-profile NAME
                    Network test profile: auto, quick, standard, full. Default: $NETWORK_PROFILE
   --cleanup-after-run
                    Remove build artifacts after benchmark. Reports remain in $OUTPUT_DIR.
+  --destroy-after-web
+                   After Web viewing ends, remove source, build artifacts, and $OUTPUT_DIR.
   --clean         Remove build output and auto-test output.
   --clean-all     Remove build output, auto-test output, and the cloned source directory.
   -h, --help      Show this help.
@@ -47,8 +52,10 @@ Options:
 Environment:
   PERFASSESS_BOOTSTRAP_TESTS=0   Skip go test ./...
   PERFASSESS_BOOTSTRAP_WEB=1     Start the realtime Material Design progress page.
+  PERFASSESS_WEB_TTL_SECONDS=600 Stop Web server 10 minutes after completion.
   PERFASSESS_BOOTSTRAP_SWAP=auto Create temporary swap on low-memory Linux hosts. Set 0 to disable.
   PERFASSESS_BOOTSTRAP_CLEANUP_AFTER_RUN=1  Remove build artifacts after benchmark.
+  PERFASSESS_BOOTSTRAP_DESTROY_AFTER_WEB=1  Remove source and reports after Web viewing ends.
   PERFASSESS_LOW_MEMORY_THRESHOLD_MB=768  Memory threshold for low-memory mode.
   PERFASSESS_WEB_PORT=9090       Web report port.
   PERFASSESS_AUTO_PROFILE=standard  Auto profile: auto, basic, standard, or full.
@@ -95,6 +102,11 @@ while [[ $# -gt 0 ]]; do
       WEB_PORT="$2"
       shift 2
       ;;
+    --web-ttl)
+      [[ $# -ge 2 ]] || fail "--web-ttl requires seconds"
+      WEB_TTL_SECONDS="$2"
+      shift 2
+      ;;
     --profile)
       [[ $# -ge 2 ]] || fail "--profile requires a value"
       AUTO_PROFILE="$2"
@@ -112,6 +124,11 @@ while [[ $# -gt 0 ]]; do
       ;;
     --cleanup-after-run)
       BOOTSTRAP_CLEANUP_AFTER_RUN="1"
+      shift
+      ;;
+    --destroy-after-web)
+      START_WEB="1"
+      BOOTSTRAP_DESTROY_AFTER_WEB="1"
       shift
       ;;
     --clean)
@@ -675,6 +692,16 @@ cleanup_after_run() {
   success "build artifacts cleaned; reports remain in $OUTPUT_DIR"
 }
 
+destroy_after_web() {
+  [[ "$BOOTSTRAP_DESTROY_AFTER_WEB" == "1" || "$BOOTSTRAP_DESTROY_AFTER_WEB" == "true" ]] || return 0
+
+  [[ -d "$WORK_DIR/.git" ]] || fail "Refusing to remove non-git source directory: $WORK_DIR"
+  info "destroying benchmark source and report output"
+  cd /
+  rm -rf "$WORK_DIR" "$OUTPUT_DIR"
+  success "destroyed $WORK_DIR and $OUTPUT_DIR"
+}
+
 start_progress_server() {
   [[ "$START_WEB" == "1" ]] || return 0
 
@@ -786,8 +813,15 @@ run_all() {
     echo ""
     info "realtime web progress remains available until this script exits"
     print_web_access
-    echo "Press Ctrl+C to stop the progress server."
-    wait "$PROGRESS_SERVER_PID"
+    if [[ "$WEB_TTL_SECONDS" =~ ^[0-9]+$ && "$WEB_TTL_SECONDS" -gt 0 ]]; then
+      echo "Web page will stop automatically after ${WEB_TTL_SECONDS}s."
+      sleep "$WEB_TTL_SECONDS"
+      stop_progress_server
+    else
+      echo "Press Ctrl+C to stop the progress server."
+      wait "$PROGRESS_SERVER_PID"
+    fi
+    destroy_after_web
   fi
 }
 
