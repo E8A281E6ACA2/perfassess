@@ -35,11 +35,13 @@ cat /tmp/perfassess-auto/summary.md
 
 执行过程中会实时显示当前进度，例如系统信息、CPU、内存、磁盘、网络、验收步骤；完整输出仍会保存到 `/tmp/perfassess-auto/`。如果只想后台静默保存日志，可以设置 `PERFASSESS_AUTO_PROGRESS=0`。
 
-如果希望测评完成后临时启动 Material Design 3 / Google 风格 Web 报告：
+如果希望启动 Material Design 3 / Google 风格实时 Web 测评页面：
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/E8A281E6ACA2/perfassess/main/scripts/bootstrap.sh | bash -s -- --web --port 8080
 ```
+
+`--web` 会在测评开始前启动实时进度页，浏览器打开 `http://服务器IP:8080` 后可看到当前步骤、完成状态和已生成报告文件。测评完成后，页面会显示 Markdown 摘要、JSON 报告、文本报告和验收摘要入口。
 
 如果机器没有 `curl`，可以用 `wget`：
 
@@ -56,7 +58,7 @@ scripts/bootstrap.sh
 cat /tmp/perfassess-auto/summary.md
 ```
 
-已克隆仓库并希望启动 Web 报告：
+已克隆仓库并希望启动实时 Web 测评页面：
 
 ```bash
 scripts/bootstrap.sh --web --port 8080

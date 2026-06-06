@@ -9,6 +9,7 @@ RUN_TESTS="${PERFASSESS_BOOTSTRAP_TESTS:-1}"
 START_WEB="${PERFASSESS_BOOTSTRAP_WEB:-0}"
 WEB_PORT="${PERFASSESS_WEB_PORT:-8080}"
 ACTION="run"
+PROGRESS_SERVER_PID=""
 
 usage() {
   cat <<EOF
@@ -17,7 +18,7 @@ Usage: scripts/bootstrap.sh [options]
 Options:
   --dir PATH       Source directory to clone or use. Default: $WORK_DIR
   --go VERSION    Go version to install when missing or too old. Default: $GO_VERSION
-  --web           Start the Material Design web report after bootstrap.
+  --web           Start the realtime Material Design progress page.
   --port PORT     Web report port when --web is used. Default: $WEB_PORT
   --clean         Remove build output and auto-test output.
   --clean-all     Remove build output, auto-test output, and the cloned source directory.
@@ -25,7 +26,7 @@ Options:
 
 Environment:
   PERFASSESS_BOOTSTRAP_TESTS=0   Skip go test ./...
-  PERFASSESS_BOOTSTRAP_WEB=1     Start the Material Design web report after bootstrap.
+  PERFASSESS_BOOTSTRAP_WEB=1     Start the realtime Material Design progress page.
   PERFASSESS_WEB_PORT=9090       Web report port.
   PERFASSESS_AUTO_OPTIONAL=auto  Let acceptance run optional checks when dependencies exist.
 EOF
@@ -234,6 +235,35 @@ clean_outputs() {
   fi
 }
 
+start_progress_server() {
+  [[ "$START_WEB" == "1" ]] || return
+
+  mkdir -p "$OUTPUT_DIR"
+  info "starting realtime web progress on port $WEB_PORT"
+  echo "Open http://SERVER_IP:$WEB_PORT in your browser, or use SSH port forwarding."
+  echo "The page will update during the benchmark and expose generated report files."
+
+  python3 "$WORK_DIR/scripts/perfassess-progress-server.py" \
+    --dir "$OUTPUT_DIR" \
+    --progress-file "$OUTPUT_DIR/progress.json" \
+    --port "$WEB_PORT" &
+  PROGRESS_SERVER_PID="$!"
+
+  trap 'stop_progress_server' EXIT
+  trap 'stop_progress_server; exit 130' INT TERM
+  sleep 1
+  if ! kill -0 "$PROGRESS_SERVER_PID" >/dev/null 2>&1; then
+    fail "Realtime web progress failed to start. Check whether port $WEB_PORT is already in use."
+  fi
+}
+
+stop_progress_server() {
+  if [[ -n "$PROGRESS_SERVER_PID" ]] && kill -0 "$PROGRESS_SERVER_PID" >/dev/null 2>&1; then
+    kill "$PROGRESS_SERVER_PID" >/dev/null 2>&1 || true
+    wait "$PROGRESS_SERVER_PID" >/dev/null 2>&1 || true
+  fi
+}
+
 run_all() {
   install_packages
   install_go
@@ -247,8 +277,10 @@ run_all() {
     go test ./...
   fi
 
+  start_progress_server
+
   info "running full non-interactive benchmark and acceptance"
-  scripts/perfassess-auto.sh
+  PERFASSESS_PROGRESS_FILE="$OUTPUT_DIR/progress.json" scripts/perfassess-auto.sh
 
   echo ""
   success "bootstrap completed"
@@ -260,10 +292,10 @@ run_all() {
 
   if [[ "$START_WEB" == "1" ]]; then
     echo ""
-    info "starting Material Design web report on port $WEB_PORT"
+    info "realtime web progress remains available until this script exits"
     echo "Open http://SERVER_IP:$WEB_PORT in your browser, or use SSH port forwarding."
-    echo "Press Ctrl+C to stop the web server."
-    "$WORK_DIR/build/perfassess" --web --port "$WEB_PORT"
+    echo "Press Ctrl+C to stop the progress server."
+    wait "$PROGRESS_SERVER_PID"
   fi
 }
 

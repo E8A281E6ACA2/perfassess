@@ -12,6 +12,7 @@ performance-assessment
 *.out
 coverage.out
 coverage.html
+__pycache__/
 study/
 
 # Go 工作空间文件
