@@ -800,8 +800,17 @@ func (rg *ReportGenerator) FormatReport(report *models.Report) string {
 			}
 			for _, result := range routeResults {
 				sb.WriteString(fmt.Sprintf("目标: %s\n", result.Target))
+				sb.WriteString(fmt.Sprintf("方向: %s\n", routeDirectionReportLabel(result)))
+				sb.WriteString(fmt.Sprintf("评级: %s\n", routeQualityReportLabel(result)))
 				if result.Success {
 					sb.WriteString(fmt.Sprintf("总跳数: %d\n", result.TotalHops))
+					sb.WriteString(fmt.Sprintf("超时跳: %d\n", result.TimeoutHops))
+					if result.AverageLatencyMs > 0 {
+						sb.WriteString(fmt.Sprintf("平均延迟: %.2f ms\n", result.AverageLatencyMs))
+					}
+					if result.LastVisibleHop != "" {
+						sb.WriteString(fmt.Sprintf("最后可见跳: %s\n", result.LastVisibleHop))
+					}
 					for _, hop := range result.Hops {
 						if hop.IP == "*" {
 							sb.WriteString(fmt.Sprintf("  %2d  *  (超时)\n", hop.Number))
@@ -811,6 +820,12 @@ func (rg *ReportGenerator) FormatReport(report *models.Report) string {
 					}
 				} else {
 					sb.WriteString(fmt.Sprintf("状态: 失败 - %s\n", result.ErrorMessage))
+				}
+				if len(result.Recommendations) > 0 {
+					sb.WriteString("建议:\n")
+					for _, recommendation := range result.Recommendations {
+						sb.WriteString(fmt.Sprintf("  - %s\n", recommendation))
+					}
 				}
 				sb.WriteString("\n")
 			}
@@ -1190,6 +1205,43 @@ func scoreComponentLabel(key string) string {
 	default:
 		return key
 	}
+}
+
+func routeDirectionReportLabel(result *models.TraceResult) string {
+	if result == nil {
+		return "-"
+	}
+	switch result.DirectionGroup {
+	case "china_reference":
+		return "国内方向参考"
+	case "public":
+		return "公共方向"
+	}
+	target := strings.ToLower(result.Target)
+	for _, marker := range []string{"189.cn", "10086.cn", "chinaunicom", "ctyun", "qq.com"} {
+		if strings.Contains(target, marker) {
+			return "国内方向参考"
+		}
+	}
+	return "公共方向"
+}
+
+func routeQualityReportLabel(result *models.TraceResult) string {
+	if result == nil {
+		return "-"
+	}
+	if result.Quality != nil {
+		if result.Quality.Summary != "" {
+			return result.Quality.Summary
+		}
+		if result.Quality.Grade != "" {
+			return result.Quality.Grade
+		}
+	}
+	if result.Success {
+		return "完成"
+	}
+	return "失败"
 }
 
 func formatBreakdownNumber(value interface{}) string {

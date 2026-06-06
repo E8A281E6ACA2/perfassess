@@ -692,38 +692,55 @@ func (ws *WebServer) routeSection() webReportSection {
 
 	successCount := 0
 	totalHops := 0
+	timeoutHops := 0
+	latencyCount := 0
+	latencyTotal := 0.0
 	for _, result := range results {
 		if result != nil && result.Success {
 			successCount++
 			totalHops += result.TotalHops
+			timeoutHops += result.TimeoutHops
+			if result.AverageLatencyMs > 0 {
+				latencyTotal += result.AverageLatencyMs
+				latencyCount++
+			}
 		}
 	}
 	avgHops := 0.0
 	if successCount > 0 {
 		avgHops = float64(totalHops) / float64(successCount)
 	}
+	avgLatency := 0.0
+	if latencyCount > 0 {
+		avgLatency = latencyTotal / float64(latencyCount)
+	}
 
 	section.Status = webAvailabilityStatus(successCount, len(results))
 	section.StatusText = fmt.Sprintf("%d/%d 成功", successCount, len(results))
-	section.Summary = fmt.Sprintf("完成 %d 个目标追踪，成功 %d 个，平均 %.1f 跳。", len(results), successCount, avgHops)
-	section.Hint = fallback(ws.summaryString("route_trace_note"), "")
+	section.Summary = routeWebSummary(results, successCount, avgHops, avgLatency, timeoutHops)
+	section.Hint = fallback(ws.summaryString("route_trace_note"), "内置 traceroute 展示本机出站路径；国内方向参考不等同于真实回程。")
 	section.Metrics = append(section.Metrics,
 		webMetricCard{Label: "目标数", Value: fmt.Sprintf("%d", len(results)), Tone: "primary"},
 		webMetricCard{Label: "成功", Value: fmt.Sprintf("%d", successCount), Unit: fmt.Sprintf("/ %d", len(results)), Tone: "green"},
 		webMetricCard{Label: "平均跳数", Value: fmt.Sprintf("%.1f", avgHops), Unit: "hops", Tone: "cyan"},
+		webMetricCard{Label: "超时跳", Value: fmt.Sprintf("%d", timeoutHops), Unit: "hops", Tone: routeTimeoutTone(timeoutHops)},
+		webMetricCard{Label: "平均延迟", Value: routeAverageLatencyText(avgLatency), Unit: "ms", Tone: "cyan"},
 	)
 
-	table := webTable{Title: "追踪目标", Headers: []string{"目标", "状态", "跳数", "最后一跳", "错误"}}
+	table := webTable{Title: "追踪目标", Headers: []string{"方向", "目标", "评级", "状态", "跳数", "超时", "平均延迟", "最后一跳/错误"}}
 	for _, result := range results {
 		if result == nil {
 			continue
 		}
 		table.Rows = append(table.Rows, []string{
+			routeDirectionWebLabel(result),
 			result.Target,
+			routeQualityWebLabel(result),
 			successLabel(result.Success),
 			fmt.Sprintf("%d", result.TotalHops),
-			lastTraceHop(result),
-			fallback(result.ErrorMessage, "-"),
+			fmt.Sprintf("%d", result.TimeoutHops),
+			routeAverageLatencyText(result.AverageLatencyMs),
+			routeLastHopOrError(result),
 		})
 	}
 	section.Tables = append(section.Tables, table)
@@ -782,6 +799,96 @@ func successLabel(success bool) string {
 		return "成功"
 	}
 	return "失败"
+}
+
+func routeWebSummary(results []*models.TraceResult, successCount int, avgHops float64, avgLatency float64, timeoutHops int) string {
+	for _, result := range results {
+		if result != nil && result.Quality != nil && result.Quality.Summary != "" {
+			return fmt.Sprintf("完成 %d 个目标追踪，成功 %d 个；代表结论：%s", len(results), successCount, result.Quality.Summary)
+		}
+	}
+	parts := []string{fmt.Sprintf("完成 %d 个目标追踪，成功 %d 个，平均 %.1f 跳", len(results), successCount, avgHops)}
+	if avgLatency > 0 {
+		parts = append(parts, fmt.Sprintf("平均延迟 %.2f ms", avgLatency))
+	}
+	if timeoutHops > 0 {
+		parts = append(parts, fmt.Sprintf("超时跳 %d", timeoutHops))
+	}
+	return strings.Join(parts, "，") + "。"
+}
+
+func routeDirectionWebLabel(result *models.TraceResult) string {
+	if result == nil {
+		return "-"
+	}
+	switch result.DirectionGroup {
+	case "china_reference":
+		return "国内方向参考"
+	case "public":
+		return "公共方向"
+	}
+	target := strings.ToLower(result.Target)
+	for _, marker := range []string{"189.cn", "10086.cn", "chinaunicom", "ctyun", "qq.com"} {
+		if strings.Contains(target, marker) {
+			return "国内方向参考"
+		}
+	}
+	return "公共方向"
+}
+
+func routeQualityWebLabel(result *models.TraceResult) string {
+	if result == nil {
+		return "-"
+	}
+	if result.Quality != nil {
+		if result.Quality.Grade != "" && result.Quality.Status != "" {
+			return fmt.Sprintf("%s/%s", result.Quality.Grade, routeStatusWebLabel(result.Quality.Status))
+		}
+		if result.Quality.Grade != "" {
+			return result.Quality.Grade
+		}
+	}
+	return successLabel(result.Success)
+}
+
+func routeStatusWebLabel(status string) string {
+	switch status {
+	case "success":
+		return "良好"
+	case "warning":
+		return "需关注"
+	case "failed":
+		return "异常"
+	default:
+		return fallback(status, "-")
+	}
+}
+
+func routeAverageLatencyText(avgMs float64) string {
+	if avgMs <= 0 {
+		return "-"
+	}
+	return fmt.Sprintf("%.2f", avgMs)
+}
+
+func routeTimeoutTone(timeoutHops int) string {
+	if timeoutHops > 0 {
+		return "amber"
+	}
+	return "green"
+}
+
+func routeLastHopOrError(result *models.TraceResult) string {
+	if result == nil {
+		return "-"
+	}
+	if !result.Success {
+		return fallback(result.ErrorMessage, "-")
+	}
+	if result.LastVisibleHop != "" {
+		return result.LastVisibleHop
+	}
+	return lastTraceHop(result)
 }
 
 func lastTraceHop(result *models.TraceResult) string {

@@ -605,6 +605,44 @@ def route_group(target):
         return "国内方向参考"
     return "公共网络"
 
+def route_direction(item):
+    if not isinstance(item, dict):
+        return "公共网络"
+    group = text(item.get("direction_group"), "")
+    if group == "china_reference":
+        return "国内方向参考"
+    if group == "public":
+        return "公共网络"
+    return route_group(item.get("target"))
+
+def route_quality(item):
+    if not isinstance(item, dict):
+        return "-"
+    quality = item.get("quality") if isinstance(item.get("quality"), dict) else {}
+    grade = text(quality.get("grade"), "")
+    status = route_status_label(quality.get("status"))
+    if grade and status:
+        return f"{grade}/{status}"
+    if grade:
+        return grade
+    return "完成" if item.get("success") is True else "失败"
+
+def route_status_label(value):
+    lowered = text(value, "").lower()
+    if lowered == "success":
+        return "良好"
+    if lowered == "warning":
+        return "需关注"
+    if lowered == "failed":
+        return "异常"
+    return text(value, "")
+
+def route_avg_latency(item):
+    if not isinstance(item, dict):
+        return "-"
+    value = number_value(item.get("average_latency_ms"))
+    return f"{value:.2f} ms" if value is not None and value > 0 else "-"
+
 def latency_ms(value):
     if isinstance(value, bool) or value is None:
         return "-"
@@ -615,6 +653,8 @@ def latency_ms(value):
         return "-"
 
 def route_last_hop(result):
+    if isinstance(result, dict) and text(result.get("last_visible_hop"), ""):
+        return text(result.get("last_visible_hop"))
     hops = result.get("hops", []) if isinstance(result, dict) else []
     if not isinstance(hops, list):
         return "-"
@@ -638,10 +678,12 @@ def route_rows(results):
             continue
         success = item.get("success") is True
         rows.append([
-            route_group(item.get("target")),
+            route_direction(item),
             text(item.get("target")),
-            "完成" if success else "失败",
+            route_quality(item),
             text(item.get("total_hops"), "0"),
+            text(item.get("timeout_hops"), "0"),
+            route_avg_latency(item),
             route_last_hop(item) if success else text(item.get("error_message"), "无错误信息"),
         ])
     return rows
@@ -656,7 +698,7 @@ def split_route_results(results):
     for item in results:
         if not isinstance(item, dict):
             continue
-        key = "china_reference" if route_group(item.get("target")) == "国内方向参考" else "public"
+        key = "china_reference" if route_direction(item) == "国内方向参考" else "public"
         grouped[key].append(item)
     return grouped
 
@@ -764,11 +806,15 @@ def pad(value, width):
 
 def style_for_status(value):
     lowered = text(value).lower()
+    if "需关注" in lowered:
+        return "yellow"
+    if "异常" in lowered:
+        return "red"
     if lowered in {"完成", "success", "ok", "可用", "通过", "低", "low"}:
         return "green"
-    if lowered in {"未执行", "skipped", "medium", "中", "中等"}:
+    if lowered in {"未执行", "skipped", "medium", "中", "中等", "需关注"}:
         return "yellow"
-    if lowered in {"失败", "failed", "不可用", "high", "高"}:
+    if lowered in {"失败", "failed", "不可用", "high", "高", "异常"}:
         return "red"
     return "cyan"
 
@@ -924,7 +970,7 @@ def write_module_artifacts():
     )
     route_lines = ["Perfassess 路由追踪摘要", f"说明: {route_note}", ""]
     for row in route_rows(default_summary.get("route_trace_results")):
-        route_lines.append(f"{row[0]} | {row[1]} | {row[2]} | {row[3]} 跳 | {row[4]}")
+        route_lines.append(f"{row[0]} | {row[1]} | 评级 {row[2]} | {row[3]} 跳 | 超时 {row[4]} | 平均 {row[5]} | {row[6]}")
     if len(route_lines) == 3:
         route_lines.append("未执行")
     route_lines.append("")
@@ -936,7 +982,7 @@ def write_module_artifacts():
     ]
     china_rows = [row for row in route_rows(default_summary.get("route_trace_results")) if row[0] == "国内方向参考"]
     for row in china_rows:
-        backroute_lines.append(f"{row[1]} | {row[2]} | {row[3]} 跳 | {row[4]}")
+        backroute_lines.append(f"{row[1]} | 评级 {row[2]} | {row[3]} 跳 | 超时 {row[4]} | 平均 {row[5]} | {row[6]}")
     if not china_rows:
         backroute_lines.append("未执行或当前网络档位未包含国内方向目标。")
     backroute_lines.append("")
@@ -1153,9 +1199,9 @@ def console_report(color=False):
     if route_detail_rows:
         rows += section("路由追踪明细")
         rows.extend(table(
-            ["分组", "目标", "状态", "跳数", "末跳/错误"],
+            ["分组", "目标", "评级", "跳数", "超时", "平均延迟", "末跳/错误"],
             route_detail_rows,
-            [14, 22, 8, 6, 26],
+            [14, 20, 8, 5, 5, 11, 19],
             status_col=2,
         ))
         if has_china_route_reference(route_detail_rows):
@@ -1297,11 +1343,11 @@ if route_detail_rows:
     lines.extend([
         "## 路由追踪明细",
         "",
-        "| 分组 | 目标 | 状态 | 跳数 | 末跳/错误 |",
-        "|------|------|------|------|-----------|",
+        "| 分组 | 目标 | 评级 | 跳数 | 超时 | 平均延迟 | 末跳/错误 |",
+        "|------|------|------|------|------|----------|-----------|",
     ])
     for row in route_detail_rows:
-        lines.append(f"| {row[0]} | {row[1]} | {row[2]} | {row[3]} | {row[4]} |")
+        lines.append(f"| {row[0]} | {row[1]} | {row[2]} | {row[3]} | {row[4]} | {row[5]} | {row[6]} |")
     lines.append("")
     if has_china_route_reference(route_detail_rows):
         lines.extend([

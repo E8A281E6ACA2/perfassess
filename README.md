@@ -483,7 +483,7 @@ make run
 ./build/perfassess --route-trace --network-profile full
 ```
 
-`--network-profile quick|standard|full` 控制网络检测档位。`quick` 只追踪少量公共目标；`standard` 增加国内三网方向参考；`full` 增加更多全球和国内方向目标。这里的国内方向参考是“本机出站到国内目标”的路径，不等同于真实回程；真实回程需要远端探针或第三方平台配合。
+`--network-profile quick|standard|full` 控制网络检测档位。`quick` 只追踪少量公共目标；`standard` 增加国内三网方向参考；`full` 增加更多全球和国内方向目标。路由报告会给出方向分组、评级、平均延迟、超时跳和最后可见跳。这里的国内方向参考是“本机出站到国内目标”的路径，不等同于真实回程；真实回程需要远端探针或第三方平台配合。
 
 `--vps-profile` 面向一把梭 VPS 测评，默认启用 `sysbench` CPU 后端、`sysbench` 内存后端、`fio` 磁盘后端、`speedtest` 网络后端、`vps` 评分基准、路由追踪、流媒体检测和 IP 质量检测，并使用 `standard` 网络档位。它不会自动安装外部工具；建议先运行 `check-deps` 查看缺失项。使用 `speedtest` 时，报告会展示 Ookla 节点 ID、名称、地区、国家、Host、ISP、结果 URL、出口 IP 和 ping jitter。提供 `--iperf3-server`、`--iperf3-servers` 或 `--iperf3-server-file` 时，且未显式指定 `--network-backend`，会自动切换到 `iperf3` 网络后端。
 

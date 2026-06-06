@@ -39,4 +39,44 @@ type TraceResult struct {
 
 	// ErrorMessage 错误消息（如果追踪失败）
 	ErrorMessage string `json:"error_message,omitempty"`
+
+	// DirectionGroup 路由方向分组，例如 public 或 china_reference
+	DirectionGroup string `json:"direction_group,omitempty"`
+
+	// IsRealReturnRoute 是否为真实回程检测。当前内置 traceroute 为本机出站路径，因此默认为 false
+	IsRealReturnRoute bool `json:"is_real_return_route"`
+
+	// LastVisibleHop 最后一跳可见 IP 或主机名
+	LastVisibleHop string `json:"last_visible_hop,omitempty"`
+
+	// TimeoutHops 超时或不可见跳点数量
+	TimeoutHops int `json:"timeout_hops"`
+
+	// AverageLatencyMs 可见跳点平均延迟，单位毫秒
+	AverageLatencyMs float64 `json:"average_latency_ms,omitempty"`
+
+	// Quality 面向人工阅读的路由质量结论
+	Quality *RouteQuality `json:"quality,omitempty"`
+
+	// Evidence 支持路由质量结论的证据项
+	Evidence []*RouteEvidence `json:"evidence,omitempty"`
+
+	// Recommendations 路由相关建议
+	Recommendations []string `json:"recommendations,omitempty"`
+}
+
+// RouteQuality 表示单条路由追踪的质量结论
+type RouteQuality struct {
+	Grade          string `json:"grade"`
+	Status         string `json:"status"`
+	Summary        string `json:"summary"`
+	DirectionLabel string `json:"direction_label"`
+}
+
+// RouteEvidence 表示路由追踪证据项
+type RouteEvidence struct {
+	Name   string `json:"name"`
+	Value  string `json:"value"`
+	Status string `json:"status"`
+	Detail string `json:"detail,omitempty"`
 }

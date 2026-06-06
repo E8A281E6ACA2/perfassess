@@ -654,14 +654,24 @@ def route_section(value: Any) -> dict[str, Any]:
     total_hops = sum(int(item.get("total_hops") or len(item.get("hops") or [])) for item in value if isinstance(item, dict) and item.get("success"))
     avg_hops = total_hops / success_count if success_count else 0
     status = "success" if success_count == len(value) else "warning" if success_count else "failed"
+    timeout_hops = sum(int(item.get("timeout_hops") or 0) for item in value if isinstance(item, dict))
+    avg_latency_values = [
+        float(item.get("average_latency_ms"))
+        for item in value
+        if isinstance(item, dict) and isinstance(item.get("average_latency_ms"), (int, float)) and item.get("average_latency_ms") > 0
+    ]
+    avg_latency = sum(avg_latency_values) / len(avg_latency_values) if avg_latency_values else 0
     tables = [
-        table("追踪目标", ["目标", "状态", "跳数", "最后一跳", "错误"], [
+        table("追踪目标", ["方向", "目标", "评级", "状态", "跳数", "超时", "平均延迟", "最后一跳/错误"], [
             [
+                route_direction_label(item),
                 item.get("target"),
+                route_quality_label(item),
                 "成功" if item.get("success") else "失败",
                 item.get("total_hops") or len(item.get("hops") or []),
-                last_route_hop(item),
-                item.get("error_message") or "-",
+                item.get("timeout_hops", 0),
+                format_route_average_latency(item),
+                last_route_hop(item) if item.get("success") else item.get("error_message") or "-",
             ]
             for item in value if isinstance(item, dict)
         ])
@@ -689,19 +699,77 @@ def route_section(value: Any) -> dict[str, Any]:
         "subtitle": "到主要地区和节点的网络路径质量。",
         "status": status,
         "status_text": f"{success_count}/{len(value)} 成功",
-        "summary": f"完成 {len(value)} 个目标追踪，成功 {success_count} 个，平均 {avg_hops:.1f} 跳。",
+        "summary": route_summary(value, success_count, avg_hops, avg_latency, timeout_hops),
         "metrics": [
             metric("目标数", len(value), "", "primary"),
             metric("成功", success_count, f"/ {len(value)}", "green" if success_count == len(value) else "amber"),
             metric("平均跳数", f"{avg_hops:.1f}", "hops", "cyan"),
+            metric("超时跳", timeout_hops, "hops", "amber" if timeout_hops else "green"),
+            metric("平均延迟", f"{avg_latency:.2f}" if avg_latency else "-", "ms", "cyan"),
         ],
         "details": [],
         "tables": tables,
-        "hint": "",
+        "hint": "内置 traceroute 展示本机出站路径；国内方向参考不等同于真实回程。",
     }
 
 
+def route_summary(items: list[Any], success_count: int, avg_hops: float, avg_latency: float, timeout_hops: int) -> str:
+    summaries = [
+        item.get("quality", {}).get("summary")
+        for item in items
+        if isinstance(item, dict) and isinstance(item.get("quality"), dict) and item.get("quality", {}).get("summary")
+    ]
+    if summaries:
+        return f"完成 {len(items)} 个目标追踪，成功 {success_count} 个；代表结论：{text(summaries[0])}"
+    latency_part = f"，平均延迟 {avg_latency:.2f} ms" if avg_latency else ""
+    timeout_part = f"，超时跳 {timeout_hops}" if timeout_hops else ""
+    return f"完成 {len(items)} 个目标追踪，成功 {success_count} 个，平均 {avg_hops:.1f} 跳{latency_part}{timeout_part}。"
+
+
+def route_direction_label(item: dict[str, Any]) -> str:
+    group = text(item.get("direction_group"), "")
+    if group == "china_reference":
+        return "国内方向参考"
+    target = text(item.get("target"), "").lower()
+    if any(marker in target for marker in ("189.cn", "10086.cn", "chinaunicom", "ctyun", "qq.com")):
+        return "国内方向参考"
+    return "公共方向"
+
+
+def route_quality_label(item: dict[str, Any]) -> str:
+    quality = item.get("quality") if isinstance(item.get("quality"), dict) else {}
+    grade = text(quality.get("grade"), "")
+    status = route_status_label(quality.get("status"))
+    if grade and status:
+        return f"{grade}/{status}"
+    return grade or ("完成" if item.get("success") else "失败")
+
+
+def route_status_label(value: Any) -> str:
+    lowered = text(value, "").lower()
+    if lowered == "success":
+        return "良好"
+    if lowered == "warning":
+        return "需关注"
+    if lowered == "failed":
+        return "异常"
+    return text(value, "")
+
+
+def format_route_average_latency(item: dict[str, Any]) -> str:
+    value = item.get("average_latency_ms")
+    if isinstance(value, bool) or value is None:
+        return "-"
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError):
+        return "-"
+    return f"{numeric:.2f} ms" if numeric > 0 else "-"
+
+
 def last_route_hop(item: dict[str, Any]) -> str:
+    if text(item.get("last_visible_hop"), ""):
+        return text(item.get("last_visible_hop"))
     hops = item.get("hops") if isinstance(item.get("hops"), list) else []
     for hop in reversed(hops):
         if not isinstance(hop, dict):
