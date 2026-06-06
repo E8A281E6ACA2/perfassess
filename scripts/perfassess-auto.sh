@@ -5,6 +5,34 @@ output_dir="${PERFASSESS_AUTO_DIR:-/tmp/perfassess-auto}"
 binary="${PERFASSESS_BINARY:-./build/perfassess}"
 skip_build="${PERFASSESS_SKIP_BUILD:-0}"
 optional_mode="${PERFASSESS_AUTO_OPTIONAL:-never}"
+show_progress="${PERFASSESS_AUTO_PROGRESS:-1}"
+
+step() {
+  echo
+  echo "==> $*"
+}
+
+run_capture() {
+  local label="$1"
+  local stdout_file="$2"
+  shift 2
+
+  step "$label"
+  if [[ "$show_progress" == "1" ]]; then
+    "$@" \
+      > >(tee "$stdout_file" | awk '/^[0-9]{4}-[0-9]{2}-[0-9]{2}T.*[[:space:]](DEBUG|INFO|WARN|ERROR)[[:space:]]/ { print; fflush() }' >&2) \
+      2> >(tee "$output_dir/${stdout_file##*/}.stderr.log" >&2)
+  else
+    "$@" >"$stdout_file" 2>"$output_dir/${stdout_file##*/}.stderr.log"
+  fi
+}
+
+run_quiet() {
+  local label="$1"
+  shift
+  step "$label"
+  "$@"
+}
 
 if ! command -v python3 >/dev/null 2>&1; then
   echo "perfassess auto failed: python3 is required for JSON validation" >&2
@@ -18,7 +46,7 @@ if [[ "$skip_build" != "1" ]]; then
     exit 1
   fi
   mkdir -p "$(dirname "$binary")"
-  echo "building: $binary"
+  step "building: $binary"
   go build -o "$binary" cmd/main.go
 fi
 
@@ -30,25 +58,33 @@ fi
 mkdir -p "$output_dir"
 rm -f "$output_dir"/*.json "$output_dir"/*.txt "$output_dir"/*.md "$output_dir"/*.log
 
-echo "checking version and dependencies"
+step "checking version and dependencies"
 "$binary" version >"$output_dir/version.txt"
 "$binary" check-deps >"$output_dir/check-deps.txt"
 
-echo "running default benchmark"
-"$binary" --output-format json -o "$output_dir/default.json" >"$output_dir/default.stdout.txt"
+run_capture "running default benchmark (json report)" "$output_dir/default.stdout.txt" \
+  "$binary" --output-format json -o "$output_dir/default.json"
 python3 -m json.tool "$output_dir/default.json" >/dev/null
 
-"$binary" -o "$output_dir/default.txt" >"$output_dir/default-text.stdout.txt"
+run_capture "running default benchmark (text report)" "$output_dir/default-text.stdout.txt" \
+  "$binary" -o "$output_dir/default.txt"
 
-echo "running quick benchmark"
-"$binary" --quick --output-format json -o "$output_dir/quick.json" >"$output_dir/quick.stdout.txt"
+run_capture "running quick benchmark" "$output_dir/quick.stdout.txt" \
+  "$binary" --quick --output-format json -o "$output_dir/quick.json"
 python3 -m json.tool "$output_dir/quick.json" >/dev/null
 
-echo "running acceptance"
-PERFASSESS_BINARY="$binary" \
-PERFASSESS_ACCEPTANCE_DIR="$output_dir/acceptance" \
-PERFASSESS_ACCEPTANCE_OPTIONAL="$optional_mode" \
-scripts/vps-acceptance.sh >"$output_dir/acceptance.stdout.txt"
+run_quiet "running acceptance"
+if [[ "$show_progress" == "1" ]]; then
+  PERFASSESS_BINARY="$binary" \
+  PERFASSESS_ACCEPTANCE_DIR="$output_dir/acceptance" \
+  PERFASSESS_ACCEPTANCE_OPTIONAL="$optional_mode" \
+  scripts/vps-acceptance.sh > >(tee "$output_dir/acceptance.stdout.txt") 2> >(tee "$output_dir/acceptance.stderr.log" >&2)
+else
+  PERFASSESS_BINARY="$binary" \
+  PERFASSESS_ACCEPTANCE_DIR="$output_dir/acceptance" \
+  PERFASSESS_ACCEPTANCE_OPTIONAL="$optional_mode" \
+  scripts/vps-acceptance.sh >"$output_dir/acceptance.stdout.txt" 2>"$output_dir/acceptance.stderr.log"
+fi
 
 python3 - "$output_dir" <<'PY'
 import json

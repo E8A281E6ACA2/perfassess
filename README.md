@@ -33,6 +33,8 @@ cat /tmp/perfassess-auto/summary.md
 
 这条命令默认是非交互测评，不会常驻启动 Web 服务。它会输出 Markdown 摘要和 JSON/text 报告，适合直接复制结果或做服务器验收。
 
+执行过程中会实时显示当前进度，例如系统信息、CPU、内存、磁盘、网络、验收步骤；完整输出仍会保存到 `/tmp/perfassess-auto/`。如果只想后台静默保存日志，可以设置 `PERFASSESS_AUTO_PROGRESS=0`。
+
 如果希望测评完成后临时启动 Material Design 3 / Google 风格 Web 报告：
 
 ```bash
