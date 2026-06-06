@@ -116,7 +116,7 @@ func (c *CLI) setupCommands() {
 
 	// --full 参数：完整预设
 	flags.Bool("full", false,
-		"完整预设：运行基础测试并启用可选检查；提供 iperf3 服务端时使用 iperf3")
+		"完整预设：运行基础测试、可选检查和压力测试；提供 iperf3 服务端时使用 iperf3")
 
 	// --vps-profile 参数：VPS 测评预设
 	flags.Bool("vps-profile", false,
@@ -587,6 +587,7 @@ func (c *CLI) applyFullPreset() {
 	c.config.EnableStreaming = true
 	c.config.EnableAIServices = true
 	c.config.EnableIPQuality = true
+	c.config.EnableStressTest = true
 	c.config.EnableSecurityScan = true
 	c.config.CPUBackend = "sysbench"
 	c.config.MemoryBackend = "sysbench"

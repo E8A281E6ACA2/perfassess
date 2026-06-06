@@ -843,29 +843,33 @@ func (rg *ReportGenerator) FormatReport(report *models.Report) string {
 		}
 
 		if ipQualityReport, ok := report.Summary["ip_quality_report"].(*models.IPQualityReport); ok && ipQualityReport != nil {
-			sb.WriteString("=== IP 质量检测 ===\n\n")
-			sb.WriteString(fmt.Sprintf("公网 IP:        %s (%s)\n", fallbackText(ipQualityReport.PublicIP, "-"), fallbackText(ipQualityReport.IPVersion, "-")))
-			if ipQualityReport.ISP != "" {
-				sb.WriteString(fmt.Sprintf("ISP:            %s\n", ipQualityReport.ISP))
+			sb.WriteString("=== IP 节点分析报告 ===\n\n")
+			sb.WriteString(fmt.Sprintf("IP 地址:        %s (%s)\n", fallbackText(ipQualityReport.PublicIP, "-"), fallbackText(ipQualityReport.IPVersion, "-")))
+			location := strings.Trim(strings.Join([]string{ipQualityReport.Country, ipQualityReport.City}, " "), " ")
+			if location != "" {
+				sb.WriteString(fmt.Sprintf("国家/地区:      %s\n", location))
 			}
-			if ipQualityReport.ASN != "" {
-				sb.WriteString(fmt.Sprintf("ASN:            AS%s\n", ipQualityReport.ASN))
-			}
-			if ipQualityReport.Organization != "" {
-				sb.WriteString(fmt.Sprintf("组织:           %s\n", ipQualityReport.Organization))
-			}
+			sb.WriteString(fmt.Sprintf("运营商/ASN:     %s\n", ipQualityTextASNLabel(ipQualityReport)))
 			if len(ipQualityReport.ReverseDNS) > 0 {
 				sb.WriteString(fmt.Sprintf("反向 DNS:       %s\n", strings.Join(ipQualityReport.ReverseDNS, ", ")))
 			}
-			location := strings.Trim(strings.Join([]string{ipQualityReport.Country, ipQualityReport.City}, " "), " ")
-			if location != "" {
-				sb.WriteString(fmt.Sprintf("位置:           %s\n", location))
+			sb.WriteString("\n")
+			sb.WriteString(fmt.Sprintf("IP 类型:        %s\n", ipQualityTextNodeTypeSummary(ipQualityReport)))
+			sb.WriteString(fmt.Sprintf("代理/VPN 标记:  %s\n", yesNoText(ipQualityTextRiskFactorDetected(ipQualityReport, "proxy") || ipQualityTextRiskFactorDetected(ipQualityReport, "vpn"))))
+			sb.WriteString(fmt.Sprintf("机房/托管标记:  %s\n\n", yesNoText(ipQualityTextRiskFactorDetected(ipQualityReport, "datacenter"))))
+			sb.WriteString(fmt.Sprintf("欺诈风险分:     %s %d/100\n", ipQualityRiskBar(ipQualityReport.RiskScore), ipQualityReport.RiskScore))
+			sb.WriteString(fmt.Sprintf("风险等级:       %s\n", ipRiskLabel(ipQualityReport.RiskLevel)))
+			if ipQualityReport.BlacklistSummary != nil {
+				summary := ipQualityReport.BlacklistSummary
+				sb.WriteString(fmt.Sprintf("DNSBL 检查:     命中 %d / 正常 %d / 超时 %d / 跳过 %d / 总计 %d\n",
+					summary.Listed, summary.Clean, summary.Timeout, summary.Skipped, summary.Total))
 			}
-			sb.WriteString(fmt.Sprintf("IP 类型:        %s\n", ipQualityLabel(ipQualityReport.IPType)))
-			sb.WriteString(fmt.Sprintf("风险等级:       %s (%d/100)\n\n", ipRiskLabel(ipQualityReport.RiskLevel), ipQualityReport.RiskScore))
+			sb.WriteString(fmt.Sprintf("邮件端口可连:   %d/%d\n", countReachableMailChecks(ipQualityReport.MailChecks), len(ipQualityReport.MailChecks)))
+			sb.WriteString(fmt.Sprintf("综合评级:       [ %s ] %s\n", ipQualityTextCompositeGrade(ipQualityReport), ipQualityTextGradeDescription(ipQualityReport)))
+			sb.WriteString(fmt.Sprintf("评级依据:       %s\n\n", ipQualityTextBasis(ipQualityReport)))
 
 			if len(ipQualityReport.RiskFactors) > 0 {
-				sb.WriteString("风险因子:\n")
+				sb.WriteString("IP 类型与风险因子:\n")
 				for _, factor := range ipQualityReport.RiskFactors {
 					sb.WriteString(fmt.Sprintf("  - %-10s %s", riskFactorLabel(factor), riskFactorStatusLabel(factor)))
 					if factor != nil && factor.Detail != "" {
@@ -875,13 +879,8 @@ func (rg *ReportGenerator) FormatReport(report *models.Report) string {
 				}
 				sb.WriteString("\n")
 			}
-			if ipQualityReport.BlacklistSummary != nil {
-				summary := ipQualityReport.BlacklistSummary
-				sb.WriteString(fmt.Sprintf("DNSBL 汇总:     总计 %d，正常 %d，命中 %d，超时 %d，跳过 %d\n\n",
-					summary.Total, summary.Clean, summary.Listed, summary.Timeout, summary.Skipped))
-			}
 			if len(ipQualityReport.BlacklistChecks) > 0 {
-				sb.WriteString("DNSBL 黑名单:\n")
+				sb.WriteString("欺诈与黑名单检查:\n")
 				for _, check := range ipQualityReport.BlacklistChecks {
 					sb.WriteString(fmt.Sprintf("  - %-24s %s", check.Zone, ipBlacklistStatusLabel(check)))
 					if check.Detail != "" {
@@ -1025,6 +1024,124 @@ func mailCheckStatusLabel(check *models.MailPortCheck) string {
 	default:
 		return check.Status
 	}
+}
+
+func yesNoText(value bool) string {
+	if value {
+		return "是"
+	}
+	return "否"
+}
+
+func ipQualityTextRiskFactorDetected(report *models.IPQualityReport, name string) bool {
+	if report == nil {
+		return false
+	}
+	for _, factor := range report.RiskFactors {
+		if factor != nil && factor.Name == name && factor.Detected {
+			return true
+		}
+	}
+	return false
+}
+
+func ipQualityTextASNLabel(report *models.IPQualityReport) string {
+	if report == nil {
+		return "-"
+	}
+	parts := []string{}
+	if report.ISP != "" {
+		parts = append(parts, report.ISP)
+	}
+	if report.Organization != "" {
+		parts = append(parts, report.Organization)
+	}
+	if report.ASN != "" {
+		parts = append(parts, "AS"+report.ASN)
+	}
+	if len(parts) == 0 {
+		return "-"
+	}
+	return strings.Join(parts, " / ")
+}
+
+func ipQualityTextNodeTypeSummary(report *models.IPQualityReport) string {
+	if report == nil {
+		return "未知"
+	}
+	switch report.IPType {
+	case "datacenter_likely":
+		return "机房 IP (Datacenter/IDC)"
+	case "residential_or_isp_likely":
+		return "住宅或运营商 IP"
+	default:
+		return "未知"
+	}
+}
+
+func ipQualityTextCompositeGrade(report *models.IPQualityReport) string {
+	if report == nil {
+		return "N/A"
+	}
+	listed := 0
+	for _, check := range report.BlacklistChecks {
+		if check != nil && check.Listed {
+			listed++
+		}
+	}
+	switch {
+	case report.RiskLevel == "low" && listed == 0:
+		return "A"
+	case report.RiskLevel == "low":
+		return "B"
+	case report.RiskLevel == "medium":
+		return "C"
+	default:
+		return "D"
+	}
+}
+
+func ipQualityTextGradeDescription(report *models.IPQualityReport) string {
+	switch ipQualityTextCompositeGrade(report) {
+	case "A":
+		return "低风险，适合大多数用途"
+	case "B":
+		return "中等，部分平台可能敏感"
+	case "C":
+		return "偏高风险，建议谨慎使用"
+	case "D":
+		return "高风险，可能影响解锁或投递"
+	default:
+		return "未知"
+	}
+}
+
+func ipQualityTextBasis(report *models.IPQualityReport) string {
+	if report == nil {
+		return "-"
+	}
+	parts := []string{ipQualityLabel(report.IPType), fmt.Sprintf("欺诈风险分 %d/100", report.RiskScore)}
+	if report.BlacklistSummary != nil {
+		parts = append(parts, fmt.Sprintf("DNSBL 命中 %d/%d", report.BlacklistSummary.Listed, report.BlacklistSummary.Total))
+	}
+	if len(report.MailChecks) > 0 {
+		parts = append(parts, fmt.Sprintf("邮件端口可连 %d/%d", countReachableMailChecks(report.MailChecks), len(report.MailChecks)))
+	}
+	return strings.Join(parts, " + ")
+}
+
+func ipQualityRiskBar(score int) string {
+	if score < 0 {
+		score = 0
+	}
+	if score > 100 {
+		score = 100
+	}
+	filled := score / 10
+	if score > 0 && filled == 0 {
+		filled = 1
+	}
+	return "[" + strings.Repeat("█", filled) + strings.Repeat("░", 10-filled) + "]"
 }
 
 func riskFactorLabel(factor *models.IPRiskFactor) string {

@@ -28,7 +28,7 @@ Options:
   --go VERSION    Go version to install when missing or too old. Default: $GO_VERSION
   --web           Start the realtime Material Design progress page.
   --port PORT     Web report port when --web is used. Default: $WEB_PORT
-  --profile NAME  Auto benchmark profile: auto, basic, full, stress. Default: $AUTO_PROFILE
+  --profile NAME  Auto benchmark profile: auto, basic, standard, full. Default: $AUTO_PROFILE
   --clean         Remove build output and auto-test output.
   --clean-all     Remove build output, auto-test output, and the cloned source directory.
   -h, --help      Show this help.
@@ -39,8 +39,8 @@ Environment:
   PERFASSESS_BOOTSTRAP_SWAP=auto Create temporary swap on low-memory Linux hosts. Set 0 to disable.
   PERFASSESS_LOW_MEMORY_THRESHOLD_MB=768  Memory threshold for low-memory mode.
   PERFASSESS_WEB_PORT=9090       Web report port.
-  PERFASSESS_AUTO_PROFILE=full    Auto profile: auto, basic, full, or stress.
-  PERFASSESS_AUTO_STRESS=1        Include stress test when profile is full.
+  PERFASSESS_AUTO_PROFILE=standard  Auto profile: auto, basic, standard, or full.
+  PERFASSESS_AUTO_STRESS=1          Include stress test when profile is standard.
   PERFASSESS_AUTO_OPTIONAL=auto  Let acceptance run optional checks when dependencies exist.
 EOF
 }
@@ -329,7 +329,7 @@ recommended_profile() {
   elif [[ "$cpu_count" -gt 0 && "$cpu_count" -lt 2 ]]; then
     echo "basic"
   else
-    echo "full"
+    echo "standard"
   fi
 }
 
@@ -339,24 +339,30 @@ profile_description() {
       echo "基础测评：CPU、内存、磁盘、网络，最稳，适合低配或 512MB 机器。"
       ;;
     full)
-      echo "完整报告：基础测评 + 路由、流媒体、AI、IP 质量、安全体检，不跑压力测试。"
+      echo "全量测评：标准报告 + 压力测试，耗时更长且会明显占用 CPU、内存和磁盘。"
       ;;
-    stress)
-      echo "压力模式：完整报告 + 压力测试，耗时更长且会明显占用 CPU、内存和磁盘。"
+    standard)
+      echo "标准报告：基础测评 + 路由、流媒体、AI、IP 质量、安全体检，不跑压力测试。"
       ;;
   esac
 }
 
 choose_auto_profile() {
   case "$AUTO_PROFILE" in
-    basic|full|stress)
+    stress)
+      AUTO_PROFILE="full"
+      export PERFASSESS_AUTO_PROFILE="$AUTO_PROFILE"
+      info "using requested auto profile: $AUTO_PROFILE"
+      return
+      ;;
+    basic|standard|full)
       export PERFASSESS_AUTO_PROFILE="$AUTO_PROFILE"
       info "using requested auto profile: $AUTO_PROFILE"
       return
       ;;
     auto) ;;
     *)
-      fail "--profile must be auto, basic, full, or stress"
+      fail "--profile must be auto, basic, standard, or full"
       ;;
   esac
 
@@ -380,14 +386,14 @@ choose_auto_profile() {
     echo ""
     echo "Choose benchmark profile:"
     echo "  1) basic  - $(profile_description basic)"
-    echo "  2) full   - $(profile_description full)"
-    echo "  3) stress - $(profile_description stress)"
+    echo "  2) standard - $(profile_description standard)"
+    echo "  3) full   - $(profile_description full)"
     printf "Selection [recommended: %s]: " "$recommended"
     read -r selected || selected=""
     case "${selected:-$recommended}" in
       1|basic) AUTO_PROFILE="basic" ;;
-      2|full) AUTO_PROFILE="full" ;;
-      3|stress) AUTO_PROFILE="stress" ;;
+      2|standard) AUTO_PROFILE="standard" ;;
+      3|full|stress) AUTO_PROFILE="full" ;;
       *) AUTO_PROFILE="$recommended" ;;
     esac
   else
@@ -396,7 +402,7 @@ choose_auto_profile() {
   fi
 
   export PERFASSESS_AUTO_PROFILE="$AUTO_PROFILE"
-  if [[ "$AUTO_PROFILE" == "stress" ]]; then
+  if [[ "$AUTO_PROFILE" == "full" ]]; then
     export PERFASSESS_AUTO_STRESS="1"
   fi
   success "auto profile selected: $AUTO_PROFILE"
@@ -510,7 +516,7 @@ run_all() {
   choose_auto_profile
   start_progress_server
 
-  info "running full non-interactive benchmark and acceptance"
+  info "running selected benchmark profile and acceptance"
   PERFASSESS_PROGRESS_FILE="$OUTPUT_DIR/progress.json" scripts/perfassess-auto.sh
 
   echo ""

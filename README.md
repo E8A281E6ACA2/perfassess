@@ -38,14 +38,14 @@ cat /tmp/perfassess-auto/summary.md
 启动前脚本会探测 CPU 线程数、内存、swap 和可用磁盘，并选择自动测评档位。有交互终端时会显示选项；通过 `curl | bash` 这类无人值守方式运行时会自动选择推荐档位：
 
 - `basic`：基础测评，CPU、内存、磁盘、网络，适合低配或 512MB 机器。
-- `full`：完整报告，基础测评加路由追踪、流媒体解锁、AI 服务、IP 质量和安全体检，不跑压力测试。
-- `stress`：压力模式，完整报告加压力测试，耗时更长且会明显占用资源。
+- `standard`：标准完整报告，基础测评加路由追踪、流媒体解锁、AI 服务、IP 质量和安全体检，不跑压力测试。
+- `full`：全量测评，标准完整报告加压力测试，耗时更长且会明显占用资源。
 
 可以手动指定档位：
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/E8A281E6ACA2/perfassess/main/scripts/bootstrap.sh | bash -s -- --profile full
-curl -fsSL https://raw.githubusercontent.com/E8A281E6ACA2/perfassess/main/scripts/bootstrap.sh | bash -s -- --profile stress
+curl -fsSL https://raw.githubusercontent.com/E8A281E6ACA2/perfassess/main/scripts/bootstrap.sh | bash -s -- --profile standard
 ```
 
 512MB 等低内存机器会自动进入低内存模式：Go 构建并发会降到 1，Linux 主机会尽量创建临时 swap，默认跳过 `go test ./...`，但仍会构建二进制并运行完整测评和验收摘要。临时 swap 会在脚本退出时清理；如需强制跑单元测试可设置 `PERFASSESS_BOOTSTRAP_TESTS=1`，如需禁用临时 swap 可设置 `PERFASSESS_BOOTSTRAP_SWAP=0`。
@@ -430,7 +430,7 @@ make run
 
 `--vps-profile` 面向一把梭 VPS 测评，默认启用 `sysbench` CPU 后端、`sysbench` 内存后端、`fio` 磁盘后端、`speedtest` 网络后端、`vps` 评分基准、路由追踪、流媒体检测和 IP 质量检测。它不会自动安装外部工具；建议先运行 `check-deps` 查看缺失项。使用 `speedtest` 时，报告会展示 Ookla 节点 ID、名称、地区、国家、Host、ISP、结果 URL、出口 IP 和 ping jitter。提供 `--iperf3-server`、`--iperf3-servers` 或 `--iperf3-server-file` 时，且未显式指定 `--network-backend`，会自动切换到 `iperf3` 网络后端。
 
-`--full` 会优先使用 `sysbench` CPU 后端、`sysbench` 内存后端和 `fio` 磁盘后端，并启用路由追踪、流媒体、AI 服务、IP 质量和安全体检；如果未安装依赖，程序会给出明确提示但不会自动安装。提供 `--iperf3-server`、`--iperf3-servers` 或 `--iperf3-server-file` 时，`--full` 会自动切换到 `iperf3` 网络后端。
+`--full` 会优先使用 `sysbench` CPU 后端、`sysbench` 内存后端和 `fio` 磁盘后端，并启用路由追踪、流媒体、AI 服务、IP 质量、压力测试和安全体检；如果未安装依赖，程序会给出明确提示但不会自动安装。提供 `--iperf3-server`、`--iperf3-servers` 或 `--iperf3-server-file` 时，`--full` 会自动切换到 `iperf3` 网络后端。
 
 #### 单项测试
 
@@ -504,7 +504,7 @@ make run
 ./build/perfassess --full
 ```
 
-IP 质量检测会写入文本报告、JSON `summary.ip_quality_report` 和 Web 报告的“IP 质量”模块。当前版本包含 Team Cymru ASN 查询、反向 DNS、风险因子启发式判断、精选 DNSBL 黑名单查询、多个邮件服务商出站连通性、基于 ISP/ASN/rDNS 关键词的 IP 类型推断和风险评分；这些检测只做 DNS/TCP 网络查询，不会安装依赖。
+IP 质量检测会写入文本报告、JSON `summary.ip_quality_report` 和 Web 报告的“IP 节点分析报告”模块。当前版本包含 Team Cymru ASN 查询、反向 DNS、风险因子启发式判断、精选 DNSBL 黑名单查询、多个邮件服务商出站连通性、基于 ISP/ASN/rDNS 关键词的 IP 类型推断、欺诈风险分和综合评级；这些检测只做 DNS/TCP 网络查询，不会安装依赖。
 
 #### 🌐 Web 报告（新功能）
 
@@ -598,7 +598,7 @@ Flags:
   -i, --interactive          启用交互式菜单模式
   -b, --benchmarks strings   指定要运行的检测项目 (cpu,memory,disk,network,all) (default [all])
       --quick                快速预设：只运行 CPU、内存、磁盘基础测试
-      --full                 完整预设：运行基础测试并启用可选检查；提供 iperf3 服务端时使用 iperf3
+      --full                 完整预设：运行基础测试、可选检查和压力测试；提供 iperf3 服务端时使用 iperf3
       --vps-profile          VPS 测评预设：启用 sysbench/fio/speedtest、VPS 评分基准和常用网络检查
   -o, --output string        指定输出文件路径（不指定则只输出到控制台）
       --output-format string 指定输出格式 (text,json) (default "text")

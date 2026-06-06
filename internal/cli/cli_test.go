@@ -82,7 +82,7 @@ func TestBindFlagsFullPresetWithIperf3Server(t *testing.T) {
 	if app.config.NetworkBackend != "iperf3" {
 		t.Fatalf("expected full preset with server to use iperf3, got %q", app.config.NetworkBackend)
 	}
-	if !app.config.EnableRouteTrace || !app.config.EnableStreaming || !app.config.EnableAIServices || !app.config.EnableIPQuality || !app.config.EnableSecurityScan {
+	if !app.config.EnableRouteTrace || !app.config.EnableStreaming || !app.config.EnableAIServices || !app.config.EnableIPQuality || !app.config.EnableStressTest || !app.config.EnableSecurityScan {
 		t.Fatal("expected full preset to enable optional checks")
 	}
 }

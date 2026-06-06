@@ -7,21 +7,22 @@ skip_build="${PERFASSESS_SKIP_BUILD:-0}"
 optional_mode="${PERFASSESS_AUTO_OPTIONAL:-never}"
 show_progress="${PERFASSESS_AUTO_PROGRESS:-1}"
 progress_file="${PERFASSESS_PROGRESS_FILE:-$output_dir/progress.json}"
-auto_profile="${PERFASSESS_AUTO_PROFILE:-full}"
+auto_profile="${PERFASSESS_AUTO_PROFILE:-standard}"
 extra_args="${PERFASSESS_AUTO_ARGS:-}"
 stress_enabled="${PERFASSESS_AUTO_STRESS:-0}"
 current_progress_step="prepare"
 
 case "$auto_profile" in
-  auto) auto_profile="full" ;;
-  basic|full|stress) ;;
+  auto) auto_profile="standard" ;;
+  stress) auto_profile="full" ;;
+  basic|standard|full) ;;
   *)
-    echo "perfassess auto failed: PERFASSESS_AUTO_PROFILE must be auto, basic, full, or stress" >&2
+    echo "perfassess auto failed: PERFASSESS_AUTO_PROFILE must be auto, basic, standard, or full" >&2
     exit 1
     ;;
 esac
 
-if [[ "$auto_profile" == "stress" ]]; then
+if [[ "$auto_profile" == "full" ]]; then
   stress_enabled="1"
 fi
 
@@ -30,7 +31,7 @@ default_text_args=(-o "$output_dir/default.txt")
 case "$auto_profile" in
   basic)
     ;;
-  full|stress)
+  standard|full)
     default_args+=(--route-trace --streaming --ai-services --ip-quality --security)
     default_text_args+=(--route-trace --streaming --ai-services --ip-quality --security)
     ;;

@@ -797,8 +797,8 @@ func (ws *WebServer) ipQualitySection() webReportSection {
 	hint := "本次未启用 IP 质量检测。使用 --ip-quality 启用，或使用 --full / --vps-profile 预设。"
 	section := webReportSection{
 		ID:       "ip-quality",
-		Title:    "IP 质量",
-		Subtitle: "DNSBL 黑名单、邮件端口连通性、IP 类型和风险评分。",
+		Title:    "IP 节点分析报告",
+		Subtitle: "公网 IP、归属地、机房类型、欺诈风险、DNSBL 和邮件连通性。",
 		Hint:     hint,
 	}
 	if ws.report == nil || ws.report.Summary == nil {
@@ -817,24 +817,26 @@ func (ws *WebServer) ipQualitySection() webReportSection {
 
 	section.Status = ipQualityWebStatus(report.RiskLevel)
 	section.StatusText = ipRiskLabel(report.RiskLevel)
-	section.Summary = fmt.Sprintf("%s，风险分 %d/100，IP 类型：%s。", ipRiskLabel(report.RiskLevel), report.RiskScore, ipQualityLabel(report.IPType))
+	section.Summary = fmt.Sprintf("%s，欺诈风险分 %d/100，综合评级 %s。", ipNodeTypeSummary(report), report.RiskScore, ipQualityCompositeGrade(report))
 	section.Hint = ""
 	section.Metrics = append(section.Metrics,
-		webMetricCard{Label: "风险分", Value: fmt.Sprintf("%d", report.RiskScore), Unit: "/ 100", Tone: ipQualityMetricTone(report.RiskLevel)},
+		webMetricCard{Label: "欺诈风险分", Value: fmt.Sprintf("%d", report.RiskScore), Unit: "/ 100", Tone: ipQualityMetricTone(report.RiskLevel)},
+		webMetricCard{Label: "综合评级", Value: ipQualityCompositeGrade(report), Unit: ipRiskLabel(report.RiskLevel), Tone: ipQualityMetricTone(report.RiskLevel)},
 		webMetricCard{Label: "黑名单命中", Value: fmt.Sprintf("%d", countListedBlacklists(report.BlacklistChecks)), Unit: fmt.Sprintf("/ %d", len(report.BlacklistChecks)), Tone: "amber"},
 		webMetricCard{Label: "邮件可连", Value: fmt.Sprintf("%d", countReachableMailChecks(report.MailChecks)), Unit: fmt.Sprintf("/ %d", len(report.MailChecks)), Tone: "cyan"},
 	)
 	section.Details = append(section.Details,
-		webDetailRow{Label: "公网 IP", Value: fallback(report.PublicIP, "-")},
-		webDetailRow{Label: "IP 版本", Value: fallback(report.IPVersion, "-")},
-		webDetailRow{Label: "ISP", Value: fallback(report.ISP, "-")},
-		webDetailRow{Label: "ASN", Value: ipQualityASNLabel(report)},
-		webDetailRow{Label: "反向 DNS", Value: fallback(strings.Join(report.ReverseDNS, ", "), "-")},
-		webDetailRow{Label: "位置", Value: fallback(strings.Trim(strings.Join([]string{report.Country, report.City}, " "), " "), "-")},
+		webDetailRow{Label: "IP 地址", Value: fallback(report.PublicIP, "-")},
+		webDetailRow{Label: "国家/地区", Value: fallback(strings.Trim(strings.Join([]string{report.Country, report.City}, " "), " "), "-")},
+		webDetailRow{Label: "运营商/ASN", Value: ipQualityASNLabel(report)},
 		webDetailRow{Label: "IP 类型", Value: ipQualityLabel(report.IPType)},
+		webDetailRow{Label: "代理/VPN 标记", Value: yesNo(ipRiskFactorDetected(report, "proxy") || ipRiskFactorDetected(report, "vpn"))},
+		webDetailRow{Label: "机房/托管标记", Value: yesNo(ipRiskFactorDetected(report, "datacenter"))},
+		webDetailRow{Label: "反向 DNS", Value: fallback(strings.Join(report.ReverseDNS, ", "), "-")},
+		webDetailRow{Label: "判定说明", Value: ipQualityBasis(report)},
 	)
 	if len(report.RiskFactors) > 0 {
-		table := webTable{Title: "风险因子", Headers: []string{"因子", "状态", "置信度", "来源", "详情"}}
+		table := webTable{Title: "IP 类型与风险因子", Headers: []string{"因子", "状态", "置信度", "来源", "详情"}}
 		for _, factor := range report.RiskFactors {
 			table.Rows = append(table.Rows, []string{
 				riskFactorLabel(factor),
@@ -847,10 +849,10 @@ func (ws *WebServer) ipQualitySection() webReportSection {
 		section.Tables = append(section.Tables, table)
 	}
 	if len(report.BlacklistChecks) > 0 {
-		title := "DNSBL 黑名单"
+		title := "欺诈与黑名单检查"
 		if report.BlacklistSummary != nil {
 			summary := report.BlacklistSummary
-			title = fmt.Sprintf("DNSBL 黑名单（总计 %d / 命中 %d / 正常 %d / 超时 %d）", summary.Total, summary.Listed, summary.Clean, summary.Timeout)
+			title = fmt.Sprintf("欺诈与黑名单检查（总计 %d / 命中 %d / 正常 %d / 超时 %d）", summary.Total, summary.Listed, summary.Clean, summary.Timeout)
 		}
 		table := webTable{Title: title, Headers: []string{"名单", "状态", "详情"}}
 		for _, check := range report.BlacklistChecks {
@@ -1015,6 +1017,70 @@ func countReachableMailChecks(checks []*models.MailPortCheck) int {
 		}
 	}
 	return count
+}
+
+func yesNo(value bool) string {
+	if value {
+		return "是"
+	}
+	return "否"
+}
+
+func ipRiskFactorDetected(report *models.IPQualityReport, name string) bool {
+	if report == nil {
+		return false
+	}
+	for _, factor := range report.RiskFactors {
+		if factor != nil && factor.Name == name && factor.Detected {
+			return true
+		}
+	}
+	return false
+}
+
+func ipNodeTypeSummary(report *models.IPQualityReport) string {
+	if report == nil {
+		return "IP 类型未知"
+	}
+	switch report.IPType {
+	case "datacenter_likely":
+		return "机房 IP（Datacenter/IDC）"
+	case "residential_or_isp_likely":
+		return "住宅或运营商 IP"
+	default:
+		return "IP 类型未知"
+	}
+}
+
+func ipQualityCompositeGrade(report *models.IPQualityReport) string {
+	if report == nil {
+		return "N/A"
+	}
+	listed := countListedBlacklists(report.BlacklistChecks)
+	switch {
+	case report.RiskLevel == "low" && listed == 0:
+		return "A"
+	case report.RiskLevel == "low":
+		return "B"
+	case report.RiskLevel == "medium":
+		return "C"
+	default:
+		return "D"
+	}
+}
+
+func ipQualityBasis(report *models.IPQualityReport) string {
+	if report == nil {
+		return "-"
+	}
+	parts := []string{ipQualityLabel(report.IPType), fmt.Sprintf("风险分 %d/100", report.RiskScore)}
+	if report.BlacklistSummary != nil {
+		parts = append(parts, fmt.Sprintf("DNSBL 命中 %d/%d", report.BlacklistSummary.Listed, report.BlacklistSummary.Total))
+	}
+	if len(report.MailChecks) > 0 {
+		parts = append(parts, fmt.Sprintf("邮件端口可连 %d/%d", countReachableMailChecks(report.MailChecks), len(report.MailChecks)))
+	}
+	return strings.Join(parts, " + ")
 }
 
 func ipQualityASNLabel(report *models.IPQualityReport) string {

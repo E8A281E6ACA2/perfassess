@@ -508,7 +508,7 @@ def ip_quality_section(summary: dict[str, Any]) -> dict[str, Any]:
     report = summary.get("ip_quality_report")
     hint = "本次未启用 IP 质量检测。使用 --ip-quality 或 --full 启用。"
     if not isinstance(report, dict):
-        return optional_section("ip-quality", "IP 质量", "ASN、rDNS、DNSBL、邮件连通性和风险评分。", None, hint)
+        return optional_section("ip-quality", "IP 节点分析报告", "公网 IP、归属地、机房类型、欺诈风险、DNSBL 和邮件连通性。", None, hint)
 
     blacklist = report.get("blacklist_summary") if isinstance(report.get("blacklist_summary"), dict) else {}
     risk_factors = report.get("risk_factors") if isinstance(report.get("risk_factors"), list) else []
@@ -534,28 +534,80 @@ def ip_quality_section(summary: dict[str, Any]) -> dict[str, Any]:
         ]))
     return {
         "id": "ip-quality",
-        "title": "IP 质量",
-        "subtitle": "ASN、rDNS、DNSBL、邮件连通性和风险评分。",
+        "title": "IP 节点分析报告",
+        "subtitle": "公网 IP、归属地、机房类型、欺诈风险、DNSBL 和邮件连通性。",
         "status": status,
         "status_text": {"low": "低风险", "medium": "中风险", "high": "高风险"}.get(level, "未知"),
-        "summary": f"公网 IP {text(report.get('public_ip'))}，风险分 {text(report.get('risk_score'))}/100，类型 {text(report.get('ip_type'))}。",
+        "summary": f"{ip_node_type_summary(report)}，欺诈风险分 {text(report.get('risk_score'))}/100，综合评级 {ip_quality_grade(report)}。",
         "metrics": [
-            metric("风险分", report.get("risk_score"), "/ 100", "red" if status == "failed" else "amber" if status == "warning" else "green"),
-            metric("DNSBL 命中", blacklist.get("listed", 0), "", "amber"),
-            metric("DNSBL 清洁", blacklist.get("clean", 0), "", "green"),
-            metric("邮件端口", len(mail_checks), "项", "primary"),
+            metric("欺诈风险分", report.get("risk_score"), "/ 100", "red" if status == "failed" else "amber" if status == "warning" else "green"),
+            metric("综合评级", ip_quality_grade(report), {"low": "低风险", "medium": "中风险", "high": "高风险"}.get(level, "未知"), "red" if status == "failed" else "amber" if status == "warning" else "green"),
+            metric("DNSBL 命中", blacklist.get("listed", 0), f"/ {blacklist.get('total', len(blacklists))}", "amber"),
+            metric("邮件可连", count_reachable_mail(mail_checks), f"/ {len(mail_checks)}", "cyan"),
         ],
         "details": [
-            detail("公网 IP", report.get("public_ip")),
-            detail("IP 版本", report.get("ip_version")),
-            detail("ISP", report.get("isp")),
-            detail("ASN", report.get("asn")),
-            detail("组织", report.get("organization")),
-            detail("位置", ", ".join(part for part in [text(report.get("country"), ""), text(report.get("city"), "")] if part)),
+            detail("IP 地址", report.get("public_ip")),
+            detail("国家/地区", ", ".join(part for part in [text(report.get("country"), ""), text(report.get("city"), "")] if part)),
+            detail("运营商/ASN", ip_asn_label(report)),
+            detail("IP 类型", ip_node_type_summary(report)),
+            detail("代理/VPN 标记", "是" if risk_factor_detected(report, "proxy") or risk_factor_detected(report, "vpn") else "否"),
+            detail("机房/托管标记", "是" if risk_factor_detected(report, "datacenter") else "否"),
+            detail("评级依据", ip_quality_basis(report, blacklist, mail_checks)),
         ],
         "tables": tables,
         "hint": " ".join(text(note, "") for note in report.get("notes", []) if note),
     }
+
+
+def risk_factor_detected(report: dict[str, Any], name: str) -> bool:
+    factors = report.get("risk_factors") if isinstance(report.get("risk_factors"), list) else []
+    return any(isinstance(item, dict) and item.get("name") == name and item.get("detected") for item in factors)
+
+
+def count_reachable_mail(checks: list[Any]) -> int:
+    return sum(1 for item in checks if isinstance(item, dict) and item.get("reachable"))
+
+
+def ip_asn_label(report: dict[str, Any]) -> str:
+    parts = []
+    if report.get("isp"):
+        parts.append(text(report.get("isp")))
+    if report.get("organization"):
+        parts.append(text(report.get("organization")))
+    if report.get("asn"):
+        parts.append("AS" + text(report.get("asn")))
+    return " / ".join(parts) if parts else "-"
+
+
+def ip_node_type_summary(report: dict[str, Any]) -> str:
+    value = report.get("ip_type")
+    if value == "datacenter_likely":
+        return "机房 IP (Datacenter/IDC)"
+    if value == "residential_or_isp_likely":
+        return "住宅或运营商 IP"
+    return "IP 类型未知"
+
+
+def ip_quality_grade(report: dict[str, Any]) -> str:
+    level = text(report.get("risk_level"), "unknown")
+    blacklist = report.get("blacklist_summary") if isinstance(report.get("blacklist_summary"), dict) else {}
+    listed = blacklist.get("listed", 0)
+    if level == "low" and listed == 0:
+        return "A"
+    if level == "low":
+        return "B"
+    if level == "medium":
+        return "C"
+    return "D"
+
+
+def ip_quality_basis(report: dict[str, Any], blacklist: dict[str, Any], mail_checks: list[Any]) -> str:
+    parts = [ip_node_type_summary(report), f"欺诈风险分 {text(report.get('risk_score'))}/100"]
+    if blacklist:
+        parts.append(f"DNSBL 命中 {text(blacklist.get('listed'), '0')}/{text(blacklist.get('total'), '0')}")
+    if mail_checks:
+        parts.append(f"邮件端口可连 {count_reachable_mail(mail_checks)}/{len(mail_checks)}")
+    return " + ".join(parts)
 
 
 def build_report_sections(report: dict[str, Any]) -> list[dict[str, Any]]:
