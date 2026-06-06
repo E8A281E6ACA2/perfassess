@@ -121,6 +121,8 @@ else:
     overall = "running"
 
 artifacts = [
+    ("终端彩色报告", "console.ansi"),
+    ("终端纯文本报告", "console.txt"),
     ("Markdown 摘要", "summary.md"),
     ("默认 JSON 报告", "default.json"),
     ("默认文本报告", "default.txt"),
@@ -246,6 +248,7 @@ python3 - "$output_dir" "$auto_profile" <<'PY'
 import json
 import pathlib
 import sys
+import unicodedata
 
 out = pathlib.Path(sys.argv[1])
 auto_profile = sys.argv[2]
@@ -273,6 +276,14 @@ def num(value, digits=2, default="-"):
         return default
     try:
         return f"{float(value):.{digits}f}"
+    except (TypeError, ValueError):
+        return default
+
+def raw_num(value, default=None):
+    if isinstance(value, bool) or value is None:
+        return default
+    try:
+        return float(value)
     except (TypeError, ValueError):
         return default
 
@@ -318,9 +329,70 @@ def security_summary(value, total, severity):
     return f"{total} 条提示，高危 {severity['high']}，中危 {severity['medium']}"
 
 def stress_summary(value):
-    if not isinstance(value, dict):
+    if not isinstance(value, dict) or not value:
         return "未执行"
     return f"{num(value.get('total_duration_seconds'), 0)} 秒"
+
+def mb(value):
+    return f"{num(value, 0)} MB"
+
+def gb(value):
+    return f"{num(value, 2)} GB"
+
+def yes_no(value):
+    if value is True:
+        return "可用"
+    if value is False:
+        return "不可用"
+    return "-"
+
+def status_text(value):
+    if value in {"success", True}:
+        return "完成"
+    if value in {"failed", False}:
+        return "失败"
+    if value in {"skipped", None}:
+        return "未执行"
+    return text(value)
+
+def display_width(value):
+    width = 0
+    for ch in str(value):
+        if unicodedata.combining(ch):
+            continue
+        width += 2 if unicodedata.east_asian_width(ch) in {"F", "W"} else 1
+    return width
+
+def fit(value, width):
+    value = str(value)
+    current = 0
+    result = []
+    for ch in value:
+        char_width = 0 if unicodedata.combining(ch) else (2 if unicodedata.east_asian_width(ch) in {"F", "W"} else 1)
+        if current + char_width > width:
+            break
+        result.append(ch)
+        current += char_width
+    if current < display_width(value) and width >= 1:
+        while result and current + 1 > width:
+            removed = result.pop()
+            current -= 0 if unicodedata.combining(removed) else (2 if unicodedata.east_asian_width(removed) in {"F", "W"} else 1)
+        result.append("…")
+        current += 1
+    return "".join(result) + " " * max(0, width - current)
+
+def pad(value, width):
+    return str(value) + " " * max(0, width - display_width(value))
+
+def style_for_status(value):
+    lowered = text(value).lower()
+    if lowered in {"完成", "success", "ok", "可用", "通过", "低", "low"}:
+        return "green"
+    if lowered in {"未执行", "skipped", "medium", "中", "中等"}:
+        return "yellow"
+    if lowered in {"失败", "failed", "不可用", "high", "高"}:
+        return "red"
+    return "cyan"
 
 route_ok, route_total = route_count(default_summary.get("route_trace_results"))
 stream_ok, stream_total = availability_count(default_summary.get("streaming_results"))
@@ -331,6 +403,209 @@ stress_report = default_summary.get("stress_report") if isinstance(default_summa
 version = (out / "version.txt").read_text(encoding="utf-8").strip()
 confidence = default_summary.get("confidence_level", {}).get("level")
 calibration = default_summary.get("score_calibration", {}).get("version")
+vps = default_summary.get("vps_benchmark_summary") if isinstance(default_summary.get("vps_benchmark_summary"), dict) else {}
+system = vps.get("system", {}) if isinstance(vps.get("system"), dict) else {}
+cpu = vps.get("cpu", {}) if isinstance(vps.get("cpu"), dict) else {}
+memory = vps.get("memory", {}) if isinstance(vps.get("memory"), dict) else {}
+disk = vps.get("disk", {}) if isinstance(vps.get("disk"), dict) else {}
+network = vps.get("network", {}) if isinstance(vps.get("network"), dict) else {}
+network_metrics = default_report.get("test_results", {}).get("network_result", {}).get("metrics", {})
+if not isinstance(network_metrics, dict):
+    network_metrics = {}
+
+def console_report(color=False):
+    colors = {
+        "reset": "\033[0m",
+        "bold": "\033[1m",
+        "green": "\033[32m",
+        "yellow": "\033[33m",
+        "red": "\033[31m",
+        "cyan": "\033[36m",
+        "blue": "\033[34m",
+        "muted": "\033[90m",
+    }
+
+    def c(name, value):
+        if not color:
+            return value
+        return f"{colors.get(name, '')}{value}{colors['reset']}"
+
+    def line(char="─"):
+        return c("green", char * 78)
+
+    def section(title):
+        return ["", c("green", f"▶ {title}"), line()]
+
+    def kv(label, value, value_style="cyan"):
+        return f"{c('muted', pad(label, 14))}: {c(value_style, text(value))}"
+
+    def table(headers, rows, widths, status_col=None):
+        rendered = []
+        header = "  ".join(c("bold", fit(head, widths[idx])) for idx, head in enumerate(headers))
+        rendered.append(header)
+        rendered.append(c("muted", "  ".join("─" * width for width in widths)))
+        for row in rows:
+            parts = []
+            for idx, cell in enumerate(row):
+                cell_text = fit(cell, widths[idx])
+                cell_style = None
+                if status_col is not None and idx == status_col:
+                    cell_style = style_for_status(cell)
+                parts.append(c(cell_style, cell_text) if cell_style else cell_text)
+            rendered.append("  ".join(parts))
+        return rendered
+
+    total_score = default_summary.get("total_score")
+    score_line = f"{num(total_score)} / 100"
+    upload_suffix = " (估算)" if network.get("upload_estimated") else ""
+    ip_location = "，".join(part for part in [text(system.get("location"), ""), text(system.get("isp"), "")] if part)
+    blacklists = ip_report.get("blacklist_summary", {}) if isinstance(ip_report.get("blacklist_summary"), dict) else {}
+    mail_checks = ip_report.get("mail_checks", []) if isinstance(ip_report.get("mail_checks"), list) else []
+    mail_ok = sum(1 for item in mail_checks if isinstance(item, dict) and item.get("reachable"))
+
+    rows = [
+        c("bold", "Perfassess 自动测评报告"),
+        line("═"),
+        f"{kv('版本', version)}    {kv('档位', auto_profile, 'yellow')}",
+        kv("输出目录", out),
+    ]
+
+    rows += section("系统信息")
+    rows.extend([
+        kv("处理器", text(system.get("cpu_model"))),
+        kv("规格", f"{text(system.get('cpu_cores'))}C/{text(system.get('cpu_threads'))}T | 内存 {mb(system.get('memory_total_mb'))} | 磁盘 {gb(system.get('disk_total_gb'))}"),
+        kv("系统", f"{text(system.get('os'))} {text(system.get('os_version'))} | {text(system.get('architecture'))}"),
+        kv("虚拟化", f"{text(system.get('virtualization'))} / {text(system.get('virtualization_vendor'))}"),
+        kv("公网", f"{text(system.get('public_ip'))} | {ip_location or '-'}"),
+    ])
+
+    rows += section("综合评分")
+    rows.extend(table(
+        ["项目", "结果", "说明"],
+        [
+            ["总分", score_line, text(default_summary.get("grade"))],
+            ["置信度", text(confidence), f"基准 {text(default_summary.get('score_profile'))}"],
+            ["校准", text(calibration), "服务器评分模型"],
+        ],
+        [14, 22, 36],
+        status_col=2,
+    ))
+
+    rows += section("核心性能")
+    rows.extend(table(
+        ["模块", "关键指标", "评分/状态"],
+        [
+            ["CPU", f"单核 {num(cpu.get('single_core_score'))} | 多核 {num(cpu.get('multi_core_score'))} | {text(cpu.get('backend'))}", f"{num(cpu.get('total_score'))}"],
+            ["内存", f"读 {num(memory.get('read_mbps'))} MB/s | 写 {num(memory.get('write_mbps'))} MB/s", f"{num(memory.get('score'))}"],
+            ["磁盘", f"读 {num(disk.get('sequential_read_mbps'))} MB/s | 写 {num(disk.get('sequential_write_mbps'))} MB/s | {num(disk.get('random_iops'), 0)} IOPS", f"{num(disk.get('score'))}"],
+            ["网络", f"延迟 {num(network.get('latency_ms'))} ms | 下 {num(network.get('download_mbps'))} Mbps | 上 {num(network.get('upload_mbps'))} Mbps{upload_suffix}", f"{num(network.get('score'))}"],
+        ],
+        [10, 52, 12],
+    ))
+
+    rows += section("网络质量")
+    rows.extend(table(
+        ["项目", "结果", "说明"],
+        [
+            ["IPv4", yes_no(network.get("ipv4_available")), f"失败率 {num(network_metrics.get('network_quality_ipv4_failure_rate'))}%"],
+            ["IPv6", yes_no(network.get("ipv6_available")), f"失败率 {num(network_metrics.get('network_quality_ipv6_failure_rate'))}%"],
+            ["平均延迟", f"{num(network.get('quality_avg_latency_ms'))} ms", f"抖动 {num(network.get('quality_jitter_ms'))} ms"],
+            ["总体失败率", f"{num(network.get('quality_failure_rate'))}%", f"目标 {text(network_metrics.get('network_quality_target_count'))} 个"],
+        ],
+        [14, 24, 34],
+        status_col=1,
+    ))
+
+    rows += section("IP 质量")
+    if ip_report:
+        rows.extend([
+            kv("IP", f"{text(ip_report.get('public_ip'))} | {text(ip_report.get('country'))} {text(ip_report.get('city'))}"),
+            kv("运营商", f"{text(ip_report.get('isp'))} / {text(ip_report.get('organization'))}"),
+            kv("类型", f"{text(ip_report.get('ip_version'))} | {text(ip_report.get('ip_type'))}"),
+            kv("风险", f"{text(ip_report.get('risk_level'))} | {text(ip_report.get('risk_score'))}/100", style_for_status(ip_report.get("risk_level"))),
+            kv("黑名单", f"干净 {text(blacklists.get('clean'))}/{text(blacklists.get('total'))} | 命中 {text(blacklists.get('listed'))}"),
+            kv("邮件端口", f"连通 {mail_ok}/{len(mail_checks)}"),
+        ])
+        factors = [item for item in ip_report.get("risk_factors", []) if isinstance(item, dict) and item.get("detected")]
+        if factors:
+            rows.extend(table(
+                ["风险项", "置信度", "说明"],
+                [[text(item.get("name")), text(item.get("confidence")), text(item.get("detail"))] for item in factors[:5]],
+                [14, 12, 46],
+                status_col=1,
+            ))
+    else:
+        rows.append(kv("状态", "未执行", "yellow"))
+
+    rows += section("扩展检测")
+    rows.extend(table(
+        ["模块", "结果", "说明"],
+        [
+            ["路由追踪", ratio_or_skipped(route_ok, route_total, "成功"), "目标连通路径"],
+            ["流媒体", ratio_or_skipped(stream_ok, stream_total, "可用"), "解锁区域检测"],
+            ["AI 服务", ratio_or_skipped(ai_ok, ai_total, "可用"), "主流 AI 访问性"],
+            ["安全体检", security_summary(default_summary.get("security_report"), security_total, security_severity), "端口/SSH/系统策略"],
+            ["压力测试", stress_summary(stress_report), "full 档位或显式开启"],
+        ],
+        [14, 28, 30],
+        status_col=1,
+    ))
+
+    streaming = default_summary.get("streaming_results")
+    if isinstance(streaming, dict) and streaming:
+        rows += section("流媒体解锁")
+        rows.extend(table(
+            ["平台", "状态", "区域", "说明"],
+            [[text(item.get("platform"), name), yes_no(item.get("available")), text(item.get("region")), text(item.get("message"))] for name, item in streaming.items() if isinstance(item, dict)],
+            [18, 10, 12, 30],
+            status_col=1,
+        ))
+
+    ai = default_summary.get("ai_results")
+    if isinstance(ai, dict) and ai:
+        rows += section("AI 服务")
+        rows.extend(table(
+            ["服务", "状态", "说明"],
+            [[text(item.get("service"), name), yes_no(item.get("available")), text(item.get("message"))] for name, item in ai.items() if isinstance(item, dict)],
+            [18, 10, 44],
+            status_col=1,
+        ))
+
+    security = default_summary.get("security_report")
+    findings = security.get("findings", []) if isinstance(security, dict) else []
+    if findings:
+        rows += section("安全体检")
+        rows.append(kv("统计", f"共 {security_total} 条 | 高危 {security_severity['high']} | 中危 {security_severity['medium']} | 低危 {security_severity['low']} | 信息 {security_severity['info']}"))
+        rows.extend(table(
+            ["级别", "类别", "问题"],
+            [[text(item.get("severity")), text(item.get("category")), text(item.get("title"))] for item in findings[:8] if isinstance(item, dict)],
+            [10, 14, 48],
+            status_col=0,
+        ))
+
+    if stress_report:
+        rows += section("压力测试")
+        rows.append(kv("总耗时", stress_summary(stress_report)))
+        components = stress_report.get("components", []) if isinstance(stress_report.get("components"), list) else []
+        if components:
+            rows.extend(table(
+                ["组件", "耗时", "状态", "说明"],
+                [[text(item.get("name")), f"{num(item.get('duration_seconds'), 0)} 秒", status_text(item.get("status")), text(item.get("notes"))] for item in components if isinstance(item, dict)],
+                [12, 10, 10, 36],
+                status_col=2,
+            ))
+
+    rows += section("输出文件")
+    rows.extend([
+        kv("终端彩色", out / "console.ansi"),
+        kv("终端纯文本", out / "console.txt"),
+        kv("Markdown", out / "summary.md"),
+        kv("JSON", out / "default.json"),
+        kv("文本", out / "default.txt"),
+        kv("验收摘要", acceptance_summary_path),
+    ])
+    rows.append("")
+    return "\n".join(rows)
 
 lines = [
     "# Perfassess 自动测评报告",
@@ -370,6 +645,8 @@ lines = [
     "",
     "## 输出文件",
     "",
+    f"- 终端彩色报告: {out / 'console.ansi'}",
+    f"- 终端纯文本报告: {out / 'console.txt'}",
     f"- Markdown 摘要: {out / 'summary.md'}",
     f"- JSON 完整报告: {out / 'default.json'}",
     f"- 文本完整报告: {out / 'default.txt'}",
@@ -383,9 +660,12 @@ if share:
     lines.extend(["", "## 分享模板", "", "```text", share, "```"])
 
 (out / "summary.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+(out / "console.txt").write_text(console_report(color=False) + "\n", encoding="utf-8")
+(out / "console.ansi").write_text(console_report(color=True) + "\n", encoding="utf-8")
 PY
 progress_update "summary" "success" "汇总已生成"
 trap - EXIT
 
 echo "perfassess auto passed. Output: $output_dir"
+echo "Console: $output_dir/console.txt"
 echo "Summary: $output_dir/summary.md"

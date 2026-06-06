@@ -582,9 +582,16 @@ run_all() {
   success "bootstrap completed"
   echo "Source: $WORK_DIR"
   echo "Binary: $WORK_DIR/build/perfassess"
+  echo "Console: $OUTPUT_DIR/console.txt"
   echo "Summary: $OUTPUT_DIR/summary.md"
   echo ""
-  cat "$OUTPUT_DIR/summary.md"
+  if [[ -t 1 && -f "$OUTPUT_DIR/console.ansi" && -z "${NO_COLOR:-}" && "${PERFASSESS_NO_COLOR:-0}" != "1" ]]; then
+    cat "$OUTPUT_DIR/console.ansi"
+  elif [[ -f "$OUTPUT_DIR/console.txt" ]]; then
+    cat "$OUTPUT_DIR/console.txt"
+  else
+    cat "$OUTPUT_DIR/summary.md"
+  fi
 
   if [[ "$START_WEB" == "1" ]]; then
     echo ""

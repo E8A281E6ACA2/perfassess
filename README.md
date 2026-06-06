@@ -28,10 +28,9 @@
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/E8A281E6ACA2/perfassess/main/scripts/bootstrap.sh | bash
-cat /tmp/perfassess-auto/summary.md
 ```
 
-这条命令默认是非交互测评，不会常驻启动 Web 服务。它会输出 Markdown 摘要和 JSON/text 完整报告，适合直接复制结果或做服务器验收。
+这条命令默认是非交互测评，不会常驻启动 Web 服务。完成后会直接在控制台打印彩色结构化报告，并保存终端纯文本、Markdown 摘要和 JSON/text 完整报告，适合直接复制结果或做服务器验收。
 
 执行过程中会实时显示当前步骤和完成状态；内部测试日志、标准输出和错误输出会保存到 `/tmp/perfassess-auto/`。如果只想后台静默保存日志，可以设置 `PERFASSESS_AUTO_PROGRESS=0`。
 
@@ -76,13 +75,12 @@ ssh -L 8080:localhost:8080 root@SERVER_PUBLIC_IP
 http://localhost:8080
 ```
 
-测评完成后，页面会显示分组完整报告、Markdown 摘要、JSON 报告、文本报告和验收摘要入口。Markdown 摘要会按“总览、核心性能、扩展检测、输出文件、分享模板”组织，适合直接在 Linux 控制台查看。
+测评完成后，页面会显示分组完整报告、Markdown 摘要、JSON 报告、文本报告和验收摘要入口。Linux 控制台默认显示彩色结构化报告；`/tmp/perfassess-auto/console.txt` 是无颜色纯文本版，`/tmp/perfassess-auto/summary.md` 是 Markdown 摘要版。
 
 如果机器没有 `curl`，可以用 `wget`：
 
 ```bash
 wget -qO- https://raw.githubusercontent.com/E8A281E6ACA2/perfassess/main/scripts/bootstrap.sh | bash
-cat /tmp/perfassess-auto/summary.md
 ```
 
 如果已经克隆了仓库，在项目目录中运行：
@@ -90,7 +88,6 @@ cat /tmp/perfassess-auto/summary.md
 ```bash
 cd perfassess
 scripts/bootstrap.sh
-cat /tmp/perfassess-auto/summary.md
 ```
 
 已克隆仓库并希望启动实时 Web 测评页面：
@@ -144,7 +141,7 @@ go test ./...
 
 ```bash
 scripts/perfassess-auto.sh
-cat /tmp/perfassess-auto/summary.md
+cat /tmp/perfassess-auto/console.txt
 ```
 
 注意：`scripts/perfassess-auto.sh` 不会安装 Go 或系统依赖；全新服务器建议优先使用 `scripts/bootstrap.sh`。
@@ -168,10 +165,10 @@ make build
 
 ```bash
 scripts/perfassess-auto.sh
-cat /tmp/perfassess-auto/summary.md
+cat /tmp/perfassess-auto/console.txt
 ```
 
-该脚本不会安装依赖，也不会进入交互式菜单；默认只跑无可选依赖也应通过的核心链路。
+该脚本不会安装依赖，也不会进入交互式菜单；默认会生成 `console.ansi`、`console.txt`、`summary.md`、JSON 完整报告和验收摘要。
 
 ### 方式二：命令行指定检测项
 
