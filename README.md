@@ -30,7 +30,7 @@
 curl -fsSL https://raw.githubusercontent.com/E8A281E6ACA2/perfassess/main/scripts/bootstrap.sh | bash
 ```
 
-这条命令默认是非交互测评，不会常驻启动 Web 服务。完成后会直接在控制台打印彩色结构化报告，并保存终端纯文本、Markdown 摘要和 JSON/text 完整报告，适合直接复制结果或做服务器验收。
+这条命令默认是非交互测评，不会常驻启动 Web 服务。完成后会直接在控制台打印彩色结构化报告，并保存终端纯文本、Markdown 摘要、JSON/text 完整报告和报告压缩包，适合直接复制结果或做服务器验收。
 
 执行过程中会实时显示当前步骤和完成状态；内部测试日志、标准输出和错误输出会保存到 `/tmp/perfassess-auto/`。如果只想后台静默保存日志，可以设置 `PERFASSESS_AUTO_PROGRESS=0`。
 
@@ -63,6 +63,21 @@ curl -fsSL https://raw.githubusercontent.com/E8A281E6ACA2/perfassess/main/script
 
 512MB 等低内存机器会自动进入低内存模式：Go 构建并发会降到 1，Linux 主机会尽量创建临时 swap，默认跳过 `go test ./...`，但仍会构建二进制并运行完整测评和验收摘要。临时 swap 会在脚本退出时清理；如需强制跑单元测试可设置 `PERFASSESS_BOOTSTRAP_TESTS=1`，如需禁用临时 swap 可设置 `PERFASSESS_BOOTSTRAP_SWAP=0`。
 
+测评输出默认保留在 `/tmp/perfassess-auto/`：
+
+- `/tmp/perfassess-auto/console.txt`：终端纯文本报告
+- `/tmp/perfassess-auto/summary.md`：Markdown 摘要
+- `/tmp/perfassess-auto/default.json`：完整 JSON 报告
+- `/tmp/perfassess-auto/perfassess-report.zip`：报告压缩包，包含报告、日志和验收摘要
+
+如果希望跑完后自动清理构建产物但保留报告，可以使用：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/E8A281E6ACA2/perfassess/main/scripts/bootstrap.sh | bash -s -- --cleanup-after-run
+```
+
+如需清理构建产物和测评输出，可以在之后执行 `scripts/bootstrap.sh --clean`；如需连默认克隆目录一起删除，可以执行 `scripts/bootstrap.sh --clean-all`。
+
 如果希望启动 Material Design 3 / Google 风格实时 Web 测评页面：
 
 ```bash
@@ -89,7 +104,7 @@ ssh -L 8080:localhost:8080 root@SERVER_PUBLIC_IP
 http://localhost:8080
 ```
 
-测评完成后，页面会显示分组完整报告、Markdown 摘要、JSON 报告、文本报告和验收摘要入口。Linux 控制台默认显示彩色结构化报告；`/tmp/perfassess-auto/console.txt` 是无颜色纯文本版，`/tmp/perfassess-auto/summary.md` 是 Markdown 摘要版。
+测评完成后，页面会显示分组完整报告、Markdown 摘要、JSON 报告、文本报告、报告压缩包和验收摘要入口。Linux 控制台默认显示彩色结构化报告；`/tmp/perfassess-auto/console.txt` 是无颜色纯文本版，`/tmp/perfassess-auto/summary.md` 是 Markdown 摘要版。
 
 如果机器没有 `curl`，可以用 `wget`：
 
@@ -182,7 +197,7 @@ scripts/perfassess-auto.sh
 cat /tmp/perfassess-auto/console.txt
 ```
 
-该脚本不会安装依赖，也不会进入交互式菜单；默认使用 `builtin` 后端并生成 `console.ansi`、`console.txt`、`summary.md`、JSON 完整报告和验收摘要。如需在已安装依赖的机器上直接使用主流后端，可以设置 `PERFASSESS_QUALITY_PROFILE=mainstream`。
+该脚本不会安装依赖，也不会进入交互式菜单；默认使用 `builtin` 后端并生成 `console.ansi`、`console.txt`、`summary.md`、`perfassess-report.zip`、JSON 完整报告和验收摘要。如需在已安装依赖的机器上直接使用主流后端，可以设置 `PERFASSESS_QUALITY_PROFILE=mainstream`。
 
 ### 方式二：命令行指定检测项
 

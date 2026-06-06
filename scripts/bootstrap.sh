@@ -14,6 +14,7 @@ QUALITY_PROFILE="${PERFASSESS_QUALITY_PROFILE:-auto}"
 BOOTSTRAP_INTERACTIVE="${PERFASSESS_BOOTSTRAP_INTERACTIVE:-auto}"
 ACTION="run"
 PROGRESS_SERVER_PID=""
+BOOTSTRAP_CLEANUP_AFTER_RUN="${PERFASSESS_BOOTSTRAP_CLEANUP_AFTER_RUN:-0}"
 LOW_MEMORY_THRESHOLD_MB="${PERFASSESS_LOW_MEMORY_THRESHOLD_MB:-768}"
 BOOTSTRAP_SWAP_MODE="${PERFASSESS_BOOTSTRAP_SWAP:-auto}"
 BOOTSTRAP_SWAP_SIZE_MB="${PERFASSESS_BOOTSTRAP_SWAP_SIZE_MB:-1024}"
@@ -34,6 +35,8 @@ Options:
   --port PORT     Web report port when --web is used. Default: $WEB_PORT
   --profile NAME  Auto benchmark profile: auto, basic, standard, full. Default: $AUTO_PROFILE
   --quality NAME  Benchmark backend quality: auto, builtin, mainstream. Default: $QUALITY_PROFILE
+  --cleanup-after-run
+                   Remove build artifacts after benchmark. Reports remain in $OUTPUT_DIR.
   --clean         Remove build output and auto-test output.
   --clean-all     Remove build output, auto-test output, and the cloned source directory.
   -h, --help      Show this help.
@@ -42,6 +45,7 @@ Environment:
   PERFASSESS_BOOTSTRAP_TESTS=0   Skip go test ./...
   PERFASSESS_BOOTSTRAP_WEB=1     Start the realtime Material Design progress page.
   PERFASSESS_BOOTSTRAP_SWAP=auto Create temporary swap on low-memory Linux hosts. Set 0 to disable.
+  PERFASSESS_BOOTSTRAP_CLEANUP_AFTER_RUN=1  Remove build artifacts after benchmark.
   PERFASSESS_LOW_MEMORY_THRESHOLD_MB=768  Memory threshold for low-memory mode.
   PERFASSESS_WEB_PORT=9090       Web report port.
   PERFASSESS_AUTO_PROFILE=standard  Auto profile: auto, basic, standard, or full.
@@ -95,6 +99,10 @@ while [[ $# -gt 0 ]]; do
       [[ $# -ge 2 ]] || fail "--quality requires a value"
       QUALITY_PROFILE="$2"
       shift 2
+      ;;
+    --cleanup-after-run)
+      BOOTSTRAP_CLEANUP_AFTER_RUN="1"
+      shift
       ;;
     --clean)
       ACTION="clean"
@@ -586,6 +594,14 @@ clean_outputs() {
   fi
 }
 
+cleanup_after_run() {
+  [[ "$BOOTSTRAP_CLEANUP_AFTER_RUN" == "1" || "$BOOTSTRAP_CLEANUP_AFTER_RUN" == "true" ]] || return 0
+
+  info "cleaning build artifacts after benchmark"
+  rm -rf "$WORK_DIR/build" "$WORK_DIR/coverage.out" "$WORK_DIR/coverage.html"
+  success "build artifacts cleaned; reports remain in $OUTPUT_DIR"
+}
+
 start_progress_server() {
   [[ "$START_WEB" == "1" ]] || return 0
 
@@ -681,6 +697,7 @@ run_all() {
   echo "Binary: $WORK_DIR/build/perfassess"
   echo "Console: $OUTPUT_DIR/console.txt"
   echo "Summary: $OUTPUT_DIR/summary.md"
+  echo "Archive: $OUTPUT_DIR/perfassess-report.zip"
   echo ""
   if [[ -t 1 && -f "$OUTPUT_DIR/console.ansi" && -z "${NO_COLOR:-}" && "${PERFASSESS_NO_COLOR:-0}" != "1" ]]; then
     cat "$OUTPUT_DIR/console.ansi"
@@ -689,6 +706,8 @@ run_all() {
   else
     cat "$OUTPUT_DIR/summary.md"
   fi
+
+  cleanup_after_run
 
   if [[ "$START_WEB" == "1" ]]; then
     echo ""

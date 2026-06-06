@@ -156,6 +156,7 @@ else:
 artifacts = [
     ("终端彩色报告", "console.ansi"),
     ("终端纯文本报告", "console.txt"),
+    ("报告压缩包", "perfassess-report.zip"),
     ("Markdown 摘要", "summary.md"),
     ("默认 JSON 报告", "default.json"),
     ("默认文本报告", "default.txt"),
@@ -282,6 +283,7 @@ import json
 import pathlib
 import sys
 import unicodedata
+import zipfile
 
 out = pathlib.Path(sys.argv[1])
 auto_profile = sys.argv[2]
@@ -419,6 +421,35 @@ def style_for_status(value):
     if lowered in {"失败", "failed", "不可用", "high", "高"}:
         return "red"
     return "cyan"
+
+def write_report_archive():
+    archive_path = out / "perfassess-report.zip"
+    include = [
+        "console.ansi",
+        "console.txt",
+        "summary.md",
+        "default.json",
+        "default.txt",
+        "quick.json",
+        "check-deps.txt",
+        "version.txt",
+        "progress.json",
+        "default.stdout.txt",
+        "default.stdout.txt.stderr.log",
+        "default-text.stdout.txt",
+        "default-text.stdout.txt.stderr.log",
+        "quick.stdout.txt",
+        "quick.stdout.txt.stderr.log",
+        "acceptance/summary.md",
+        "acceptance.stdout.txt",
+        "acceptance.stderr.log",
+    ]
+    with zipfile.ZipFile(archive_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        for rel in include:
+            path = out / rel
+            if path.is_file():
+                archive.write(path, rel)
+    return archive_path
 
 route_ok, route_total = route_count(default_summary.get("route_trace_results"))
 stream_ok, stream_total = availability_count(default_summary.get("streaming_results"))
@@ -625,6 +656,7 @@ def console_report(color=False):
     rows.extend([
         kv("终端彩色", out / "console.ansi"),
         kv("终端纯文本", out / "console.txt"),
+        kv("报告压缩包", out / "perfassess-report.zip"),
         kv("Markdown", out / "summary.md"),
         kv("JSON", out / "default.json"),
         kv("文本", out / "default.txt"),
@@ -674,6 +706,7 @@ lines = [
     "",
     f"- 终端彩色报告: {out / 'console.ansi'}",
     f"- 终端纯文本报告: {out / 'console.txt'}",
+    f"- 报告压缩包: {out / 'perfassess-report.zip'}",
     f"- Markdown 摘要: {out / 'summary.md'}",
     f"- JSON 完整报告: {out / 'default.json'}",
     f"- 文本完整报告: {out / 'default.txt'}",
@@ -689,6 +722,7 @@ if share:
 (out / "summary.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
 (out / "console.txt").write_text(console_report(color=False) + "\n", encoding="utf-8")
 (out / "console.ansi").write_text(console_report(color=True) + "\n", encoding="utf-8")
+write_report_archive()
 PY
 progress_update "summary" "success" "汇总已生成"
 trap - EXIT
@@ -696,3 +730,4 @@ trap - EXIT
 echo "perfassess auto passed. Output: $output_dir"
 echo "Console: $output_dir/console.txt"
 echo "Summary: $output_dir/summary.md"
+echo "Archive: $output_dir/perfassess-report.zip"
