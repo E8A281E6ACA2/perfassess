@@ -37,6 +37,9 @@ func TestBindFlagsQuickPreset(t *testing.T) {
 	if app.config.EnableRouteTrace {
 		t.Fatal("expected quick preset to disable route trace")
 	}
+	if app.config.EnableIPQuality {
+		t.Fatal("expected quick preset to disable ip quality checks")
+	}
 }
 
 func TestVersionCommandUsesInjectedVersion(t *testing.T) {
@@ -79,7 +82,7 @@ func TestBindFlagsFullPresetWithIperf3Server(t *testing.T) {
 	if app.config.NetworkBackend != "iperf3" {
 		t.Fatalf("expected full preset with server to use iperf3, got %q", app.config.NetworkBackend)
 	}
-	if !app.config.EnableRouteTrace || !app.config.EnableStreaming || !app.config.EnableAIServices || !app.config.EnableSecurityScan {
+	if !app.config.EnableRouteTrace || !app.config.EnableStreaming || !app.config.EnableAIServices || !app.config.EnableIPQuality || !app.config.EnableSecurityScan {
 		t.Fatal("expected full preset to enable optional checks")
 	}
 }
@@ -147,6 +150,9 @@ func TestBindFlagsVPSProfilePreset(t *testing.T) {
 	if app.config.EnableAIServices {
 		t.Fatal("expected vps profile to keep ai service checks disabled")
 	}
+	if !app.config.EnableIPQuality {
+		t.Fatal("expected vps profile to enable ip quality checks")
+	}
 	if app.config.EnableStressTest {
 		t.Fatal("expected vps profile to keep stress test disabled")
 	}
@@ -167,6 +173,7 @@ func TestBindFlagsVPSProfileAllowsExplicitOverrides(t *testing.T) {
 		"--score-profile", "server",
 		"--route-trace=false",
 		"--streaming=false",
+		"--ip-quality=false",
 	}
 	if err := cmd.ParseFlags(args); err != nil {
 		t.Fatalf("failed to parse flags: %v", err)
@@ -196,6 +203,9 @@ func TestBindFlagsVPSProfileAllowsExplicitOverrides(t *testing.T) {
 	}
 	if app.config.EnableStreaming {
 		t.Fatal("expected explicit streaming override")
+	}
+	if app.config.EnableIPQuality {
+		t.Fatal("expected explicit ip quality override")
 	}
 }
 

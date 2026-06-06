@@ -20,6 +20,9 @@ func TestDefaultConfigUsesBuiltinNetworkBackend(t *testing.T) {
 	if cfg.ScoreProfile != DefaultScoreProfile {
 		t.Fatalf("expected default score profile %q, got %q", DefaultScoreProfile, cfg.ScoreProfile)
 	}
+	if cfg.EnableIPQuality {
+		t.Fatal("expected default ip quality checks disabled")
+	}
 	if cfg.CPUBackend != "builtin" {
 		t.Fatalf("expected default cpu backend builtin, got %q", cfg.CPUBackend)
 	}

@@ -31,7 +31,7 @@ curl -fsSL https://raw.githubusercontent.com/E8A281E6ACA2/perfassess/main/script
 cat /tmp/perfassess-auto/summary.md
 ```
 
-这条命令默认是非交互测评，不会常驻启动 Web 服务。它会输出 Markdown 摘要和 JSON/text 报告，适合直接复制结果或做服务器验收。
+这条命令默认是非交互测评，不会常驻启动 Web 服务。它会输出 Markdown 摘要和 JSON/text 完整报告，适合直接复制结果或做服务器验收。
 
 执行过程中会实时显示当前进度，例如系统信息、CPU、内存、磁盘、网络、验收步骤；完整输出仍会保存到 `/tmp/perfassess-auto/`。如果只想后台静默保存日志，可以设置 `PERFASSESS_AUTO_PROGRESS=0`。
 
@@ -145,8 +145,8 @@ cat /tmp/perfassess-auto/summary.md
 # 完整测试 + Web 报告
 ./build/perfassess -b all --web
 
-# 完整测试 + 所有功能
-./build/perfassess -b all --route-trace --streaming --web -o report.txt
+# 完整测试 + 扩展报告
+./build/perfassess --full --web -o report.txt
 ```
 
 ### 方式三：交互式菜单（可选）
@@ -173,6 +173,9 @@ cat /tmp/perfassess-auto/summary.md
   - 网络质量矩阵（IPv4/IPv6 可用性、TCP connect 延迟、抖动、失败率）
   - 路由追踪测试（可选）
   - 流媒体解锁检测（可选）
+  - AI 服务检测（可选）
+  - IP 质量检测（可选，DNSBL、邮件端口、IP 类型和风险评分）
+  - 安全体检（可选）
 
 - ✅ **系统信息收集**
   - CPU 型号、核心数、频率
@@ -372,10 +375,10 @@ make run
 # 快速预设：CPU + 内存 + 磁盘内置测试，适合快速巡检
 ./build/perfassess --quick
 
-# 完整预设：基础测试 + 路由追踪 + 流媒体 + AI 服务 + 安全体检
+# 完整预设：基础测试 + 路由追踪 + 流媒体 + AI 服务 + IP 质量 + 安全体检
 ./build/perfassess --full
 
-# VPS 测评预设：sysbench + fio + speedtest + VPS 评分基准 + 常用网络检查
+# VPS 测评预设：sysbench + fio + speedtest + VPS 评分基准 + 常用网络检查 + IP 质量
 ./build/perfassess --vps-profile
 
 # VPS 测评预设 + 自建 iperf3 服务端
@@ -388,9 +391,9 @@ make run
 ./build/perfassess --full --iperf3-servers 1.2.3.4:5201,[2001:db8::1]:5201
 ```
 
-`--vps-profile` 面向一把梭 VPS 测评，默认启用 `sysbench` CPU 后端、`sysbench` 内存后端、`fio` 磁盘后端、`speedtest` 网络后端、`vps` 评分基准、路由追踪和流媒体检测。它不会自动安装外部工具；建议先运行 `check-deps` 查看缺失项。使用 `speedtest` 时，报告会展示 Ookla 节点 ID、名称、地区、国家、Host、ISP、结果 URL、出口 IP 和 ping jitter。提供 `--iperf3-server`、`--iperf3-servers` 或 `--iperf3-server-file` 时，且未显式指定 `--network-backend`，会自动切换到 `iperf3` 网络后端。
+`--vps-profile` 面向一把梭 VPS 测评，默认启用 `sysbench` CPU 后端、`sysbench` 内存后端、`fio` 磁盘后端、`speedtest` 网络后端、`vps` 评分基准、路由追踪、流媒体检测和 IP 质量检测。它不会自动安装外部工具；建议先运行 `check-deps` 查看缺失项。使用 `speedtest` 时，报告会展示 Ookla 节点 ID、名称、地区、国家、Host、ISP、结果 URL、出口 IP 和 ping jitter。提供 `--iperf3-server`、`--iperf3-servers` 或 `--iperf3-server-file` 时，且未显式指定 `--network-backend`，会自动切换到 `iperf3` 网络后端。
 
-`--full` 会优先使用 `sysbench` CPU 后端、`sysbench` 内存后端和 `fio` 磁盘后端；如果未安装依赖，程序会给出明确提示但不会自动安装。提供 `--iperf3-server`、`--iperf3-servers` 或 `--iperf3-server-file` 时，`--full` 会自动切换到 `iperf3` 网络后端。
+`--full` 会优先使用 `sysbench` CPU 后端、`sysbench` 内存后端和 `fio` 磁盘后端，并启用路由追踪、流媒体、AI 服务、IP 质量和安全体检；如果未安装依赖，程序会给出明确提示但不会自动安装。提供 `--iperf3-server`、`--iperf3-servers` 或 `--iperf3-server-file` 时，`--full` 会自动切换到 `iperf3` 网络后端。
 
 #### 单项测试
 
@@ -457,9 +460,14 @@ make run
 # 启用流媒体检测
 ./build/perfassess -b all --streaming
 
+# 启用 IP 质量检测
+./build/perfassess -b all --ip-quality
+
 # 启用所有扩展功能
-./build/perfassess -b all --route-trace --streaming
+./build/perfassess --full
 ```
+
+IP 质量检测会写入文本报告、JSON `summary.ip_quality_report` 和 Web 报告的“IP 质量”模块。当前版本包含 DNSBL 黑名单查询、邮件端口出站连通性、基于 ISP 关键词的 IP 类型推断和风险评分；这些检测只做网络查询，不会安装依赖。
 
 #### 🌐 Web 报告（新功能）
 
@@ -471,7 +479,7 @@ make run
 ./build/perfassess -b all --web --port 9090
 
 # 完整功能 + Web 报告
-./build/perfassess -b all --route-trace --streaming --web
+./build/perfassess --full --web
 ```
 
 **Web 报告特点**：
@@ -479,7 +487,7 @@ make run
 - 📈 可视化性能评分和分项进度
 - 💻 响应式设计，支持手机/平板
 - 🎨 Surface、Card、Chip、Tonal 区块等现代视觉层级
-- 📋 展示评分基准、置信度、校准版本、分享模板和测试结果
+- 📋 左侧模块导航，展示评分基准、置信度、校准版本、分享模板、测试结果和扩展检测
 
 **使用流程**：
 1. 运行带 `--web` 参数的命令
@@ -563,6 +571,7 @@ Flags:
       --route-trace          启用路由追踪功能
       --streaming            启用流媒体解锁检测功能
       --ai-services          启用 AI 服务检测功能
+      --ip-quality           启用 IP 质量检测
       --stress               启用长时间压力测试
       --security             启用基础安全体检
       --network-backend string
@@ -977,9 +986,10 @@ A: 使用 `--port` 参数指定其他端口：
 | 路由追踪 | `./build/perfassess --route-trace`（需预装 traceroute/tracert） |
 | 流媒体检测 | `./build/perfassess --streaming` |
 | AI 服务检测 | `./build/perfassess --ai-services` |
+| IP 质量检测 | `./build/perfassess --ip-quality` |
 | 压力测试 | `./build/perfassess --stress` |
 | 安全体检 | `./build/perfassess --security` |
-| 完整功能 | `./build/perfassess -b all --route-trace --streaming --web -o report.txt` |
+| 完整功能 | `./build/perfassess --full --web -o report.txt` |
 
 ### 参数速查表
 
@@ -1007,6 +1017,7 @@ A: 使用 `--port` 参数指定其他端口：
 | `--route-trace` | - | 路由追踪 | `--route-trace` |
 | `--streaming` | - | 流媒体检测 | `--streaming` |
 | `--ai-services` | - | AI 服务检测 | `--ai-services` |
+| `--ip-quality` | - | IP 质量检测 | `--ip-quality` |
 | `--stress` | - | 长时间压力测试 | `--stress` |
 | `--security` | - | 安全体检 | `--security` |
 

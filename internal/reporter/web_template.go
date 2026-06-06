@@ -307,6 +307,7 @@ const HTMLTemplate = `<!DOCTYPE html>
         .tone-green .metric-value { color: var(--md-green); }
         .tone-amber .metric-value { color: var(--md-amber); }
         .tone-cyan .metric-value { color: var(--md-secondary); }
+        .tone-red .metric-value { color: var(--md-error); }
 
         .detail-grid {
             display: grid;
@@ -367,6 +368,7 @@ const HTMLTemplate = `<!DOCTYPE html>
         }
 
         .status-degraded,
+        .status-warning,
         .status-fair {
             color: #003355;
             background: #c2e7ff;

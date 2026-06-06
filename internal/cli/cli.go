@@ -158,6 +158,10 @@ func (c *CLI) setupCommands() {
 	flags.Bool("ai-services", false,
 		"启用 AI 服务可用性检测功能")
 
+	// --ip-quality 参数：启用 IP 质量检测
+	flags.Bool("ip-quality", false,
+		"启用 IP 质量检测（DNSBL、邮件端口、IP 类型和风险评分）")
+
 	// --stress 参数：启用长时间压力测试
 	flags.Bool("stress", false,
 		"启用长时间压力测试（耗时较长）")
@@ -496,6 +500,11 @@ func (c *CLI) bindFlags(cmd *cobra.Command) error {
 		c.config.EnableAIServices = aiServices
 	}
 
+	// 绑定 ip-quality 参数
+	if ipQuality, err := flags.GetBool("ip-quality"); err == nil && flags.Changed("ip-quality") {
+		c.config.EnableIPQuality = ipQuality
+	}
+
 	// 绑定 stress 参数
 	if stress, err := flags.GetBool("stress"); err == nil && flags.Changed("stress") {
 		c.config.EnableStressTest = stress
@@ -563,6 +572,7 @@ func (c *CLI) applyQuickPreset() {
 	c.config.EnableRouteTrace = false
 	c.config.EnableStreaming = false
 	c.config.EnableAIServices = false
+	c.config.EnableIPQuality = false
 	c.config.EnableStressTest = false
 	c.config.EnableSecurityScan = false
 	c.config.DiskBackend = "builtin"
@@ -576,6 +586,7 @@ func (c *CLI) applyFullPreset() {
 	c.config.EnableRouteTrace = true
 	c.config.EnableStreaming = true
 	c.config.EnableAIServices = true
+	c.config.EnableIPQuality = true
 	c.config.EnableSecurityScan = true
 	c.config.CPUBackend = "sysbench"
 	c.config.MemoryBackend = "sysbench"
@@ -588,6 +599,7 @@ func (c *CLI) applyVPSProfilePreset() {
 	c.config.EnableRouteTrace = true
 	c.config.EnableStreaming = true
 	c.config.EnableAIServices = false
+	c.config.EnableIPQuality = true
 	c.config.EnableStressTest = false
 	c.config.EnableSecurityScan = false
 	c.config.CPUBackend = "sysbench"
@@ -754,6 +766,9 @@ func (c *CLI) printWelcome() {
 		}
 		if c.config.EnableAIServices {
 			fmt.Println("AI 服务检测: 已启用")
+		}
+		if c.config.EnableIPQuality {
+			fmt.Println("IP 质量检测: 已启用")
 		}
 		if c.config.EnableStressTest {
 			fmt.Println("压力测试: 已启用")

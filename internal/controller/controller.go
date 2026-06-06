@@ -140,6 +140,7 @@ func (ac *AssessmentController) RunAssessment(session *models.AssessmentSession)
 	// 可选步骤: 流媒体检测
 	var streamingResults map[string]*models.StreamingResult
 	var aiResults map[string]*models.AIServiceResult
+	var ipQualityReport *models.IPQualityReport
 	var stressReport *models.StressTestReport
 	var securityReport *models.SecurityReport
 	if ac.config.EnableStreaming {
@@ -160,6 +161,12 @@ func (ac *AssessmentController) RunAssessment(session *models.AssessmentSession)
 		} else {
 			ac.logger.Info("AI服务检测完成")
 		}
+	}
+
+	if ac.config.EnableIPQuality {
+		ac.logger.Info("可选步骤: 执行 IP 质量检测")
+		ipQualityReport = ac.runIPQualityScan(systemInfo)
+		ac.logger.Info("IP 质量检测完成")
 	}
 
 	if ac.config.EnableStressTest {
@@ -195,6 +202,9 @@ func (ac *AssessmentController) RunAssessment(session *models.AssessmentSession)
 	}
 	if aiResults != nil {
 		report.Summary["ai_results"] = aiResults
+	}
+	if ipQualityReport != nil {
+		report.Summary["ip_quality_report"] = ipQualityReport
 	}
 	if stressReport != nil {
 		report.Summary["stress_report"] = stressReport
@@ -416,6 +426,11 @@ func (ac *AssessmentController) runAIServiceDetection() (map[string]*models.AISe
 	}
 
 	return results, nil
+}
+
+func (ac *AssessmentController) runIPQualityScan(systemInfo *models.SystemInfo) *models.IPQualityReport {
+	scanner := tests.NewIPQualityScanner(ac.logger)
+	return scanner.Run(systemInfo)
 }
 
 // runStressTest 执行长时间压力测试

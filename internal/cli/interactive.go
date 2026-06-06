@@ -80,11 +80,12 @@ func (im *InteractiveMenu) selectTests() error {
 	fmt.Println("  6. 路由追踪测试      - 测试到主要地区的网络路由")
 	fmt.Println("  7. 流媒体解锁检测    - 检测流媒体平台访问情况")
 	fmt.Println("  8. AI 服务检测       - 检测主流 AI 服务访问情况")
-	fmt.Println("  9. 长时间压力测试    - 持续高压运行，观察稳定性")
-	fmt.Println(" 10. 安全体检          - 端口扫描与 SSH 配置检查")
-	fmt.Println(" 11. 自定义组合        - 自由选择多个检测项目")
+	fmt.Println("  9. IP 质量检测       - DNSBL、邮件端口和风险评分")
+	fmt.Println(" 10. 长时间压力测试    - 持续高压运行，观察稳定性")
+	fmt.Println(" 11. 安全体检          - 端口扫描与 SSH 配置检查")
+	fmt.Println(" 12. 自定义组合        - 自由选择多个检测项目")
 	fmt.Println()
-	fmt.Print("请输入选项 [1-11] (默认: 1): ")
+	fmt.Print("请输入选项 [1-12] (默认: 1): ")
 
 	choice, err := im.readLine()
 	if err != nil {
@@ -125,14 +126,18 @@ func (im *InteractiveMenu) selectTests() error {
 		im.config.Tests = []string{} // 只做AI检测
 		fmt.Println("✓ 已选择：AI 服务检测")
 	case "9":
+		im.config.EnableIPQuality = true
+		im.config.Tests = []string{}
+		fmt.Println("✓ 已选择：IP 质量检测")
+	case "10":
 		im.config.EnableStressTest = true
 		im.config.Tests = []string{}
 		fmt.Println("✓ 已选择：长时间压力测试")
-	case "10":
+	case "11":
 		im.config.EnableSecurityScan = true
 		im.config.Tests = []string{}
 		fmt.Println("✓ 已选择：安全体检")
-	case "11":
+	case "12":
 		return im.selectCustomTests()
 	default:
 		fmt.Println("⚠ 无效选项，使用默认：完整检测")
@@ -155,8 +160,9 @@ func (im *InteractiveMenu) selectCustomTests() error {
 	fmt.Println("  5 - 路由追踪测试")
 	fmt.Println("  6 - 流媒体解锁检测")
 	fmt.Println("  7 - AI 服务检测")
-	fmt.Println("  8 - 长时间压力测试")
-	fmt.Println("  9 - 安全体检")
+	fmt.Println("  8 - IP 质量检测")
+	fmt.Println("  9 - 长时间压力测试")
+	fmt.Println(" 10 - 安全体检")
 	fmt.Println()
 	fmt.Print("请输入选项 (例如: 1 2 3 或 1 2 6 7 8 9): ")
 
@@ -192,13 +198,15 @@ func (im *InteractiveMenu) selectCustomTests() error {
 		case "7":
 			im.config.EnableAIServices = true
 		case "8":
-			im.config.EnableStressTest = true
+			im.config.EnableIPQuality = true
 		case "9":
+			im.config.EnableStressTest = true
+		case "10":
 			im.config.EnableSecurityScan = true
 		}
 	}
 
-	if len(tests) == 0 && !im.config.EnableRouteTrace && !im.config.EnableStreaming && !im.config.EnableAIServices && !im.config.EnableStressTest && !im.config.EnableSecurityScan {
+	if len(tests) == 0 && !im.config.EnableRouteTrace && !im.config.EnableStreaming && !im.config.EnableAIServices && !im.config.EnableIPQuality && !im.config.EnableStressTest && !im.config.EnableSecurityScan {
 		im.config.Tests = []string{"all"}
 		fmt.Println("✓ 无效选择，使用默认：完整检测")
 	} else {
@@ -217,6 +225,9 @@ func (im *InteractiveMenu) selectCustomTests() error {
 		}
 		if im.config.EnableAIServices {
 			selectedItems = append(selectedItems, "AI 服务检测")
+		}
+		if im.config.EnableIPQuality {
+			selectedItems = append(selectedItems, "IP 质量检测")
 		}
 		if im.config.EnableStressTest {
 			selectedItems = append(selectedItems, "长时间压力测试")
@@ -337,6 +348,7 @@ func (im *InteractiveMenu) confirmConfiguration() bool {
 	fmt.Printf("  路由追踪:     %s\n", im.boolToString(im.config.EnableRouteTrace))
 	fmt.Printf("  流媒体检测:   %s\n", im.boolToString(im.config.EnableStreaming))
 	fmt.Printf("  AI 服务检测:  %s\n", im.boolToString(im.config.EnableAIServices))
+	fmt.Printf("  IP 质量检测:  %s\n", im.boolToString(im.config.EnableIPQuality))
 	fmt.Printf("  压力测试:     %s\n", im.boolToString(im.config.EnableStressTest))
 	fmt.Printf("  安全体检:     %s\n", im.boolToString(im.config.EnableSecurityScan))
 	fmt.Printf("  详细输出:     %s\n", im.boolToString(im.config.Verbose))

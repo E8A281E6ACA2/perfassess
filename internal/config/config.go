@@ -46,6 +46,9 @@ type Config struct {
 	// EnableAIServices 是否启用AI服务检测功能
 	EnableAIServices bool `mapstructure:"enable_ai_services"`
 
+	// EnableIPQuality 是否启用 IP 质量检测
+	EnableIPQuality bool `mapstructure:"enable_ip_quality"`
+
 	// EnableStressTest 是否启用长时间压力测试
 	EnableStressTest bool `mapstructure:"enable_stress_test"`
 
@@ -104,6 +107,7 @@ func DefaultConfig() *Config {
 		EnableRouteTrace:   false,
 		EnableStreaming:    false,
 		EnableAIServices:   false,
+		EnableIPQuality:    false,
 		EnableStressTest:   false,
 		EnableSecurityScan: false,
 		RouteTraceTargets:  []string{"8.8.8.8", "1.1.1.1", "cloudflare.com"},

@@ -842,6 +842,50 @@ func (rg *ReportGenerator) FormatReport(report *models.Report) string {
 			sb.WriteString("\n")
 		}
 
+		if ipQualityReport, ok := report.Summary["ip_quality_report"].(*models.IPQualityReport); ok && ipQualityReport != nil {
+			sb.WriteString("=== IP 质量检测 ===\n\n")
+			sb.WriteString(fmt.Sprintf("公网 IP:        %s (%s)\n", fallbackText(ipQualityReport.PublicIP, "-"), fallbackText(ipQualityReport.IPVersion, "-")))
+			if ipQualityReport.ISP != "" {
+				sb.WriteString(fmt.Sprintf("ISP:            %s\n", ipQualityReport.ISP))
+			}
+			location := strings.Trim(strings.Join([]string{ipQualityReport.Country, ipQualityReport.City}, " "), " ")
+			if location != "" {
+				sb.WriteString(fmt.Sprintf("位置:           %s\n", location))
+			}
+			sb.WriteString(fmt.Sprintf("IP 类型:        %s\n", ipQualityLabel(ipQualityReport.IPType)))
+			sb.WriteString(fmt.Sprintf("风险等级:       %s (%d/100)\n\n", ipRiskLabel(ipQualityReport.RiskLevel), ipQualityReport.RiskScore))
+
+			if len(ipQualityReport.BlacklistChecks) > 0 {
+				sb.WriteString("DNSBL 黑名单:\n")
+				for _, check := range ipQualityReport.BlacklistChecks {
+					sb.WriteString(fmt.Sprintf("  - %-24s %s", check.Zone, ipBlacklistStatusLabel(check)))
+					if check.Detail != "" {
+						sb.WriteString(fmt.Sprintf(" - %s", check.Detail))
+					}
+					sb.WriteString("\n")
+				}
+				sb.WriteString("\n")
+			}
+			if len(ipQualityReport.MailChecks) > 0 {
+				sb.WriteString("邮件端口连通性:\n")
+				for _, check := range ipQualityReport.MailChecks {
+					sb.WriteString(fmt.Sprintf("  - %-32s %-5d %s", check.Target, check.Port, mailCheckStatusLabel(check)))
+					if check.Detail != "" {
+						sb.WriteString(fmt.Sprintf(" - %s", check.Detail))
+					}
+					sb.WriteString("\n")
+				}
+				sb.WriteString("\n")
+			}
+			if len(ipQualityReport.Notes) > 0 {
+				sb.WriteString("说明:\n")
+				for _, note := range ipQualityReport.Notes {
+					sb.WriteString(fmt.Sprintf("  - %s\n", note))
+				}
+				sb.WriteString("\n")
+			}
+		}
+
 		// 压力测试结果
 		if stressReport, ok := report.Summary["stress_report"].(*models.StressTestReport); ok && stressReport != nil {
 			sb.WriteString("=== 长时间压力测试 ===\n\n")
@@ -891,6 +935,71 @@ func (rg *ReportGenerator) FormatReport(report *models.Report) string {
 	sb.WriteString("════════════════════════════════════════════════════════════════\n")
 
 	return sb.String()
+}
+
+func fallbackText(value, fallback string) string {
+	if strings.TrimSpace(value) == "" {
+		return fallback
+	}
+	return value
+}
+
+func ipRiskLabel(level string) string {
+	switch level {
+	case "low":
+		return "低风险"
+	case "medium":
+		return "中风险"
+	case "high":
+		return "高风险"
+	default:
+		return "未知"
+	}
+}
+
+func ipQualityLabel(value string) string {
+	switch value {
+	case "datacenter_likely":
+		return "疑似机房 / VPS"
+	case "residential_or_isp_likely":
+		return "疑似住宅或运营商网络"
+	default:
+		return "未知"
+	}
+}
+
+func ipBlacklistStatusLabel(check *models.IPBlacklistCheck) string {
+	if check == nil {
+		return "未知"
+	}
+	switch check.Status {
+	case "listed":
+		return "命中"
+	case "clean":
+		return "未命中"
+	case "timeout":
+		return "超时"
+	case "skipped":
+		return "跳过"
+	default:
+		return check.Status
+	}
+}
+
+func mailCheckStatusLabel(check *models.MailPortCheck) string {
+	if check == nil {
+		return "未知"
+	}
+	switch check.Status {
+	case "reachable":
+		return "可连接"
+	case "blocked":
+		return "不可连接"
+	case "timeout":
+		return "超时"
+	default:
+		return check.Status
+	}
 }
 
 func scoreComponentLabel(key string) string {

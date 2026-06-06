@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -194,7 +195,7 @@ func (ws *WebServer) buildReportSections(overallScore *models.OverallScore) []we
 		ws.optionalSection("route", "路由追踪", "到主要地区和节点的网络路径质量。", "route_trace_results", "本次未启用路由追踪。使用 --route-trace 启用。"),
 		ws.optionalSection("streaming", "流媒体解锁", "Netflix、Disney+、YouTube 等平台的区域访问能力。", "streaming_results", "本次未启用流媒体检测。使用 --streaming 启用。"),
 		ws.optionalSection("ai", "AI 服务检测", "OpenAI、Gemini 等 AI 服务的可访问性。", "ai_results", "本次未启用 AI 服务检测。使用 --ai-services 启用。"),
-		ws.placeholderSection("ip-quality", "IP 质量", "参考 IPQuality 的风险、类型、黑名单和邮件连通性模块。", "规划中：下一阶段接入 IP 风险评分、DNSBL、邮件服务连通性和 IP 类型识别。"),
+		ws.ipQualitySection(),
 		ws.optionalSection("stress", "压力测试", "长时间 CPU、内存、磁盘压力下的稳定性。", "stress_report", "本次未启用压力测试。使用 --stress 启用。"),
 		ws.optionalSection("security", "安全体检", "端口、SSH 配置和基础安全风险检查。", "security_report", "本次未启用安全体检。使用 --security 启用。"),
 	)
@@ -542,6 +543,73 @@ func (ws *WebServer) optionalSection(id string, title string, subtitle string, s
 	return section
 }
 
+func (ws *WebServer) ipQualitySection() webReportSection {
+	hint := "本次未启用 IP 质量检测。使用 --ip-quality 启用，或使用 --full / --vps-profile 预设。"
+	section := webReportSection{
+		ID:       "ip-quality",
+		Title:    "IP 质量",
+		Subtitle: "DNSBL 黑名单、邮件端口连通性、IP 类型和风险评分。",
+		Hint:     hint,
+	}
+	if ws.report == nil || ws.report.Summary == nil {
+		section.Status = "skipped"
+		section.StatusText = "未执行"
+		section.Summary = hint
+		return section
+	}
+	report, ok := ws.report.Summary["ip_quality_report"].(*models.IPQualityReport)
+	if !ok || report == nil {
+		section.Status = "skipped"
+		section.StatusText = "未执行"
+		section.Summary = hint
+		return section
+	}
+
+	section.Status = ipQualityWebStatus(report.RiskLevel)
+	section.StatusText = ipRiskLabel(report.RiskLevel)
+	section.Summary = fmt.Sprintf("%s，风险分 %d/100，IP 类型：%s。", ipRiskLabel(report.RiskLevel), report.RiskScore, ipQualityLabel(report.IPType))
+	section.Hint = ""
+	section.Metrics = append(section.Metrics,
+		webMetricCard{Label: "风险分", Value: fmt.Sprintf("%d", report.RiskScore), Unit: "/ 100", Tone: ipQualityMetricTone(report.RiskLevel)},
+		webMetricCard{Label: "黑名单命中", Value: fmt.Sprintf("%d", countListedBlacklists(report.BlacklistChecks)), Unit: fmt.Sprintf("/ %d", len(report.BlacklistChecks)), Tone: "amber"},
+		webMetricCard{Label: "邮件可连", Value: fmt.Sprintf("%d", countReachableMailChecks(report.MailChecks)), Unit: fmt.Sprintf("/ %d", len(report.MailChecks)), Tone: "cyan"},
+	)
+	section.Details = append(section.Details,
+		webDetailRow{Label: "公网 IP", Value: fallback(report.PublicIP, "-")},
+		webDetailRow{Label: "IP 版本", Value: fallback(report.IPVersion, "-")},
+		webDetailRow{Label: "ISP", Value: fallback(report.ISP, "-")},
+		webDetailRow{Label: "位置", Value: fallback(strings.Trim(strings.Join([]string{report.Country, report.City}, " "), " "), "-")},
+		webDetailRow{Label: "IP 类型", Value: ipQualityLabel(report.IPType)},
+	)
+	if len(report.BlacklistChecks) > 0 {
+		table := webTable{Title: "DNSBL 黑名单", Headers: []string{"名单", "状态", "详情"}}
+		for _, check := range report.BlacklistChecks {
+			table.Rows = append(table.Rows, []string{
+				check.Zone,
+				ipBlacklistStatusLabel(check),
+				fallback(check.Detail, "-"),
+			})
+		}
+		section.Tables = append(section.Tables, table)
+	}
+	if len(report.MailChecks) > 0 {
+		table := webTable{Title: "邮件端口连通性", Headers: []string{"目标", "端口", "状态", "详情"}}
+		for _, check := range report.MailChecks {
+			table.Rows = append(table.Rows, []string{
+				check.Target,
+				fmt.Sprintf("%d", check.Port),
+				mailCheckStatusLabel(check),
+				fallback(check.Detail, "-"),
+			})
+		}
+		section.Tables = append(section.Tables, table)
+	}
+	for _, note := range report.Notes {
+		section.Details = append(section.Details, webDetailRow{Label: "说明", Value: note})
+	}
+	return section
+}
+
 func (ws *WebServer) placeholderSection(id string, title string, subtitle string, hint string) webReportSection {
 	return webReportSection{
 		ID:         id,
@@ -552,6 +620,46 @@ func (ws *WebServer) placeholderSection(id string, title string, subtitle string
 		Summary:    hint,
 		Hint:       hint,
 	}
+}
+
+func ipQualityWebStatus(level string) string {
+	if level == "high" {
+		return "failed"
+	}
+	if level == "medium" {
+		return "warning"
+	}
+	return "success"
+}
+
+func ipQualityMetricTone(level string) string {
+	if level == "high" {
+		return "red"
+	}
+	if level == "medium" {
+		return "amber"
+	}
+	return "green"
+}
+
+func countListedBlacklists(checks []*models.IPBlacklistCheck) int {
+	count := 0
+	for _, check := range checks {
+		if check != nil && check.Listed {
+			count++
+		}
+	}
+	return count
+}
+
+func countReachableMailChecks(checks []*models.MailPortCheck) int {
+	count := 0
+	for _, check := range checks {
+		if check != nil && check.Reachable {
+			count++
+		}
+	}
+	return count
 }
 
 func (ws *WebServer) summaryString(key string) string {
@@ -656,6 +764,8 @@ func (ws *WebServer) getStatusText(status string) string {
 		return "跳过"
 	case "degraded":
 		return "降级"
+	case "warning":
+		return "注意"
 	default:
 		return "未知"
 	}
