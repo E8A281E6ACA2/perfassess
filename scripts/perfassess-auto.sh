@@ -179,6 +179,10 @@ artifacts = [
     ("Markdown 摘要", "summary.md"),
     ("默认 JSON 报告", "default.json"),
     ("默认文本报告", "default.txt"),
+    ("硬件质量报告", "hardware_quality.json"),
+    ("网络质量报告", "net_quality.json"),
+    ("路由追踪报告", "route_trace.json"),
+    ("IP 质量报告", "ip_quality.json"),
     ("快速 JSON 报告", "quick.json"),
     ("依赖检查", "check-deps.txt"),
     ("验收摘要", "acceptance/summary.md"),
@@ -403,6 +407,60 @@ def status_text(value):
         return "未执行"
     return text(value)
 
+def json_dump(path, value):
+    path.write_text(json.dumps(value, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+def route_group(target):
+    lowered = text(target, "").lower()
+    china_markers = ("189.cn", "10086.cn", "chinaunicom", "ctyun", "qq.com")
+    if any(marker in lowered for marker in china_markers):
+        return "国内方向参考"
+    return "公共网络"
+
+def latency_ms(value):
+    if isinstance(value, bool) or value is None:
+        return "-"
+    try:
+        # Go time.Duration is encoded as nanoseconds in JSON.
+        return f"{float(value) / 1000000:.2f} ms"
+    except (TypeError, ValueError):
+        return "-"
+
+def route_last_hop(result):
+    hops = result.get("hops", []) if isinstance(result, dict) else []
+    if not isinstance(hops, list):
+        return "-"
+    for hop in reversed(hops):
+        if not isinstance(hop, dict):
+            continue
+        ip = text(hop.get("ip"), "")
+        if not ip or ip == "*":
+            continue
+        hostname = text(hop.get("hostname"), "")
+        label = ip if not hostname or hostname == "-" else f"{ip} {hostname}"
+        return f"{label} / {latency_ms(hop.get('latency'))}"
+    return "无有效末跳"
+
+def route_rows(results):
+    if not isinstance(results, list):
+        return []
+    rows = []
+    for item in results:
+        if not isinstance(item, dict):
+            continue
+        success = item.get("success") is True
+        rows.append([
+            route_group(item.get("target")),
+            text(item.get("target")),
+            "完成" if success else "失败",
+            text(item.get("total_hops"), "0"),
+            route_last_hop(item) if success else text(item.get("error_message"), "无错误信息"),
+        ])
+    return rows
+
+def has_china_route_reference(rows):
+    return any(row and row[0] == "国内方向参考" for row in rows)
+
 def display_width(value):
     width = 0
     for ch in str(value):
@@ -450,6 +508,18 @@ def write_report_archive():
         "summary.md",
         "default.json",
         "default.txt",
+        "hardware_quality.json",
+        "hardware_quality.txt",
+        "net_quality.json",
+        "net_quality.txt",
+        "route_trace.json",
+        "route_trace.txt",
+        "ip_quality.json",
+        "ip_quality.txt",
+        "streaming_unlock.json",
+        "ai_services.json",
+        "security_scan.json",
+        "stress_test.json",
         "quick.json",
         "check-deps.txt",
         "version.txt",
@@ -471,6 +541,109 @@ def write_report_archive():
                 archive.write(path, rel)
     return archive_path
 
+def write_module_artifacts():
+    test_results = default_report.get("test_results", {})
+    if not isinstance(test_results, dict):
+        test_results = {}
+    module_common = {
+        "session_id": default_report.get("session_id"),
+        "timestamp": default_report.get("timestamp"),
+        "auto_profile": auto_profile,
+        "quality_profile": quality_profile,
+        "network_profile": network_profile,
+    }
+    hardware_payload = {
+        **module_common,
+        "system": system,
+        "cpu": cpu,
+        "memory": memory,
+        "disk": disk,
+        "score": {
+            "total_score": default_summary.get("total_score"),
+            "grade": default_summary.get("grade"),
+            "confidence": confidence,
+            "score_profile": default_summary.get("score_profile"),
+            "calibration_version": calibration,
+        },
+        "test_results": {
+            "cpu_result": test_results.get("cpu_result"),
+            "memory_result": test_results.get("memory_result"),
+            "disk_result": test_results.get("disk_result"),
+        },
+    }
+    net_payload = {
+        **module_common,
+        "network": network,
+        "network_metrics": network_metrics,
+        "route_trace_note": route_note,
+        "route_trace_results": default_summary.get("route_trace_results", []),
+        "streaming_results": default_summary.get("streaming_results", {}),
+        "ai_results": default_summary.get("ai_results", {}),
+        "test_results": {"network_result": test_results.get("network_result")},
+    }
+    route_payload = {
+        **module_common,
+        "note": route_note,
+        "results": default_summary.get("route_trace_results", []),
+    }
+    ip_payload = {
+        **module_common,
+        "report": ip_report,
+    }
+    streaming_payload = {**module_common, "results": default_summary.get("streaming_results", {})}
+    ai_payload = {**module_common, "results": default_summary.get("ai_results", {})}
+    security_payload = {**module_common, "report": default_summary.get("security_report", {})}
+    stress_payload = {**module_common, "report": stress_report}
+
+    json_dump(out / "hardware_quality.json", hardware_payload)
+    json_dump(out / "net_quality.json", net_payload)
+    json_dump(out / "route_trace.json", route_payload)
+    json_dump(out / "ip_quality.json", ip_payload)
+    json_dump(out / "streaming_unlock.json", streaming_payload)
+    json_dump(out / "ai_services.json", ai_payload)
+    json_dump(out / "security_scan.json", security_payload)
+    json_dump(out / "stress_test.json", stress_payload)
+
+    (out / "hardware_quality.txt").write_text(
+        "\n".join([
+            "Perfassess 硬件质量摘要",
+            f"CPU: 单核 {num(cpu.get('single_core_score'))} | 多核 {num(cpu.get('multi_core_score'))} | 后端 {text(cpu.get('backend'))}",
+            f"内存: 读 {num(memory.get('read_mbps'))} MB/s | 写 {num(memory.get('write_mbps'))} MB/s",
+            f"磁盘: 读 {num(disk.get('sequential_read_mbps'))} MB/s | 写 {num(disk.get('sequential_write_mbps'))} MB/s | 随机 {num(disk.get('random_iops'), 0)} IOPS",
+            f"评分: {num(default_summary.get('total_score'))} / 100 | {text(default_summary.get('grade'))} | 置信 {text(confidence)}",
+            "",
+        ]),
+        encoding="utf-8",
+    )
+    (out / "net_quality.txt").write_text(
+        "\n".join([
+            "Perfassess 网络质量摘要",
+            f"网络档位: {network_profile}",
+            f"吞吐: 延迟 {num(network.get('latency_ms'))} ms | 下载 {num(network.get('download_mbps'))} Mbps | 上传 {num(network.get('upload_mbps'))} Mbps",
+            f"质量: IPv4 {yes_no(network.get('ipv4_available'))} | IPv6 {yes_no(network.get('ipv6_available'))} | 抖动 {num(network.get('quality_jitter_ms'))} ms | 失败率 {num(network.get('quality_failure_rate'))}%",
+            f"路由: {ratio_or_skipped(route_ok, route_total, '成功')}",
+            f"说明: {route_note}",
+            "",
+        ]),
+        encoding="utf-8",
+    )
+    route_lines = ["Perfassess 路由追踪摘要", f"说明: {route_note}", ""]
+    for row in route_rows(default_summary.get("route_trace_results")):
+        route_lines.append(f"{row[0]} | {row[1]} | {row[2]} | {row[3]} 跳 | {row[4]}")
+    if len(route_lines) == 3:
+        route_lines.append("未执行")
+    route_lines.append("")
+    (out / "route_trace.txt").write_text("\n".join(route_lines), encoding="utf-8")
+    (out / "ip_quality.txt").write_text(
+        "\n".join([
+            "Perfassess IP 质量摘要",
+            ip_quality_summary(ip_report),
+            f"ASN: {text(ip_report.get('asn'))} | 组织: {text(ip_report.get('organization'))}" if ip_report else "未执行",
+            "",
+        ]),
+        encoding="utf-8",
+    )
+
 route_ok, route_total = route_count(default_summary.get("route_trace_results"))
 stream_ok, stream_total = availability_count(default_summary.get("streaming_results"))
 ai_ok, ai_total = availability_count(default_summary.get("ai_results"))
@@ -490,6 +663,7 @@ network = vps.get("network", {}) if isinstance(vps.get("network"), dict) else {}
 network_metrics = default_report.get("test_results", {}).get("network_result", {}).get("metrics", {})
 if not isinstance(network_metrics, dict):
     network_metrics = {}
+write_module_artifacts()
 
 def console_report(color=False):
     colors = {
@@ -631,6 +805,18 @@ def console_report(color=False):
     ))
     rows.append(kv("路由说明", route_note, "yellow"))
 
+    route_detail_rows = route_rows(default_summary.get("route_trace_results"))
+    if route_detail_rows:
+        rows += section("路由追踪明细")
+        rows.extend(table(
+            ["分组", "目标", "状态", "跳数", "末跳/错误"],
+            route_detail_rows,
+            [14, 22, 8, 6, 26],
+            status_col=2,
+        ))
+        if has_china_route_reference(route_detail_rows):
+            rows.append(kv("注意", "国内方向参考是本机到国内目标的出站路径，不是真实回程。", "yellow"))
+
     streaming = default_summary.get("streaming_results")
     if isinstance(streaming, dict) and streaming:
         rows += section("流媒体解锁")
@@ -683,6 +869,10 @@ def console_report(color=False):
         kv("Markdown", out / "summary.md"),
         kv("JSON", out / "default.json"),
         kv("文本", out / "default.txt"),
+        kv("硬件模块", out / "hardware_quality.json"),
+        kv("网络模块", out / "net_quality.json"),
+        kv("路由模块", out / "route_trace.json"),
+        kv("IP 模块", out / "ip_quality.json"),
         kv("验收摘要", acceptance_summary_path),
     ])
     rows.append("")
@@ -727,6 +917,26 @@ lines = [
     f"| 压力测试 | {stress_summary(stress_report)} |",
     f"| 路由说明 | {route_note} |",
     "",
+]
+
+route_detail_rows = route_rows(default_summary.get("route_trace_results"))
+if route_detail_rows:
+    lines.extend([
+        "## 路由追踪明细",
+        "",
+        "| 分组 | 目标 | 状态 | 跳数 | 末跳/错误 |",
+        "|------|------|------|------|-----------|",
+    ])
+    for row in route_detail_rows:
+        lines.append(f"| {row[0]} | {row[1]} | {row[2]} | {row[3]} | {row[4]} |")
+    lines.append("")
+    if has_china_route_reference(route_detail_rows):
+        lines.extend([
+            "注意：国内方向参考是本机到国内目标的出站路径，不是真实回程。",
+            "",
+        ])
+
+lines.extend([
     "## 输出文件",
     "",
     f"- 终端彩色报告: {out / 'console.ansi'}",
@@ -735,10 +945,14 @@ lines = [
     f"- Markdown 摘要: {out / 'summary.md'}",
     f"- JSON 完整报告: {out / 'default.json'}",
     f"- 文本完整报告: {out / 'default.txt'}",
+    f"- 硬件质量模块: {out / 'hardware_quality.json'}",
+    f"- 网络质量模块: {out / 'net_quality.json'}",
+    f"- 路由追踪模块: {out / 'route_trace.json'}",
+    f"- IP 质量模块: {out / 'ip_quality.json'}",
     f"- 快速测评 JSON: {out / 'quick.json'}",
     f"- 依赖检查: {out / 'check-deps.txt'}",
     f"- 验收摘要: {acceptance_summary_path}",
-]
+])
 
 share = default_summary.get("share_templates", {}).get("plain_text")
 if share:

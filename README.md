@@ -30,7 +30,7 @@
 curl -fsSL https://raw.githubusercontent.com/E8A281E6ACA2/perfassess/main/scripts/bootstrap.sh | bash
 ```
 
-这条命令默认是非交互测评，不会常驻启动 Web 服务。完成后会直接在控制台打印彩色结构化报告，并保存终端纯文本、Markdown 摘要、JSON/text 完整报告和报告压缩包，适合直接复制结果或做服务器验收。
+这条命令默认是非交互测评，不会常驻启动 Web 服务。完成后会直接在控制台打印彩色结构化报告，并保存终端纯文本、Markdown 摘要、JSON/text 完整报告、模块化 JSON 报告和报告压缩包，适合直接复制结果或做服务器验收。
 
 执行过程中会实时显示当前步骤和完成状态；内部测试日志、标准输出和错误输出会保存到 `/tmp/perfassess-auto/`。如果只想后台静默保存日志，可以设置 `PERFASSESS_AUTO_PROGRESS=0`。
 
@@ -68,6 +68,10 @@ curl -fsSL https://raw.githubusercontent.com/E8A281E6ACA2/perfassess/main/script
 - `/tmp/perfassess-auto/console.txt`：终端纯文本报告
 - `/tmp/perfassess-auto/summary.md`：Markdown 摘要
 - `/tmp/perfassess-auto/default.json`：完整 JSON 报告
+- `/tmp/perfassess-auto/hardware_quality.json`：硬件质量模块，包含系统、CPU、内存、磁盘和评分摘要
+- `/tmp/perfassess-auto/net_quality.json`：网络质量模块，包含吞吐、IPv4/IPv6、路由、流媒体和 AI 服务摘要
+- `/tmp/perfassess-auto/route_trace.json`：路由追踪模块，包含每个目标的跳数、末跳和错误信息
+- `/tmp/perfassess-auto/ip_quality.json`：IP 质量模块，包含 ASN、rDNS、DNSBL、邮件端口和风险评分
 - `/tmp/perfassess-auto/perfassess-report.zip`：报告压缩包，包含报告、日志和验收摘要
 
 如果希望跑完后自动清理构建产物但保留报告，可以使用：
@@ -104,7 +108,7 @@ ssh -L 8080:localhost:8080 root@SERVER_PUBLIC_IP
 http://localhost:8080
 ```
 
-测评完成后，页面会显示分组完整报告、Markdown 摘要、JSON 报告、文本报告、报告压缩包和验收摘要入口。Linux 控制台默认显示彩色结构化报告；`/tmp/perfassess-auto/console.txt` 是无颜色纯文本版，`/tmp/perfassess-auto/summary.md` 是 Markdown 摘要版。
+测评完成后，页面会显示分组完整报告、Markdown 摘要、JSON 报告、文本报告、报告压缩包和验收摘要入口。Linux 控制台默认显示彩色结构化报告；`/tmp/perfassess-auto/console.txt` 是无颜色纯文本版，`/tmp/perfassess-auto/summary.md` 是 Markdown 摘要版。控制台和 Markdown 摘要会展开路由追踪明细；其中“国内方向参考”是本机到国内目标的出站路径，不是真实回程。
 
 如果机器没有 `curl`，可以用 `wget`：
 
