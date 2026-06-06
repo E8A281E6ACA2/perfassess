@@ -35,13 +35,35 @@ cat /tmp/perfassess-auto/summary.md
 
 执行过程中会实时显示当前进度，例如系统信息、CPU、内存、磁盘、网络、验收步骤；完整输出仍会保存到 `/tmp/perfassess-auto/`。如果只想后台静默保存日志，可以设置 `PERFASSESS_AUTO_PROGRESS=0`。
 
+512MB 等低内存机器会自动进入低内存模式：Go 构建并发会降到 1，Linux 主机会尽量创建临时 swap，默认跳过 `go test ./...`，但仍会构建二进制并运行完整测评和验收摘要。临时 swap 会在脚本退出时清理；如需强制跑单元测试可设置 `PERFASSESS_BOOTSTRAP_TESTS=1`，如需禁用临时 swap 可设置 `PERFASSESS_BOOTSTRAP_SWAP=0`。
+
 如果希望启动 Material Design 3 / Google 风格实时 Web 测评页面：
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/E8A281E6ACA2/perfassess/main/scripts/bootstrap.sh | bash -s -- --web --port 8080
 ```
 
-`--web` 会在测评开始前启动实时进度页，浏览器打开 `http://服务器IP:8080` 后可看到当前步骤、完成状态和已生成报告文件。测评完成后，页面会显示 Markdown 摘要、JSON 报告、文本报告和验收摘要入口。
+`--web` 会在测评开始前启动实时进度页，浏览器打开 `http://服务器公网IP:8080` 后可看到当前步骤、完成状态和已生成报告文件。脚本中显示的 `0.0.0.0:8080` 只是服务监听所有网卡的地址，不是浏览器访问地址；浏览器应使用服务器公网 IP、内网 IP，或本地 SSH 端口转发地址。
+
+如果服务器安全组或防火墙已经开放 8080 端口，把 `SERVER_PUBLIC_IP` 替换为你的服务器公网 IP：
+
+```bash
+http://SERVER_PUBLIC_IP:8080
+```
+
+如果不想开放端口，可以在本地电脑执行 SSH 端口转发：
+
+```bash
+ssh -L 8080:localhost:8080 root@SERVER_PUBLIC_IP
+```
+
+然后在本地浏览器打开：
+
+```bash
+http://localhost:8080
+```
+
+测评完成后，页面会显示 Markdown 摘要、JSON 报告、文本报告和验收摘要入口。
 
 如果机器没有 `curl`，可以用 `wget`：
 
@@ -495,14 +517,14 @@ IP 质量检测会写入文本报告、JSON `summary.ip_quality_report` 和 Web 
 **使用流程**：
 1. 运行带 `--web` 参数的命令
 2. 等待测试完成
-3. 看到提示：`🌐 Web 服务器已启动: http://localhost:8080`
-4. 在浏览器打开该地址查看报告
+3. 本机浏览器打开 `http://localhost:8080`，远程浏览器打开 `http://SERVER_PUBLIC_IP:8080`
+4. 如果端口没有开放，使用 `ssh -L 8080:localhost:8080 root@SERVER_PUBLIC_IP` 后打开 `http://localhost:8080`
 5. 按 `Ctrl+C` 停止服务器
 
-远程服务器访问时，请用服务器公网 IP 和端口访问，例如 `http://SERVER_IP:8080`。如果不想开放端口，可以在本地使用 SSH 端口转发：
+远程服务器访问时，请用服务器公网 IP 和端口访问，例如 `http://SERVER_PUBLIC_IP:8080`。如果不想开放端口，可以在本地使用 SSH 端口转发：
 
 ```bash
-ssh -L 8080:localhost:8080 root@SERVER_IP
+ssh -L 8080:localhost:8080 root@SERVER_PUBLIC_IP
 ```
 
 然后在本地浏览器打开 `http://localhost:8080`。
@@ -655,7 +677,7 @@ Flags:
 
 # 启用 Web 报告服务器（新功能）
 ./build/perfassess -b all --web
-# 输出: 🌐 Web 服务器已启动: http://localhost:8080
+# 输出本机、公网 IP 和 SSH 端口转发访问提示
 
 # 自定义 Web 服务器端口
 ./build/perfassess -b all --web --port 9090

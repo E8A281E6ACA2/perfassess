@@ -5,11 +5,17 @@ REPO_URL="${PERFASSESS_REPO_URL:-https://github.com/E8A281E6ACA2/perfassess.git}
 WORK_DIR="${PERFASSESS_BOOTSTRAP_DIR:-$HOME/perfassess}"
 GO_VERSION="${PERFASSESS_GO_VERSION:-1.25.3}"
 OUTPUT_DIR="${PERFASSESS_AUTO_DIR:-/tmp/perfassess-auto}"
+BOOTSTRAP_TESTS_SET="${PERFASSESS_BOOTSTRAP_TESTS+x}"
 RUN_TESTS="${PERFASSESS_BOOTSTRAP_TESTS:-1}"
 START_WEB="${PERFASSESS_BOOTSTRAP_WEB:-0}"
 WEB_PORT="${PERFASSESS_WEB_PORT:-8080}"
 ACTION="run"
 PROGRESS_SERVER_PID=""
+LOW_MEMORY_THRESHOLD_MB="${PERFASSESS_LOW_MEMORY_THRESHOLD_MB:-768}"
+BOOTSTRAP_SWAP_MODE="${PERFASSESS_BOOTSTRAP_SWAP:-auto}"
+BOOTSTRAP_SWAP_SIZE_MB="${PERFASSESS_BOOTSTRAP_SWAP_SIZE_MB:-1024}"
+BOOTSTRAP_SWAP_FILE="${PERFASSESS_BOOTSTRAP_SWAP_FILE:-$OUTPUT_DIR/bootstrap.swap}"
+BOOTSTRAP_SWAP_ACTIVE="0"
 
 usage() {
   cat <<EOF
@@ -27,6 +33,8 @@ Options:
 Environment:
   PERFASSESS_BOOTSTRAP_TESTS=0   Skip go test ./...
   PERFASSESS_BOOTSTRAP_WEB=1     Start the realtime Material Design progress page.
+  PERFASSESS_BOOTSTRAP_SWAP=auto Create temporary swap on low-memory Linux hosts. Set 0 to disable.
+  PERFASSESS_LOW_MEMORY_THRESHOLD_MB=768  Memory threshold for low-memory mode.
   PERFASSESS_WEB_PORT=9090       Web report port.
   PERFASSESS_AUTO_OPTIONAL=auto  Let acceptance run optional checks when dependencies exist.
 EOF
@@ -194,6 +202,97 @@ install_go() {
   success "Go installed: $(go version)"
 }
 
+memory_total_mb() {
+  if [[ -r /proc/meminfo ]]; then
+    awk '/MemTotal:/ { printf "%d", $2 / 1024 }' /proc/meminfo
+  else
+    echo 0
+  fi
+}
+
+swap_total_mb() {
+  if [[ -r /proc/meminfo ]]; then
+    awk '/SwapTotal:/ { printf "%d", $2 / 1024 }' /proc/meminfo
+  else
+    echo 0
+  fi
+}
+
+configure_low_memory_mode() {
+  local mem_mb swap_mb
+  mem_mb="$(memory_total_mb)"
+  swap_mb="$(swap_total_mb)"
+
+  if [[ "$mem_mb" -le 0 || "$mem_mb" -ge "$LOW_MEMORY_THRESHOLD_MB" ]]; then
+    return
+  fi
+
+  info "low-memory host detected: ${mem_mb}MB RAM, ${swap_mb}MB swap"
+  export GOMAXPROCS="${GOMAXPROCS:-1}"
+  if [[ "${GOFLAGS:-}" != *"-p="* && "${GOFLAGS:-}" != *"-p "* ]]; then
+    export GOFLAGS="${GOFLAGS:-} -p=1"
+    GOFLAGS="${GOFLAGS# }"
+  fi
+  export PERFASSESS_LOW_MEMORY="1"
+
+  if [[ -z "$BOOTSTRAP_TESTS_SET" ]]; then
+    RUN_TESTS="0"
+    info "skipping unit tests on low-memory host; set PERFASSESS_BOOTSTRAP_TESTS=1 to force them"
+  fi
+
+  if [[ "$BOOTSTRAP_SWAP_MODE" == "0" || "$BOOTSTRAP_SWAP_MODE" == "false" ]]; then
+    return
+  fi
+  if [[ "$swap_mb" -ge 512 ]]; then
+    return
+  fi
+  if [[ "$(uname -s)" != "Linux" ]]; then
+    return
+  fi
+  if ! command -v mkswap >/dev/null 2>&1 || ! command -v swapon >/dev/null 2>&1; then
+    info "swap tools are unavailable; continuing with reduced Go build parallelism"
+    return
+  fi
+
+  need_sudo
+  mkdir -p "$(dirname "$BOOTSTRAP_SWAP_FILE")"
+  info "creating temporary ${BOOTSTRAP_SWAP_SIZE_MB}MB swap file for bootstrap build"
+  if command -v fallocate >/dev/null 2>&1; then
+    if ! "${SUDO[@]}" fallocate -l "${BOOTSTRAP_SWAP_SIZE_MB}M" "$BOOTSTRAP_SWAP_FILE"; then
+      info "temporary swap allocation failed; continuing with reduced Go build parallelism"
+      "${SUDO[@]}" rm -f "$BOOTSTRAP_SWAP_FILE" >/dev/null 2>&1 || true
+      return
+    fi
+  else
+    if ! "${SUDO[@]}" dd if=/dev/zero of="$BOOTSTRAP_SWAP_FILE" bs=1M count="$BOOTSTRAP_SWAP_SIZE_MB" status=none; then
+      info "temporary swap allocation failed; continuing with reduced Go build parallelism"
+      "${SUDO[@]}" rm -f "$BOOTSTRAP_SWAP_FILE" >/dev/null 2>&1 || true
+      return
+    fi
+  fi
+  "${SUDO[@]}" chmod 600 "$BOOTSTRAP_SWAP_FILE"
+  if ! "${SUDO[@]}" mkswap "$BOOTSTRAP_SWAP_FILE" >/dev/null; then
+    info "temporary swap setup failed; continuing with reduced Go build parallelism"
+    "${SUDO[@]}" rm -f "$BOOTSTRAP_SWAP_FILE" >/dev/null 2>&1 || true
+    return
+  fi
+  if ! "${SUDO[@]}" swapon "$BOOTSTRAP_SWAP_FILE"; then
+    info "temporary swap activation failed; continuing with reduced Go build parallelism"
+    "${SUDO[@]}" rm -f "$BOOTSTRAP_SWAP_FILE" >/dev/null 2>&1 || true
+    return
+  fi
+  BOOTSTRAP_SWAP_ACTIVE="1"
+  trap 'stop_progress_server; cleanup_bootstrap_swap' EXIT
+}
+
+cleanup_bootstrap_swap() {
+  if [[ "$BOOTSTRAP_SWAP_ACTIVE" == "1" ]]; then
+    "${SUDO[@]}" swapoff "$BOOTSTRAP_SWAP_FILE" >/dev/null 2>&1 || true
+    "${SUDO[@]}" rm -f "$BOOTSTRAP_SWAP_FILE" >/dev/null 2>&1 || true
+    BOOTSTRAP_SWAP_ACTIVE="0"
+  fi
+}
+
 checkout_repo() {
   if [[ -f go.mod ]] && grep -q '^module github.com/E8A281E6ACA2/perfassess$' go.mod; then
     WORK_DIR="$(pwd)"
@@ -240,7 +339,11 @@ start_progress_server() {
 
   mkdir -p "$OUTPUT_DIR"
   info "starting realtime web progress on port $WEB_PORT"
-  echo "Open http://SERVER_IP:$WEB_PORT in your browser, or use SSH port forwarding."
+  echo "Listening on all interfaces: http://0.0.0.0:$WEB_PORT"
+  echo "Open http://<server-public-ip>:$WEB_PORT in your browser, or use SSH port forwarding."
+  if public_ip="$(detect_public_ip)"; [[ -n "$public_ip" ]]; then
+    echo "Detected public IP: http://$(format_url_host "$public_ip"):$WEB_PORT"
+  fi
   echo "The page will update during the benchmark and expose generated report files."
 
   python3 "$WORK_DIR/scripts/perfassess-progress-server.py" \
@@ -249,11 +352,28 @@ start_progress_server() {
     --port "$WEB_PORT" &
   PROGRESS_SERVER_PID="$!"
 
-  trap 'stop_progress_server' EXIT
-  trap 'stop_progress_server; exit 130' INT TERM
+  trap 'stop_progress_server; cleanup_bootstrap_swap' EXIT
+  trap 'stop_progress_server; cleanup_bootstrap_swap; exit 130' INT TERM
   sleep 1
   if ! kill -0 "$PROGRESS_SERVER_PID" >/dev/null 2>&1; then
     fail "Realtime web progress failed to start. Check whether port $WEB_PORT is already in use."
+  fi
+}
+
+detect_public_ip() {
+  local ip
+  ip="$(curl -fsS --max-time 3 https://api.ipify.org 2>/dev/null || true)"
+  if [[ "$ip" =~ ^[0-9a-fA-F:.]+$ ]]; then
+    echo "$ip"
+  fi
+}
+
+format_url_host() {
+  local host="$1"
+  if [[ "$host" == *:* && "$host" != \[*\] ]]; then
+    printf '[%s]' "$host"
+  else
+    printf '%s' "$host"
   fi
 }
 
@@ -267,6 +387,7 @@ stop_progress_server() {
 run_all() {
   install_packages
   install_go
+  configure_low_memory_mode
   checkout_repo
 
   info "downloading Go modules"
@@ -293,7 +414,11 @@ run_all() {
   if [[ "$START_WEB" == "1" ]]; then
     echo ""
     info "realtime web progress remains available until this script exits"
-    echo "Open http://SERVER_IP:$WEB_PORT in your browser, or use SSH port forwarding."
+    echo "Listening on all interfaces: http://0.0.0.0:$WEB_PORT"
+    echo "Open http://<server-public-ip>:$WEB_PORT in your browser, or use SSH port forwarding."
+    if public_ip="$(detect_public_ip)"; [[ -n "$public_ip" ]]; then
+      echo "Detected public IP: http://$(format_url_host "$public_ip"):$WEB_PORT"
+    fi
     echo "Press Ctrl+C to stop the progress server."
     wait "$PROGRESS_SERVER_PID"
   fi
