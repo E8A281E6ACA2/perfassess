@@ -141,6 +141,9 @@ func TestBindFlagsVPSProfilePreset(t *testing.T) {
 	if app.config.NetworkBackend != "speedtest" {
 		t.Fatalf("expected vps profile network backend speedtest, got %q", app.config.NetworkBackend)
 	}
+	if app.config.NetworkProfile != "standard" {
+		t.Fatalf("expected vps profile network profile standard, got %q", app.config.NetworkProfile)
+	}
 	if !app.config.EnableRouteTrace {
 		t.Fatal("expected vps profile to enable route trace")
 	}
@@ -206,6 +209,46 @@ func TestBindFlagsVPSProfileAllowsExplicitOverrides(t *testing.T) {
 	}
 	if app.config.EnableIPQuality {
 		t.Fatal("expected explicit ip quality override")
+	}
+}
+
+func TestBindFlagsAcceptsNetworkProfile(t *testing.T) {
+	app := NewCLI()
+	cmd := app.GetRootCmd()
+	args := []string{"--network-profile", "standard"}
+	if err := cmd.ParseFlags(args); err != nil {
+		t.Fatalf("failed to parse flags: %v", err)
+	}
+
+	if err := app.bindFlags(cmd); err != nil {
+		t.Fatalf("expected network profile bind to succeed, got %v", err)
+	}
+
+	if app.config.NetworkProfile != "standard" {
+		t.Fatalf("expected network profile standard, got %q", app.config.NetworkProfile)
+	}
+	if len(app.config.RouteTraceTargets) <= 3 {
+		t.Fatalf("expected standard network profile to expand route targets, got %#v", app.config.RouteTraceTargets)
+	}
+}
+
+func TestBindFlagsFullPresetUsesFullNetworkProfile(t *testing.T) {
+	app := NewCLI()
+	cmd := app.GetRootCmd()
+	args := []string{"--full"}
+	if err := cmd.ParseFlags(args); err != nil {
+		t.Fatalf("failed to parse flags: %v", err)
+	}
+
+	if err := app.bindFlags(cmd); err != nil {
+		t.Fatalf("expected full preset bind to succeed, got %v", err)
+	}
+
+	if app.config.NetworkProfile != "full" {
+		t.Fatalf("expected full preset network profile full, got %q", app.config.NetworkProfile)
+	}
+	if len(app.config.RouteTraceTargets) <= 6 {
+		t.Fatalf("expected full network profile to expand route targets, got %#v", app.config.RouteTraceTargets)
 	}
 }
 

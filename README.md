@@ -452,11 +452,19 @@ make run
 
 # 完整预设 + iperf3 多节点矩阵
 ./build/perfassess --full --iperf3-servers 1.2.3.4:5201,[2001:db8::1]:5201
+
+# 标准网络档位：公共目标 + 国内三网方向参考
+./build/perfassess --route-trace --network-profile standard
+
+# 全量网络档位：更多全球和国内方向目标
+./build/perfassess --route-trace --network-profile full
 ```
 
-`--vps-profile` 面向一把梭 VPS 测评，默认启用 `sysbench` CPU 后端、`sysbench` 内存后端、`fio` 磁盘后端、`speedtest` 网络后端、`vps` 评分基准、路由追踪、流媒体检测和 IP 质量检测。它不会自动安装外部工具；建议先运行 `check-deps` 查看缺失项。使用 `speedtest` 时，报告会展示 Ookla 节点 ID、名称、地区、国家、Host、ISP、结果 URL、出口 IP 和 ping jitter。提供 `--iperf3-server`、`--iperf3-servers` 或 `--iperf3-server-file` 时，且未显式指定 `--network-backend`，会自动切换到 `iperf3` 网络后端。
+`--network-profile quick|standard|full` 控制网络检测档位。`quick` 只追踪少量公共目标；`standard` 增加国内三网方向参考；`full` 增加更多全球和国内方向目标。这里的国内方向参考是“本机出站到国内目标”的路径，不等同于真实回程；真实回程需要远端探针或第三方平台配合。
 
-`--full` 会优先使用 `sysbench` CPU 后端、`sysbench` 内存后端和 `fio` 磁盘后端，并启用路由追踪、流媒体、AI 服务、IP 质量、压力测试和安全体检；如果未安装依赖，程序会给出明确提示但不会自动安装。提供 `--iperf3-server`、`--iperf3-servers` 或 `--iperf3-server-file` 时，`--full` 会自动切换到 `iperf3` 网络后端。
+`--vps-profile` 面向一把梭 VPS 测评，默认启用 `sysbench` CPU 后端、`sysbench` 内存后端、`fio` 磁盘后端、`speedtest` 网络后端、`vps` 评分基准、路由追踪、流媒体检测和 IP 质量检测，并使用 `standard` 网络档位。它不会自动安装外部工具；建议先运行 `check-deps` 查看缺失项。使用 `speedtest` 时，报告会展示 Ookla 节点 ID、名称、地区、国家、Host、ISP、结果 URL、出口 IP 和 ping jitter。提供 `--iperf3-server`、`--iperf3-servers` 或 `--iperf3-server-file` 时，且未显式指定 `--network-backend`，会自动切换到 `iperf3` 网络后端。
+
+`--full` 会优先使用 `sysbench` CPU 后端、`sysbench` 内存后端和 `fio` 磁盘后端，并启用路由追踪、流媒体、AI 服务、IP 质量、压力测试和安全体检，网络档位为 `full`；如果未安装依赖，程序会给出明确提示但不会自动安装。提供 `--iperf3-server`、`--iperf3-servers` 或 `--iperf3-server-file` 时，`--full` 会自动切换到 `iperf3` 网络后端。
 
 #### 单项测试
 
@@ -635,6 +643,8 @@ Flags:
   -v, --verbose              启用详细输出模式
       --log-level string     设置日志级别 (debug,info,warn,error) (default "info")
       --route-trace          启用路由追踪功能
+      --network-profile string
+                              网络检测档位 (quick,standard,full) (default "quick")
       --streaming            启用流媒体解锁检测功能
       --ai-services          启用 AI 服务检测功能
       --ip-quality           启用 IP 质量检测
@@ -956,10 +966,10 @@ JSON 报告会输出 `summary.score_calibration`，记录当前校准版本、�
 
 ```bash
 # 重点测试网络性能
-./build/perfassess -b network --route-trace --streaming --web
+./build/perfassess -b network --route-trace --network-profile standard --streaming --web
 ```
 
-默认网络测试已包含 TCP connect 质量矩阵，可直接观察 IPv4/IPv6 可用性、目标失败率和抖动；如需真实上传吞吐或多节点吞吐对比，再使用 `--network-backend iperf3` 或 `--network-backend speedtest`。
+默认网络测试已包含 TCP connect 质量矩阵，可直接观察 IPv4/IPv6 可用性、目标失败率和抖动；`--network-profile standard/full` 会增加国内方向参考目标，但不等同于真实回程。如需真实上传吞吐或多节点吞吐对比，再使用 `--network-backend iperf3` 或 `--network-backend speedtest`。
 
 ### 场景4：CI/CD 集成
 

@@ -9,6 +9,7 @@ show_progress="${PERFASSESS_AUTO_PROGRESS:-1}"
 progress_file="${PERFASSESS_PROGRESS_FILE:-$output_dir/progress.json}"
 auto_profile="${PERFASSESS_AUTO_PROFILE:-standard}"
 quality_profile="${PERFASSESS_QUALITY_PROFILE:-builtin}"
+network_profile="${PERFASSESS_NETWORK_PROFILE:-auto}"
 extra_args="${PERFASSESS_AUTO_ARGS:-}"
 stress_enabled="${PERFASSESS_AUTO_STRESS:-0}"
 iperf3_server="${PERFASSESS_IPERF3_SERVER:-}"
@@ -35,12 +36,30 @@ case "$quality_profile" in
     ;;
 esac
 
+case "$network_profile" in
+  auto|quick|standard|full) ;;
+  *)
+    echo "perfassess auto failed: PERFASSESS_NETWORK_PROFILE must be auto, quick, standard, or full" >&2
+    exit 1
+    ;;
+esac
+
+if [[ "$network_profile" == "auto" ]]; then
+  case "$auto_profile" in
+    full) network_profile="full" ;;
+    standard) network_profile="standard" ;;
+    *) network_profile="quick" ;;
+  esac
+fi
+
 if [[ "$auto_profile" == "full" ]]; then
   stress_enabled="1"
 fi
 
 default_args=(--output-format json -o "$output_dir/default.json")
 default_text_args=(-o "$output_dir/default.txt")
+default_args+=(--network-profile "$network_profile")
+default_text_args+=(--network-profile "$network_profile")
 if [[ "$quality_profile" == "mainstream" ]]; then
   default_args+=(--cpu-backend sysbench --memory-backend sysbench --disk-backend fio)
   default_text_args+=(--cpu-backend sysbench --memory-backend sysbench --disk-backend fio)
@@ -278,7 +297,7 @@ finish_step "运行验收流程"
 
 current_progress_step="summary"
 progress_update "summary" "running" "生成汇总"
-python3 - "$output_dir" "$auto_profile" "$quality_profile" <<'PY'
+python3 - "$output_dir" "$auto_profile" "$quality_profile" "$network_profile" <<'PY'
 import json
 import pathlib
 import sys
@@ -288,6 +307,7 @@ import zipfile
 out = pathlib.Path(sys.argv[1])
 auto_profile = sys.argv[2]
 quality_profile = sys.argv[3]
+network_profile = sys.argv[4]
 
 def load(name):
     with (out / name).open(encoding="utf-8") as f:
@@ -460,6 +480,7 @@ stress_report = default_summary.get("stress_report") if isinstance(default_summa
 version = (out / "version.txt").read_text(encoding="utf-8").strip()
 confidence = default_summary.get("confidence_level", {}).get("level")
 calibration = default_summary.get("score_calibration", {}).get("version")
+route_note = text(default_summary.get("route_trace_note"), "路由追踪为本机出站路径参考，不等同于真实回程。")
 vps = default_summary.get("vps_benchmark_summary") if isinstance(default_summary.get("vps_benchmark_summary"), dict) else {}
 system = vps.get("system", {}) if isinstance(vps.get("system"), dict) else {}
 cpu = vps.get("cpu", {}) if isinstance(vps.get("cpu"), dict) else {}
@@ -524,6 +545,7 @@ def console_report(color=False):
         c("bold", "Perfassess 自动测评报告"),
         line("═"),
         f"{kv('版本', version)}    {kv('档位', auto_profile, 'yellow')}    {kv('质量', quality_profile, 'yellow')}",
+        kv("网络档位", network_profile, "yellow"),
         kv("输出目录", out),
     ]
 
@@ -607,6 +629,7 @@ def console_report(color=False):
         [14, 28, 30],
         status_col=1,
     ))
+    rows.append(kv("路由说明", route_note, "yellow"))
 
     streaming = default_summary.get("streaming_results")
     if isinstance(streaming, dict) and streaming:
@@ -675,6 +698,7 @@ lines = [
     f"| 版本 | {version} |",
     f"| 自动档位 | {auto_profile} |",
     f"| 质量档位 | {quality_profile} |",
+    f"| 网络档位 | {network_profile} |",
     f"| 综合评分 | {num(default_summary.get('total_score'))} / 100 |",
     f"| 等级 | {text(default_summary.get('grade'))} |",
     f"| 置信度 | {text(confidence)} |",
@@ -701,6 +725,7 @@ lines = [
     f"| IP 质量 | {ip_quality_summary(ip_report)} |",
     f"| 安全体检 | {security_summary(default_summary.get('security_report'), security_total, security_severity)} |",
     f"| 压力测试 | {stress_summary(stress_report)} |",
+    f"| 路由说明 | {route_note} |",
     "",
     "## 输出文件",
     "",

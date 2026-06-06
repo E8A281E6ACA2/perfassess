@@ -2,6 +2,15 @@ package config
 
 import "testing"
 
+func containsString(values []string, expected string) bool {
+	for _, value := range values {
+		if value == expected {
+			return true
+		}
+	}
+	return false
+}
+
 func TestDefaultConfigUsesBuiltinNetworkBackend(t *testing.T) {
 	cfg := DefaultConfig()
 
@@ -35,8 +44,48 @@ func TestDefaultConfigUsesBuiltinNetworkBackend(t *testing.T) {
 	if cfg.Iperf3ServerFile != "" {
 		t.Fatalf("expected default iperf3 server file empty, got %q", cfg.Iperf3ServerFile)
 	}
+	if cfg.NetworkProfile != DefaultNetworkProfile {
+		t.Fatalf("expected default network profile %q, got %q", DefaultNetworkProfile, cfg.NetworkProfile)
+	}
 	if err := cfg.Validate(); err != nil {
 		t.Fatalf("expected default config to validate, got %v", err)
+	}
+}
+
+func TestDefaultRouteTraceTargetsByNetworkProfile(t *testing.T) {
+	quick := DefaultRouteTraceTargets("quick")
+	standard := DefaultRouteTraceTargets("standard")
+	full := DefaultRouteTraceTargets("full")
+
+	if len(quick) != 3 {
+		t.Fatalf("expected quick profile to use 3 targets, got %#v", quick)
+	}
+	if len(standard) <= len(quick) {
+		t.Fatalf("expected standard profile to add targets, quick=%d standard=%d", len(quick), len(standard))
+	}
+	if len(full) <= len(standard) {
+		t.Fatalf("expected full profile to add targets, standard=%d full=%d", len(standard), len(full))
+	}
+	if !containsString(standard, "www.10086.cn") {
+		t.Fatalf("expected standard profile to include China Mobile direction reference, got %#v", standard)
+	}
+}
+
+func TestValidateRejectsUnknownNetworkProfile(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.NetworkProfile = "unknown"
+
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("expected invalid network profile to fail validation")
+	}
+
+	configErr, ok := err.(*ConfigError)
+	if !ok {
+		t.Fatalf("expected ConfigError, got %T", err)
+	}
+	if configErr.Field != "network_profile" {
+		t.Fatalf("expected field network_profile, got %q", configErr.Field)
 	}
 }
 

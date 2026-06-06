@@ -150,6 +150,10 @@ func (c *CLI) setupCommands() {
 	flags.Bool("route-trace", false,
 		"启用路由追踪功能")
 
+	// --network-profile 参数：选择网络检测档位
+	flags.String("network-profile", config.DefaultNetworkProfile,
+		"网络检测档位 (quick,standard,full)，影响路由目标数量和国内方向参考")
+
 	// --streaming 参数：启用流媒体检测
 	flags.Bool("streaming", false,
 		"启用流媒体解锁检测功能")
@@ -490,6 +494,11 @@ func (c *CLI) bindFlags(cmd *cobra.Command) error {
 		c.config.EnableRouteTrace = routeTrace
 	}
 
+	if networkProfile, err := flags.GetString("network-profile"); err == nil && flags.Changed("network-profile") {
+		c.config.NetworkProfile = networkProfile
+		c.config.RouteTraceTargets = config.DefaultRouteTraceTargets(networkProfile)
+	}
+
 	// 绑定 streaming 参数
 	if streaming, err := flags.GetBool("streaming"); err == nil && flags.Changed("streaming") {
 		c.config.EnableStreaming = streaming
@@ -579,6 +588,8 @@ func (c *CLI) applyQuickPreset() {
 	c.config.CPUBackend = "builtin"
 	c.config.MemoryBackend = "builtin"
 	c.config.NetworkBackend = "builtin"
+	c.config.NetworkProfile = "quick"
+	c.config.RouteTraceTargets = config.DefaultRouteTraceTargets(c.config.NetworkProfile)
 }
 
 func (c *CLI) applyFullPreset() {
@@ -592,6 +603,8 @@ func (c *CLI) applyFullPreset() {
 	c.config.CPUBackend = "sysbench"
 	c.config.MemoryBackend = "sysbench"
 	c.config.DiskBackend = "fio"
+	c.config.NetworkProfile = "full"
+	c.config.RouteTraceTargets = config.DefaultRouteTraceTargets(c.config.NetworkProfile)
 }
 
 func (c *CLI) applyVPSProfilePreset() {
@@ -607,6 +620,8 @@ func (c *CLI) applyVPSProfilePreset() {
 	c.config.MemoryBackend = "sysbench"
 	c.config.DiskBackend = "fio"
 	c.config.NetworkBackend = "speedtest"
+	c.config.NetworkProfile = "standard"
+	c.config.RouteTraceTargets = config.DefaultRouteTraceTargets(c.config.NetworkProfile)
 }
 
 // run 执行主命令
@@ -731,6 +746,10 @@ func (c *CLI) validateFlags() error {
 		return fmt.Errorf("无效的网络测试后端: %s\n有效的网络测试后端: builtin, iperf3, speedtest", c.config.NetworkBackend)
 	}
 
+	if !config.IsValidNetworkProfile(c.config.NetworkProfile) {
+		return fmt.Errorf("无效的网络检测档位: %s\n有效的网络检测档位: quick, standard, full", c.config.NetworkProfile)
+	}
+
 	return nil
 }
 
@@ -759,6 +778,7 @@ func (c *CLI) printWelcome() {
 		fmt.Printf("内存测试后端: %s\n", c.config.MemoryBackend)
 		fmt.Printf("磁盘测试后端: %s\n", c.config.DiskBackend)
 		fmt.Printf("网络测试后端: %s\n", c.config.NetworkBackend)
+		fmt.Printf("网络检测档位: %s\n", c.config.NetworkProfile)
 		if c.config.EnableRouteTrace {
 			fmt.Println("路由追踪: 已启用")
 		}

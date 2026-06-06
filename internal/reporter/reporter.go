@@ -795,6 +795,9 @@ func (rg *ReportGenerator) FormatReport(report *models.Report) string {
 		// 路由追踪结果
 		if routeResults, ok := report.Summary["route_trace_results"].([]*models.TraceResult); ok && len(routeResults) > 0 {
 			sb.WriteString("\n=== 路由追踪结果 ===\n\n")
+			if note, ok := report.Summary["route_trace_note"].(string); ok && note != "" {
+				sb.WriteString(fmt.Sprintf("说明: %s\n\n", note))
+			}
 			for _, result := range routeResults {
 				sb.WriteString(fmt.Sprintf("目标: %s\n", result.Target))
 				if result.Success {

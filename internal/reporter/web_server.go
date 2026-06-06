@@ -677,7 +677,7 @@ func (ws *WebServer) routeSection() webReportSection {
 	section.Status = webAvailabilityStatus(successCount, len(results))
 	section.StatusText = fmt.Sprintf("%d/%d 成功", successCount, len(results))
 	section.Summary = fmt.Sprintf("完成 %d 个目标追踪，成功 %d 个，平均 %.1f 跳。", len(results), successCount, avgHops)
-	section.Hint = ""
+	section.Hint = fallback(ws.summaryString("route_trace_note"), "")
 	section.Metrics = append(section.Metrics,
 		webMetricCard{Label: "目标数", Value: fmt.Sprintf("%d", len(results)), Tone: "primary"},
 		webMetricCard{Label: "成功", Value: fmt.Sprintf("%d", successCount), Unit: fmt.Sprintf("/ %d", len(results)), Tone: "green"},

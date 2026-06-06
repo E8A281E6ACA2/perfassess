@@ -5,11 +5,12 @@ package config
 import "fmt"
 
 const (
-	DefaultCPUWeight     = 0.30
-	DefaultMemoryWeight  = 0.20
-	DefaultDiskWeight    = 0.25
-	DefaultNetworkWeight = 0.25
-	DefaultScoreProfile  = "server"
+	DefaultCPUWeight      = 0.30
+	DefaultMemoryWeight   = 0.20
+	DefaultDiskWeight     = 0.25
+	DefaultNetworkWeight  = 0.25
+	DefaultScoreProfile   = "server"
+	DefaultNetworkProfile = "quick"
 )
 
 // Config 表示应用程序的配置结构
@@ -58,6 +59,9 @@ type Config struct {
 	// RouteTraceTargets 路由追踪的目标地址列表
 	// 默认包含常用的公共服务器地址
 	RouteTraceTargets []string `mapstructure:"route_trace_targets"`
+
+	// NetworkProfile 网络检测档位，可选值: quick, standard, full
+	NetworkProfile string `mapstructure:"network_profile"`
 
 	// CPUBackend CPU 测试后端，可选值: builtin, sysbench, geekbench
 	CPUBackend string `mapstructure:"cpu_backend"`
@@ -110,7 +114,8 @@ func DefaultConfig() *Config {
 		EnableIPQuality:    false,
 		EnableStressTest:   false,
 		EnableSecurityScan: false,
-		RouteTraceTargets:  []string{"8.8.8.8", "1.1.1.1", "cloudflare.com"},
+		RouteTraceTargets:  DefaultRouteTraceTargets(DefaultNetworkProfile),
+		NetworkProfile:     DefaultNetworkProfile,
 		CPUBackend:         "builtin",
 		MemoryBackend:      "builtin",
 		NetworkBackend:     "builtin",
@@ -131,6 +136,53 @@ func DefaultScoreWeights() map[string]float64 {
 		"memory":  DefaultMemoryWeight,
 		"disk":    DefaultDiskWeight,
 		"network": DefaultNetworkWeight,
+	}
+}
+
+func IsValidNetworkProfile(profile string) bool {
+	switch profile {
+	case "quick", "standard", "full":
+		return true
+	default:
+		return false
+	}
+}
+
+func DefaultRouteTraceTargets(profile string) []string {
+	switch profile {
+	case "full":
+		return []string{
+			"1.1.1.1",
+			"8.8.8.8",
+			"cloudflare.com",
+			"google.com",
+			"akamai.com",
+			"www.ctyun.cn",
+			"www.189.cn",
+			"www.chinaunicom.com.cn",
+			"www.10086.cn",
+			"www.qq.com",
+		}
+	case "standard":
+		return []string{
+			"1.1.1.1",
+			"8.8.8.8",
+			"cloudflare.com",
+			"www.189.cn",
+			"www.chinaunicom.com.cn",
+			"www.10086.cn",
+		}
+	default:
+		return []string{"1.1.1.1", "8.8.8.8", "cloudflare.com"}
+	}
+}
+
+func NetworkProfileRouteNote(profile string) string {
+	switch profile {
+	case "standard", "full":
+		return "路由追踪为本机出站路径和国内方向参考，不等同于真实回程；真实回程需要远端探针或第三方平台配合。"
+	default:
+		return "路由追踪为本机出站路径参考，不等同于真实回程。"
 	}
 }
 
@@ -224,6 +276,13 @@ func (c *Config) Validate() error {
 		return &ConfigError{
 			Field:   "network_backend",
 			Message: "无效的网络测试后端: " + c.NetworkBackend,
+		}
+	}
+
+	if !IsValidNetworkProfile(c.NetworkProfile) {
+		return &ConfigError{
+			Field:   "network_profile",
+			Message: "无效的网络检测档位: " + c.NetworkProfile,
 		}
 	}
 

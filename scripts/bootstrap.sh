@@ -11,6 +11,7 @@ START_WEB="${PERFASSESS_BOOTSTRAP_WEB:-0}"
 WEB_PORT="${PERFASSESS_WEB_PORT:-8080}"
 AUTO_PROFILE="${PERFASSESS_AUTO_PROFILE:-auto}"
 QUALITY_PROFILE="${PERFASSESS_QUALITY_PROFILE:-auto}"
+NETWORK_PROFILE="${PERFASSESS_NETWORK_PROFILE:-auto}"
 BOOTSTRAP_INTERACTIVE="${PERFASSESS_BOOTSTRAP_INTERACTIVE:-auto}"
 ACTION="run"
 PROGRESS_SERVER_PID=""
@@ -35,6 +36,8 @@ Options:
   --port PORT     Web report port when --web is used. Default: $WEB_PORT
   --profile NAME  Auto benchmark profile: auto, basic, standard, full. Default: $AUTO_PROFILE
   --quality NAME  Benchmark backend quality: auto, builtin, mainstream. Default: $QUALITY_PROFILE
+  --network-profile NAME
+                   Network test profile: auto, quick, standard, full. Default: $NETWORK_PROFILE
   --cleanup-after-run
                    Remove build artifacts after benchmark. Reports remain in $OUTPUT_DIR.
   --clean         Remove build output and auto-test output.
@@ -50,6 +53,7 @@ Environment:
   PERFASSESS_WEB_PORT=9090       Web report port.
   PERFASSESS_AUTO_PROFILE=standard  Auto profile: auto, basic, standard, or full.
   PERFASSESS_QUALITY_PROFILE=mainstream  Backend quality: auto, builtin, or mainstream.
+  PERFASSESS_NETWORK_PROFILE=standard  Network profile: auto, quick, standard, or full.
   PERFASSESS_AUTO_STRESS=1          Include stress test when profile is standard.
   PERFASSESS_AUTO_OPTIONAL=auto  Let acceptance run optional checks when dependencies exist.
   PERFASSESS_IPERF3_SERVER=1.2.3.4:5201  Use iperf3 network backend with this server.
@@ -98,6 +102,11 @@ while [[ $# -gt 0 ]]; do
     --quality)
       [[ $# -ge 2 ]] || fail "--quality requires a value"
       QUALITY_PROFILE="$2"
+      shift 2
+      ;;
+    --network-profile)
+      [[ $# -ge 2 ]] || fail "--network-profile requires a value"
+      NETWORK_PROFILE="$2"
       shift 2
       ;;
     --cleanup-after-run)
@@ -430,6 +439,20 @@ recommended_quality_profile() {
   fi
 }
 
+recommended_network_profile() {
+  case "$1" in
+    full)
+      echo "full"
+      ;;
+    standard)
+      echo "standard"
+      ;;
+    *)
+      echo "quick"
+      ;;
+  esac
+}
+
 profile_description() {
   case "$1" in
     basic)
@@ -451,6 +474,20 @@ quality_description() {
       ;;
     mainstream)
       echo "主流后端：安装并使用 sysbench/fio；有 iperf3 服务端时使用真实上传，报告更可比。"
+      ;;
+  esac
+}
+
+network_profile_description() {
+  case "$1" in
+    quick)
+      echo "轻量网络：少量公共目标，耗时短，只作出站路径参考。"
+      ;;
+    full)
+      echo "全量网络：更多全球和国内方向目标，耗时更长；国内方向仅作参考，不等同真实回程。"
+      ;;
+    standard)
+      echo "标准网络：公共目标 + 国内三网方向参考；不等同真实回程。"
       ;;
   esac
 }
@@ -481,7 +518,14 @@ choose_auto_profile() {
       ;;
   esac
 
-  local mem_mb swap_mb disk_mb cpu_count recommended recommended_quality selected selected_quality
+  case "$NETWORK_PROFILE" in
+    auto|quick|standard|full) ;;
+    *)
+      fail "--network-profile must be auto, quick, standard, or full"
+      ;;
+  esac
+
+  local mem_mb swap_mb disk_mb cpu_count recommended recommended_quality recommended_network selected selected_quality selected_network
   mem_mb="$(memory_total_mb)"
   swap_mb="$(swap_total_mb)"
   disk_mb="$(disk_available_mb)"
@@ -490,6 +534,11 @@ choose_auto_profile() {
   cpu_count="${cpu_count:-0}"
   recommended="$(recommended_profile "$mem_mb" "$disk_mb" "$cpu_count")"
   recommended_quality="$(recommended_quality_profile "$mem_mb" "$disk_mb" "$cpu_count")"
+  if [[ "$fixed_profile" == "1" ]]; then
+    recommended_network="$(recommended_network_profile "$AUTO_PROFILE")"
+  else
+    recommended_network="$(recommended_network_profile "$recommended")"
+  fi
 
   echo ""
   info "machine probe before benchmark"
@@ -502,6 +551,7 @@ choose_auto_profile() {
     echo "Recommended profile: ${recommended} - $(profile_description "$recommended")"
   fi
   echo "Recommended quality: ${recommended_quality} - $(quality_description "$recommended_quality")"
+  echo "Recommended network: ${recommended_network} - $(network_profile_description "$recommended_network")"
 
   if can_prompt; then
     if [[ "$fixed_profile" != "1" ]]; then
@@ -533,6 +583,22 @@ choose_auto_profile() {
         *) QUALITY_PROFILE="$recommended_quality" ;;
       esac
     fi
+
+    if [[ "$NETWORK_PROFILE" == "auto" ]]; then
+      echo ""
+      echo "Choose network profile:"
+      echo "  1) quick    - $(network_profile_description quick)"
+      echo "  2) standard - $(network_profile_description standard)"
+      echo "  3) full     - $(network_profile_description full)"
+      printf "Selection [recommended: %s]: " "$recommended_network"
+      read_tty selected_network
+      case "${selected_network:-$recommended_network}" in
+        1|quick) NETWORK_PROFILE="quick" ;;
+        2|standard) NETWORK_PROFILE="standard" ;;
+        3|full) NETWORK_PROFILE="full" ;;
+        *) NETWORK_PROFILE="$recommended_network" ;;
+      esac
+    fi
   else
     if [[ "$fixed_profile" != "1" ]]; then
       AUTO_PROFILE="$recommended"
@@ -540,17 +606,23 @@ choose_auto_profile() {
     if [[ "$QUALITY_PROFILE" == "auto" ]]; then
       QUALITY_PROFILE="$recommended_quality"
     fi
+    if [[ "$NETWORK_PROFILE" == "auto" ]]; then
+      NETWORK_PROFILE="$recommended_network"
+    fi
     info "non-interactive mode selected profile: $AUTO_PROFILE"
     info "non-interactive mode selected quality: $QUALITY_PROFILE"
+    info "non-interactive mode selected network: $NETWORK_PROFILE"
   fi
 
   export PERFASSESS_AUTO_PROFILE="$AUTO_PROFILE"
   export PERFASSESS_QUALITY_PROFILE="$QUALITY_PROFILE"
+  export PERFASSESS_NETWORK_PROFILE="$NETWORK_PROFILE"
   if [[ "$AUTO_PROFILE" == "full" ]]; then
     export PERFASSESS_AUTO_STRESS="1"
   fi
   success "auto profile selected: $AUTO_PROFILE"
   success "quality profile selected: $QUALITY_PROFILE"
+  success "network profile selected: $NETWORK_PROFILE"
 }
 
 checkout_repo() {

@@ -196,6 +196,8 @@ func (ac *AssessmentController) RunAssessment(session *models.AssessmentSession)
 	// 添加可选功能结果到报告
 	if routeTraceResults != nil {
 		report.Summary["route_trace_results"] = routeTraceResults
+		report.Summary["network_profile"] = ac.config.NetworkProfile
+		report.Summary["route_trace_note"] = config.NetworkProfileRouteNote(ac.config.NetworkProfile)
 	}
 	if streamingResults != nil {
 		report.Summary["streaming_results"] = streamingResults
