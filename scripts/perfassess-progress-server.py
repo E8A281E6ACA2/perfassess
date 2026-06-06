@@ -1160,11 +1160,11 @@ def render_report(report: dict[str, Any], output_dir: Optional[Path] = None) -> 
     .score-number {{ font-size: 64px; line-height: 1; font-weight: 820; }}
     .score-label {{ margin-top: 8px; color: rgba(255, 255, 255, 0.82); font-size: 13px; }}
     .report-layout {{ display: grid; grid-template-columns: 248px minmax(0, 1fr); gap: 28px; align-items: start; margin-top: 24px; }}
-    .sidebar {{ position: sticky; top: 16px; max-height: calc(100vh - 32px); padding: 4px 12px 16px 0; background: transparent; border-right: 1px solid var(--outline); box-shadow: none; overflow-y: auto; scrollbar-width: thin; }}
-    .sidebar-title {{ padding: 6px 8px 14px; color: var(--muted); font-size: 12px; font-weight: 800; }}
-    .nav-group + .nav-group {{ margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--outline); }}
-    .nav-group-title {{ padding: 2px 8px 8px; color: var(--muted); font-size: 11px; font-weight: 820; text-transform: uppercase; }}
-    .nav-link {{ display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 40px; padding: 8px 10px 8px 12px; border-radius: 999px; color: var(--text); text-decoration: none; font-size: 14px; font-weight: 680; }}
+    .sidebar {{ position: sticky; top: 16px; padding: 2px 12px 12px 0; background: transparent; border-right: 1px solid var(--outline); box-shadow: none; overflow: visible; }}
+    .sidebar-title {{ padding: 4px 8px 10px; color: var(--muted); font-size: 12px; font-weight: 800; }}
+    .nav-group + .nav-group {{ margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--outline); }}
+    .nav-group-title {{ padding: 2px 8px 5px; color: var(--muted); font-size: 11px; font-weight: 820; text-transform: uppercase; }}
+    .nav-link {{ display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 34px; padding: 6px 8px 6px 12px; border-radius: 999px; color: var(--text); text-decoration: none; font-size: 13px; font-weight: 680; }}
     .nav-link:hover, .nav-link.active {{ background: var(--primary-container); color: #041e49; }}
     .nav-link.active {{ box-shadow: inset 3px 0 0 var(--primary); }}
     .content-stack {{ display: grid; gap: 18px; }}
@@ -1220,7 +1220,7 @@ def render_report(report: dict[str, Any], output_dir: Optional[Path] = None) -> 
     .footer {{ margin-top: 24px; padding: 22px; text-align: center; color: var(--muted); font-size: 13px; }}
     @media (max-width: 1100px) {{
       .report-layout {{ grid-template-columns: 1fr; }}
-      .sidebar {{ position: static; max-height: none; display: flex; gap: 8px; padding: 0 0 10px; border-right: 0; border-bottom: 1px solid var(--outline); overflow-x: auto; }}
+      .sidebar {{ position: static; display: flex; gap: 8px; padding: 0 0 10px; border-right: 0; border-bottom: 1px solid var(--outline); overflow-x: auto; }}
       .sidebar-title {{ display: none; }}
       .nav-link {{ flex: 0 0 auto; }}
     }}

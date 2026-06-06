@@ -190,30 +190,28 @@ const HTMLTemplate = `<!DOCTYPE html>
         .sidebar {
             position: sticky;
             top: 16px;
-            max-height: calc(100vh - 32px);
-            overflow-y: auto;
-            scrollbar-width: thin;
-            padding: 4px 12px 16px 0;
+            overflow: visible;
+            padding: 2px 12px 12px 0;
             background: transparent;
             border-right: 1px solid var(--md-outline-variant);
             box-shadow: none;
         }
 
         .sidebar-title {
-            padding: 6px 8px 14px;
+            padding: 4px 8px 10px;
             color: var(--md-muted);
             font-size: 12px;
             font-weight: 800;
         }
 
         .nav-group + .nav-group {
-            margin-top: 18px;
-            padding-top: 16px;
+            margin-top: 12px;
+            padding-top: 10px;
             border-top: 1px solid var(--md-outline-variant);
         }
 
         .nav-group-title {
-            padding: 2px 8px 8px;
+            padding: 2px 8px 5px;
             color: var(--md-muted);
             font-size: 11px;
             font-weight: 820;
@@ -224,12 +222,12 @@ const HTMLTemplate = `<!DOCTYPE html>
             align-items: center;
             justify-content: space-between;
             gap: 8px;
-            min-height: 40px;
-            padding: 8px 10px 8px 12px;
+            min-height: 34px;
+            padding: 6px 8px 6px 12px;
             border-radius: 999px;
             color: var(--md-text);
             text-decoration: none;
-            font-size: 14px;
+            font-size: 13px;
             font-weight: 680;
         }
 
@@ -540,7 +538,6 @@ const HTMLTemplate = `<!DOCTYPE html>
 
             .sidebar {
                 position: static;
-                max-height: none;
                 display: flex;
                 gap: 8px;
                 padding: 0 0 10px;
