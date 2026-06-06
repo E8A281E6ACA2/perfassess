@@ -2,17 +2,41 @@ package models
 
 // IPQualityReport 汇总公网 IP 质量检测结果
 type IPQualityReport struct {
-	PublicIP        string              `json:"public_ip"`
-	IPVersion       string              `json:"ip_version"`
-	ISP             string              `json:"isp,omitempty"`
-	Country         string              `json:"country,omitempty"`
-	City            string              `json:"city,omitempty"`
-	IPType          string              `json:"ip_type"`
-	RiskLevel       string              `json:"risk_level"`
-	RiskScore       int                 `json:"risk_score"`
-	BlacklistChecks []*IPBlacklistCheck `json:"blacklist_checks"`
-	MailChecks      []*MailPortCheck    `json:"mail_checks"`
-	Notes           []string            `json:"notes,omitempty"`
+	PublicIP         string              `json:"public_ip"`
+	IPVersion        string              `json:"ip_version"`
+	ISP              string              `json:"isp,omitempty"`
+	Country          string              `json:"country,omitempty"`
+	City             string              `json:"city,omitempty"`
+	ASN              string              `json:"asn,omitempty"`
+	Organization     string              `json:"organization,omitempty"`
+	ReverseDNS       []string            `json:"reverse_dns,omitempty"`
+	IPType           string              `json:"ip_type"`
+	RiskLevel        string              `json:"risk_level"`
+	RiskScore        int                 `json:"risk_score"`
+	RiskFactors      []*IPRiskFactor     `json:"risk_factors"`
+	BlacklistSummary *IPBlacklistSummary `json:"blacklist_summary,omitempty"`
+	BlacklistChecks  []*IPBlacklistCheck `json:"blacklist_checks"`
+	MailChecks       []*MailPortCheck    `json:"mail_checks"`
+	Notes            []string            `json:"notes,omitempty"`
+}
+
+// IPRiskFactor 表示单个风险因子的推断结果
+type IPRiskFactor struct {
+	Name       string `json:"name"`
+	Detected   bool   `json:"detected"`
+	Confidence string `json:"confidence"`
+	Source     string `json:"source"`
+	Detail     string `json:"detail,omitempty"`
+}
+
+// IPBlacklistSummary 汇总 DNSBL 查询结果
+type IPBlacklistSummary struct {
+	Total   int `json:"total"`
+	Clean   int `json:"clean"`
+	Listed  int `json:"listed"`
+	Timeout int `json:"timeout"`
+	Skipped int `json:"skipped"`
+	Other   int `json:"other"`
 }
 
 // IPBlacklistCheck 表示单个 DNSBL 黑名单查询结果

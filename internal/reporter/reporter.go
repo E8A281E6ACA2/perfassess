@@ -848,6 +848,15 @@ func (rg *ReportGenerator) FormatReport(report *models.Report) string {
 			if ipQualityReport.ISP != "" {
 				sb.WriteString(fmt.Sprintf("ISP:            %s\n", ipQualityReport.ISP))
 			}
+			if ipQualityReport.ASN != "" {
+				sb.WriteString(fmt.Sprintf("ASN:            AS%s\n", ipQualityReport.ASN))
+			}
+			if ipQualityReport.Organization != "" {
+				sb.WriteString(fmt.Sprintf("组织:           %s\n", ipQualityReport.Organization))
+			}
+			if len(ipQualityReport.ReverseDNS) > 0 {
+				sb.WriteString(fmt.Sprintf("反向 DNS:       %s\n", strings.Join(ipQualityReport.ReverseDNS, ", ")))
+			}
 			location := strings.Trim(strings.Join([]string{ipQualityReport.Country, ipQualityReport.City}, " "), " ")
 			if location != "" {
 				sb.WriteString(fmt.Sprintf("位置:           %s\n", location))
@@ -855,6 +864,22 @@ func (rg *ReportGenerator) FormatReport(report *models.Report) string {
 			sb.WriteString(fmt.Sprintf("IP 类型:        %s\n", ipQualityLabel(ipQualityReport.IPType)))
 			sb.WriteString(fmt.Sprintf("风险等级:       %s (%d/100)\n\n", ipRiskLabel(ipQualityReport.RiskLevel), ipQualityReport.RiskScore))
 
+			if len(ipQualityReport.RiskFactors) > 0 {
+				sb.WriteString("风险因子:\n")
+				for _, factor := range ipQualityReport.RiskFactors {
+					sb.WriteString(fmt.Sprintf("  - %-10s %s", riskFactorLabel(factor), riskFactorStatusLabel(factor)))
+					if factor != nil && factor.Detail != "" {
+						sb.WriteString(fmt.Sprintf(" - %s", factor.Detail))
+					}
+					sb.WriteString("\n")
+				}
+				sb.WriteString("\n")
+			}
+			if ipQualityReport.BlacklistSummary != nil {
+				summary := ipQualityReport.BlacklistSummary
+				sb.WriteString(fmt.Sprintf("DNSBL 汇总:     总计 %d，正常 %d，命中 %d，超时 %d，跳过 %d\n\n",
+					summary.Total, summary.Clean, summary.Listed, summary.Timeout, summary.Skipped))
+			}
 			if len(ipQualityReport.BlacklistChecks) > 0 {
 				sb.WriteString("DNSBL 黑名单:\n")
 				for _, check := range ipQualityReport.BlacklistChecks {
@@ -1000,6 +1025,36 @@ func mailCheckStatusLabel(check *models.MailPortCheck) string {
 	default:
 		return check.Status
 	}
+}
+
+func riskFactorLabel(factor *models.IPRiskFactor) string {
+	if factor == nil {
+		return "未知"
+	}
+	switch factor.Name {
+	case "proxy":
+		return "代理"
+	case "vpn":
+		return "VPN"
+	case "tor":
+		return "Tor"
+	case "datacenter":
+		return "机房/托管"
+	case "abuse":
+		return "滥用"
+	default:
+		return fallbackText(factor.Name, "未知")
+	}
+}
+
+func riskFactorStatusLabel(factor *models.IPRiskFactor) string {
+	if factor == nil {
+		return "未知"
+	}
+	if factor.Detected {
+		return "命中"
+	}
+	return "未发现"
 }
 
 func scoreComponentLabel(key string) string {

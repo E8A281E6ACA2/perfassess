@@ -826,11 +826,31 @@ func (ws *WebServer) ipQualitySection() webReportSection {
 		webDetailRow{Label: "公网 IP", Value: fallback(report.PublicIP, "-")},
 		webDetailRow{Label: "IP 版本", Value: fallback(report.IPVersion, "-")},
 		webDetailRow{Label: "ISP", Value: fallback(report.ISP, "-")},
+		webDetailRow{Label: "ASN", Value: ipQualityASNLabel(report)},
+		webDetailRow{Label: "反向 DNS", Value: fallback(strings.Join(report.ReverseDNS, ", "), "-")},
 		webDetailRow{Label: "位置", Value: fallback(strings.Trim(strings.Join([]string{report.Country, report.City}, " "), " "), "-")},
 		webDetailRow{Label: "IP 类型", Value: ipQualityLabel(report.IPType)},
 	)
+	if len(report.RiskFactors) > 0 {
+		table := webTable{Title: "风险因子", Headers: []string{"因子", "状态", "置信度", "来源", "详情"}}
+		for _, factor := range report.RiskFactors {
+			table.Rows = append(table.Rows, []string{
+				riskFactorLabel(factor),
+				riskFactorStatusLabel(factor),
+				riskFactorConfidence(factor),
+				riskFactorSource(factor),
+				riskFactorDetail(factor),
+			})
+		}
+		section.Tables = append(section.Tables, table)
+	}
 	if len(report.BlacklistChecks) > 0 {
-		table := webTable{Title: "DNSBL 黑名单", Headers: []string{"名单", "状态", "详情"}}
+		title := "DNSBL 黑名单"
+		if report.BlacklistSummary != nil {
+			summary := report.BlacklistSummary
+			title = fmt.Sprintf("DNSBL 黑名单（总计 %d / 命中 %d / 正常 %d / 超时 %d）", summary.Total, summary.Listed, summary.Clean, summary.Timeout)
+		}
+		table := webTable{Title: title, Headers: []string{"名单", "状态", "详情"}}
 		for _, check := range report.BlacklistChecks {
 			table.Rows = append(table.Rows, []string{
 				check.Zone,
@@ -993,6 +1013,44 @@ func countReachableMailChecks(checks []*models.MailPortCheck) int {
 		}
 	}
 	return count
+}
+
+func ipQualityASNLabel(report *models.IPQualityReport) string {
+	if report == nil {
+		return "-"
+	}
+	parts := []string{}
+	if report.ASN != "" {
+		parts = append(parts, "AS"+report.ASN)
+	}
+	if report.Organization != "" {
+		parts = append(parts, report.Organization)
+	}
+	if len(parts) == 0 {
+		return "-"
+	}
+	return strings.Join(parts, " / ")
+}
+
+func riskFactorConfidence(factor *models.IPRiskFactor) string {
+	if factor == nil {
+		return "-"
+	}
+	return fallback(factor.Confidence, "-")
+}
+
+func riskFactorSource(factor *models.IPRiskFactor) string {
+	if factor == nil {
+		return "-"
+	}
+	return fallback(factor.Source, "-")
+}
+
+func riskFactorDetail(factor *models.IPRiskFactor) string {
+	if factor == nil {
+		return "-"
+	}
+	return fallback(factor.Detail, "-")
 }
 
 func stressWebStatus(failedCount int, degradedCount int) string {

@@ -176,7 +176,7 @@ cat /tmp/perfassess-auto/summary.md
   - 路由追踪测试（可选）
   - 流媒体解锁检测（可选）
   - AI 服务检测（可选）
-  - IP 质量检测（可选，DNSBL、邮件端口、IP 类型和风险评分）
+  - IP 质量检测（可选，ASN、反向 DNS、风险因子、DNSBL、邮件端口和风险评分）
   - 安全体检（可选）
 
 - ✅ **系统信息收集**
@@ -469,7 +469,7 @@ make run
 ./build/perfassess --full
 ```
 
-IP 质量检测会写入文本报告、JSON `summary.ip_quality_report` 和 Web 报告的“IP 质量”模块。当前版本包含 DNSBL 黑名单查询、邮件端口出站连通性、基于 ISP 关键词的 IP 类型推断和风险评分；这些检测只做网络查询，不会安装依赖。
+IP 质量检测会写入文本报告、JSON `summary.ip_quality_report` 和 Web 报告的“IP 质量”模块。当前版本包含 Team Cymru ASN 查询、反向 DNS、风险因子启发式判断、精选 DNSBL 黑名单查询、多个邮件服务商出站连通性、基于 ISP/ASN/rDNS 关键词的 IP 类型推断和风险评分；这些检测只做 DNS/TCP 网络查询，不会安装依赖。
 
 #### 🌐 Web 报告（新功能）
 
