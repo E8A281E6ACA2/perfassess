@@ -407,8 +407,25 @@ def status_text(value):
         return "未执行"
     return text(value)
 
+def number_value(value):
+    if isinstance(value, bool) or value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+def int_value(value, default=0):
+    number = number_value(value)
+    if number is None:
+        return default
+    return int(number)
+
 def json_dump(path, value):
     path.write_text(json.dumps(value, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+def md_cell(value):
+    return text(value).replace("|", "\\|")
 
 def route_group(target):
     lowered = text(target, "").lower()
@@ -460,6 +477,67 @@ def route_rows(results):
 
 def has_china_route_reference(rows):
     return any(row and row[0] == "国内方向参考" for row in rows)
+
+def iperf3_matrix_nodes(metrics):
+    if not isinstance(metrics, dict):
+        return []
+    count = int_value(metrics.get("iperf3_matrix_server_count"))
+    nodes = []
+    for index in range(1, count + 1):
+        prefix = f"iperf3_matrix_{index}"
+        download = number_value(metrics.get(f"{prefix}_download_mbps"))
+        upload = number_value(metrics.get(f"{prefix}_upload_mbps"))
+        latency = number_value(metrics.get(f"{prefix}_latency_ms"))
+        error = text(metrics.get(f"{prefix}_error"), "")
+        has_result = (download or 0) > 0 or (upload or 0) > 0
+        if error and has_result:
+            status = "部分"
+        elif error:
+            status = "失败"
+        else:
+            status = "完成"
+        nodes.append({
+            "index": index,
+            "server": text(metrics.get(f"{prefix}_server")),
+            "host": text(metrics.get(f"{prefix}_host")),
+            "port": text(metrics.get(f"{prefix}_port"), ""),
+            "protocol": text(metrics.get(f"{prefix}_protocol")),
+            "download_mbps": download,
+            "upload_mbps": upload,
+            "latency_ms": latency,
+            "status": status,
+            "error": error,
+        })
+    return nodes
+
+def iperf3_matrix_summary(metrics):
+    nodes = iperf3_matrix_nodes(metrics)
+    if not nodes:
+        return {}
+    return {
+        "profile": text(metrics.get("iperf3_matrix_profile"), "multi_server"),
+        "server_count": int_value(metrics.get("iperf3_matrix_server_count"), len(nodes)),
+        "success_count": int_value(metrics.get("iperf3_matrix_success_count")),
+        "avg_download_mbps": number_value(metrics.get("iperf3_matrix_avg_download_mbps")),
+        "avg_upload_mbps": number_value(metrics.get("iperf3_matrix_avg_upload_mbps")),
+        "best_download_mbps": number_value(metrics.get("iperf3_matrix_best_download_mbps")),
+        "best_upload_mbps": number_value(metrics.get("iperf3_matrix_best_upload_mbps")),
+        "nodes": nodes,
+    }
+
+def iperf3_console_rows(metrics):
+    rows = []
+    for node in iperf3_matrix_nodes(metrics):
+        status = node["status"] if not node["error"] else f"{node['status']}: {node['error']}"
+        rows.append([
+            node["server"],
+            node["protocol"],
+            f"{num(node['download_mbps'])} Mbps" if node["download_mbps"] is not None else "-",
+            f"{num(node['upload_mbps'])} Mbps" if node["upload_mbps"] is not None else "-",
+            f"{num(node['latency_ms'])} ms" if node["latency_ms"] is not None else "-",
+            status,
+        ])
+    return rows
 
 def display_width(value):
     width = 0
@@ -575,6 +653,7 @@ def write_module_artifacts():
         **module_common,
         "network": network,
         "network_metrics": network_metrics,
+        "iperf3_matrix": iperf3_matrix_summary(network_metrics),
         "route_trace_note": route_note,
         "route_trace_results": default_summary.get("route_trace_results", []),
         "streaming_results": default_summary.get("streaming_results", {}),
@@ -621,6 +700,7 @@ def write_module_artifacts():
             f"网络档位: {network_profile}",
             f"吞吐: 延迟 {num(network.get('latency_ms'))} ms | 下载 {num(network.get('download_mbps'))} Mbps | 上传 {num(network.get('upload_mbps'))} Mbps",
             f"质量: IPv4 {yes_no(network.get('ipv4_available'))} | IPv6 {yes_no(network.get('ipv6_available'))} | 抖动 {num(network.get('quality_jitter_ms'))} ms | 失败率 {num(network.get('quality_failure_rate'))}%",
+            f"iperf3: {ratio_or_skipped(int_value(network_metrics.get('iperf3_matrix_success_count')), int_value(network_metrics.get('iperf3_matrix_server_count')), '节点成功')}",
             f"路由: {ratio_or_skipped(route_ok, route_total, '成功')}",
             f"说明: {route_note}",
             "",
@@ -768,6 +848,15 @@ def console_report(color=False):
         [14, 24, 34],
         status_col=1,
     ))
+    iperf3_rows = iperf3_console_rows(network_metrics)
+    if iperf3_rows:
+        rows += section("iperf3 多节点矩阵")
+        rows.extend(table(
+            ["节点", "协议", "下载", "上传", "延迟", "状态/错误"],
+            iperf3_rows,
+            [20, 8, 12, 12, 10, 12],
+            status_col=5,
+        ))
 
     rows += section("IP 质量")
     if ip_report:
@@ -905,6 +994,21 @@ lines = [
     f"| 磁盘 | 读 {metric('disk_result', 'sequential_read_mbps')} MB/s / 写 {metric('disk_result', 'sequential_write_mbps')} MB/s / 随机 {metric('disk_result', 'random_iops', 0)} IOPS |",
     f"| 网络 | 延迟 {metric('network_result', 'latency_ms')} ms / 下载 {metric('network_result', 'download_speed_mbps')} Mbps / 上传 {metric('network_result', 'upload_speed_mbps')} Mbps |",
     "",
+]
+
+iperf3_rows = iperf3_console_rows(network_metrics)
+if iperf3_rows:
+    lines.extend([
+        "## iperf3 多节点矩阵",
+        "",
+        "| 节点 | 协议 | 下载 | 上传 | 延迟 | 状态/错误 |",
+        "|------|------|------|------|------|-----------|",
+    ])
+    for row in iperf3_rows:
+        lines.append(f"| {md_cell(row[0])} | {md_cell(row[1])} | {md_cell(row[2])} | {md_cell(row[3])} | {md_cell(row[4])} | {md_cell(row[5])} |")
+    lines.append("")
+
+lines.extend([
     "## 扩展检测",
     "",
     "| 模块 | 结果 |",
@@ -917,7 +1021,7 @@ lines = [
     f"| 压力测试 | {stress_summary(stress_report)} |",
     f"| 路由说明 | {route_note} |",
     "",
-]
+])
 
 route_detail_rows = route_rows(default_summary.get("route_trace_results"))
 if route_detail_rows:
