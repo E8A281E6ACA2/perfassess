@@ -358,10 +358,21 @@ def num(value, digits=2, default="-"):
     except (TypeError, ValueError):
         return default
 
+def as_dict(value):
+    return value if isinstance(value, dict) else {}
+
 def metric(result_name, key, digits=2):
-    result = default_report.get("test_results", {}).get(result_name, {})
-    metrics = result.get("metrics", {}) if isinstance(result, dict) else {}
+    result = as_dict(as_dict(default_report.get("test_results")).get(result_name))
+    metrics = as_dict(result.get("metrics"))
     return num(metrics.get(key), digits)
+
+def summary_metric(section_name, key, result_name=None, metric_key=None, digits=2):
+    section = as_dict(vps.get(section_name))
+    value = section.get(key)
+    if value is None and result_name:
+        value = metric(result_name, metric_key or key, digits)
+        return value
+    return num(value, digits)
 
 def availability_count(value):
     if not isinstance(value, dict):
@@ -1109,10 +1120,10 @@ lines = [
     "",
     "| 模块 | 关键结果 |",
     "|------|----------|",
-    f"| CPU | 单核 {metric('cpu_result', 'single_core_score')} / 多核 {metric('cpu_result', 'multi_core_score')} / 总分 {metric('cpu_result', 'total_score')} |",
-    f"| 内存 | 读 {metric('memory_result', 'read_speed_mbps')} MB/s / 写 {metric('memory_result', 'write_speed_mbps')} MB/s |",
-    f"| 磁盘 | 读 {metric('disk_result', 'sequential_read_mbps')} MB/s / 写 {metric('disk_result', 'sequential_write_mbps')} MB/s / 随机 {metric('disk_result', 'random_iops', 0)} IOPS |",
-    f"| 网络 | 延迟 {metric('network_result', 'latency_ms')} ms / 下载 {metric('network_result', 'download_speed_mbps')} Mbps / 上传 {metric('network_result', 'upload_speed_mbps')} Mbps |",
+    f"| CPU | 单核 {summary_metric('cpu', 'single_core_score', 'cpu_result')} / 多核 {summary_metric('cpu', 'multi_core_score', 'cpu_result')} / 总分 {summary_metric('cpu', 'total_score', 'cpu_result')} |",
+    f"| 内存 | 读 {summary_metric('memory', 'read_mbps', 'memory_result', 'read_speed_mbps')} MB/s / 写 {summary_metric('memory', 'write_mbps', 'memory_result', 'write_speed_mbps')} MB/s |",
+    f"| 磁盘 | 读 {summary_metric('disk', 'sequential_read_mbps', 'disk_result')} MB/s / 写 {summary_metric('disk', 'sequential_write_mbps', 'disk_result')} MB/s / 随机 {summary_metric('disk', 'random_iops', 'disk_result', 'random_iops', 0)} IOPS |",
+    f"| 网络 | 延迟 {summary_metric('network', 'latency_ms', 'network_result')} ms / 下载 {summary_metric('network', 'download_mbps', 'network_result', 'download_speed_mbps')} Mbps / 上传 {summary_metric('network', 'upload_mbps', 'network_result', 'upload_speed_mbps')} Mbps |",
     "",
 ]
 
