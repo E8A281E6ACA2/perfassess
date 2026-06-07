@@ -22,6 +22,15 @@ type StreamingPlatform struct {
 	// TestURL 测试URL
 	TestURL string
 
+	// Category 平台分类，用于报告分组
+	Category string
+
+	// RegionHint 预期区域或主要服务区域
+	RegionHint string
+
+	// Protocol 当前检测协议视角
+	Protocol string
+
 	// CheckFunc 检测函数，根据HTTP响应判断是否可访问
 	CheckFunc func(response *http.Response, body string) (bool, string, string)
 }
@@ -91,8 +100,11 @@ func (sd *StreamingDetector) SetProfile(profile string) {
 func (sd *StreamingDetector) initDefaultPlatforms() {
 	// Netflix
 	sd.platforms["Netflix"] = StreamingPlatform{
-		Name:    "Netflix",
-		TestURL: "https://www.netflix.com/title/70143836",
+		Name:       "Netflix",
+		TestURL:    "https://www.netflix.com/title/70143836",
+		Category:   "global",
+		RegionHint: "Global",
+		Protocol:   "default",
 		CheckFunc: func(resp *http.Response, body string) (bool, string, string) {
 			if resp.StatusCode == 200 {
 				if strings.Contains(body, "Not Available") || strings.Contains(body, "not available") {
@@ -113,8 +125,11 @@ func (sd *StreamingDetector) initDefaultPlatforms() {
 
 	// YouTube Premium
 	sd.platforms["YouTube"] = StreamingPlatform{
-		Name:    "YouTube",
-		TestURL: "https://www.youtube.com/premium",
+		Name:       "YouTube",
+		TestURL:    "https://www.youtube.com/premium",
+		Category:   "global",
+		RegionHint: "Global",
+		Protocol:   "default",
 		CheckFunc: func(resp *http.Response, body string) (bool, string, string) {
 			if resp.StatusCode == 200 {
 				return true, "Global", "可访问"
@@ -125,8 +140,11 @@ func (sd *StreamingDetector) initDefaultPlatforms() {
 
 	// Disney+
 	sd.platforms["Disney+"] = StreamingPlatform{
-		Name:    "Disney+",
-		TestURL: "https://www.disneyplus.com/",
+		Name:       "Disney+",
+		TestURL:    "https://www.disneyplus.com/",
+		Category:   "global",
+		RegionHint: "Global",
+		Protocol:   "default",
 		CheckFunc: func(resp *http.Response, body string) (bool, string, string) {
 			if resp.StatusCode == 200 {
 				if strings.Contains(body, "not available") || strings.Contains(body, "unavailable") {
@@ -140,8 +158,11 @@ func (sd *StreamingDetector) initDefaultPlatforms() {
 
 	// HBO Max
 	sd.platforms["HBO Max"] = StreamingPlatform{
-		Name:    "HBO Max",
-		TestURL: "https://www.hbomax.com/",
+		Name:       "HBO Max",
+		TestURL:    "https://www.hbomax.com/",
+		Category:   "us",
+		RegionHint: "US",
+		Protocol:   "default",
 		CheckFunc: func(resp *http.Response, body string) (bool, string, string) {
 			if resp.StatusCode == 200 {
 				if strings.Contains(body, "not available") {
@@ -155,8 +176,11 @@ func (sd *StreamingDetector) initDefaultPlatforms() {
 
 	// Amazon Prime Video
 	sd.platforms["Prime Video"] = StreamingPlatform{
-		Name:    "Prime Video",
-		TestURL: "https://www.primevideo.com/",
+		Name:       "Prime Video",
+		TestURL:    "https://www.primevideo.com/",
+		Category:   "global",
+		RegionHint: "Global",
+		Protocol:   "default",
 		CheckFunc: func(resp *http.Response, body string) (bool, string, string) {
 			if resp.StatusCode == 200 {
 				return true, "Unknown", "可访问"
@@ -167,8 +191,11 @@ func (sd *StreamingDetector) initDefaultPlatforms() {
 
 	// Hulu
 	sd.platforms["Hulu"] = StreamingPlatform{
-		Name:    "Hulu",
-		TestURL: "https://www.hulu.com/",
+		Name:       "Hulu",
+		TestURL:    "https://www.hulu.com/",
+		Category:   "us",
+		RegionHint: "US",
+		Protocol:   "default",
 		CheckFunc: func(resp *http.Response, body string) (bool, string, string) {
 			if resp.StatusCode == 200 {
 				if strings.Contains(body, "not available in your region") {
@@ -182,8 +209,11 @@ func (sd *StreamingDetector) initDefaultPlatforms() {
 
 	// Paramount+
 	sd.platforms["Paramount+"] = StreamingPlatform{
-		Name:    "Paramount+",
-		TestURL: "https://www.paramountplus.com/",
+		Name:       "Paramount+",
+		TestURL:    "https://www.paramountplus.com/",
+		Category:   "us",
+		RegionHint: "US",
+		Protocol:   "default",
 		CheckFunc: func(resp *http.Response, body string) (bool, string, string) {
 			if resp.StatusCode == 200 {
 				if strings.Contains(body, "not yet available") {
@@ -197,8 +227,11 @@ func (sd *StreamingDetector) initDefaultPlatforms() {
 
 	// BBC iPlayer
 	sd.platforms["BBC iPlayer"] = StreamingPlatform{
-		Name:    "BBC iPlayer",
-		TestURL: "https://www.bbc.co.uk/iplayer",
+		Name:       "BBC iPlayer",
+		TestURL:    "https://www.bbc.co.uk/iplayer",
+		Category:   "eu",
+		RegionHint: "UK",
+		Protocol:   "default",
 		CheckFunc: func(resp *http.Response, body string) (bool, string, string) {
 			if resp.StatusCode == 200 {
 				if strings.Contains(body, "BBC iPlayer only works in the UK") {
@@ -211,51 +244,120 @@ func (sd *StreamingDetector) initDefaultPlatforms() {
 	}
 
 	sd.platforms["Apple TV+"] = StreamingPlatform{
-		Name:      "Apple TV+",
-		TestURL:   "https://tv.apple.com/",
-		CheckFunc: basicStatusCheck("Unknown"),
+		Name:       "Apple TV+",
+		TestURL:    "https://tv.apple.com/",
+		Category:   "global",
+		RegionHint: "Global",
+		Protocol:   "default",
+		CheckFunc:  basicStatusCheck("Unknown"),
 	}
 
 	sd.platforms["Spotify"] = StreamingPlatform{
-		Name:      "Spotify",
-		TestURL:   "https://www.spotify.com/",
-		CheckFunc: basicStatusCheck("Unknown"),
+		Name:       "Spotify",
+		TestURL:    "https://www.spotify.com/",
+		Category:   "music",
+		RegionHint: "Global",
+		Protocol:   "default",
+		CheckFunc:  basicStatusCheck("Unknown"),
 	}
 
 	sd.platforms["TikTok"] = StreamingPlatform{
-		Name:      "TikTok",
-		TestURL:   "https://www.tiktok.com/",
-		CheckFunc: basicStatusCheck("Unknown"),
+		Name:       "TikTok",
+		TestURL:    "https://www.tiktok.com/",
+		Category:   "global",
+		RegionHint: "Global",
+		Protocol:   "default",
+		CheckFunc:  basicStatusCheck("Unknown"),
 	}
 
 	sd.platforms["DAZN"] = StreamingPlatform{
-		Name:      "DAZN",
-		TestURL:   "https://www.dazn.com/",
-		CheckFunc: basicStatusCheck("Unknown"),
+		Name:       "DAZN",
+		TestURL:    "https://www.dazn.com/",
+		Category:   "sports",
+		RegionHint: "Global",
+		Protocol:   "default",
+		CheckFunc:  basicStatusCheck("Unknown"),
 	}
 
 	sd.platforms["Abema"] = StreamingPlatform{
-		Name:      "Abema",
-		TestURL:   "https://abema.tv/",
-		CheckFunc: basicStatusCheck("JP"),
+		Name:       "Abema",
+		TestURL:    "https://abema.tv/",
+		Category:   "jp",
+		RegionHint: "JP",
+		Protocol:   "default",
+		CheckFunc:  basicStatusCheck("JP"),
 	}
 
 	sd.platforms["Niconico"] = StreamingPlatform{
-		Name:      "Niconico",
-		TestURL:   "https://www.nicovideo.jp/",
-		CheckFunc: basicStatusCheck("JP"),
+		Name:       "Niconico",
+		TestURL:    "https://www.nicovideo.jp/",
+		Category:   "jp",
+		RegionHint: "JP",
+		Protocol:   "default",
+		CheckFunc:  basicStatusCheck("JP"),
 	}
 
 	sd.platforms["Bilibili"] = StreamingPlatform{
-		Name:      "Bilibili",
-		TestURL:   "https://www.bilibili.com/",
-		CheckFunc: basicStatusCheck("CN"),
+		Name:       "Bilibili",
+		TestURL:    "https://www.bilibili.com/",
+		Category:   "cn",
+		RegionHint: "CN",
+		Protocol:   "default",
+		CheckFunc:  basicStatusCheck("CN"),
 	}
 
 	sd.platforms["TVB Anywhere"] = StreamingPlatform{
-		Name:      "TVB Anywhere",
-		TestURL:   "https://www.tvbanywhere.com/",
-		CheckFunc: basicStatusCheck("HK"),
+		Name:       "TVB Anywhere",
+		TestURL:    "https://www.tvbanywhere.com/",
+		Category:   "hk",
+		RegionHint: "HK",
+		Protocol:   "default",
+		CheckFunc:  basicStatusCheck("HK"),
+	}
+
+	sd.platforms["TVer"] = StreamingPlatform{
+		Name:       "TVer",
+		TestURL:    "https://tver.jp/",
+		Category:   "jp",
+		RegionHint: "JP",
+		Protocol:   "default",
+		CheckFunc:  basicStatusCheck("JP"),
+	}
+
+	sd.platforms["U-NEXT"] = StreamingPlatform{
+		Name:       "U-NEXT",
+		TestURL:    "https://video.unext.jp/",
+		Category:   "jp",
+		RegionHint: "JP",
+		Protocol:   "default",
+		CheckFunc:  basicStatusCheck("JP"),
+	}
+
+	sd.platforms["Wavve"] = StreamingPlatform{
+		Name:       "Wavve",
+		TestURL:    "https://www.wavve.com/",
+		Category:   "kr",
+		RegionHint: "KR",
+		Protocol:   "default",
+		CheckFunc:  basicStatusCheck("KR"),
+	}
+
+	sd.platforms["Tving"] = StreamingPlatform{
+		Name:       "Tving",
+		TestURL:    "https://www.tving.com/",
+		Category:   "kr",
+		RegionHint: "KR",
+		Protocol:   "default",
+		CheckFunc:  basicStatusCheck("KR"),
+	}
+
+	sd.platforms["Viu"] = StreamingPlatform{
+		Name:       "Viu",
+		TestURL:    "https://www.viu.com/",
+		Category:   "asia",
+		RegionHint: "Asia",
+		Protocol:   "default",
+		CheckFunc:  basicStatusCheck("Asia"),
 	}
 
 	sd.platformOrder = []string{
@@ -273,8 +375,13 @@ func (sd *StreamingDetector) initDefaultPlatforms() {
 		"DAZN",
 		"Abema",
 		"Niconico",
+		"TVer",
+		"U-NEXT",
 		"Bilibili",
 		"TVB Anywhere",
+		"Wavve",
+		"Tving",
+		"Viu",
 	}
 }
 
@@ -381,15 +488,60 @@ func (sd *StreamingDetector) CheckPlatform(platformName string) (*models.Streami
 	available, region, message := platform.CheckFunc(resp, body)
 
 	result := &models.StreamingResult{
-		Platform:  platformName,
-		Available: available,
-		Region:    region,
-		Message:   message,
+		Platform:     platformName,
+		Available:    available,
+		Region:       normalizedStreamingRegion(region, platform.RegionHint),
+		Message:      message,
+		Category:     platform.Category,
+		UnlockType:   streamingUnlockType(available, message),
+		Protocol:     fallbackStreamingValue(platform.Protocol, "default"),
+		RegionSource: streamingRegionSource(region, platform.RegionHint),
 	}
 
 	sd.logger.Info(fmt.Sprintf("检测 %s 完成: %s", platformName, message))
 
 	return result, nil
+}
+
+func normalizedStreamingRegion(region string, hint string) string {
+	region = strings.TrimSpace(region)
+	if region == "" || strings.EqualFold(region, "unknown") {
+		return strings.TrimSpace(hint)
+	}
+	return region
+}
+
+func streamingRegionSource(region string, hint string) string {
+	if strings.TrimSpace(region) != "" && !strings.EqualFold(strings.TrimSpace(region), "unknown") {
+		return "response"
+	}
+	if strings.TrimSpace(hint) != "" {
+		return "platform_hint"
+	}
+	return "unknown"
+}
+
+func streamingUnlockType(available bool, message string) string {
+	lowered := strings.ToLower(message)
+	switch {
+	case !available:
+		return "blocked"
+	case strings.Contains(lowered, "自制") || strings.Contains(lowered, "partial"):
+		return "partial"
+	case strings.Contains(lowered, "登录") || strings.Contains(lowered, "login"):
+		return "login_required"
+	case strings.Contains(lowered, "完全") || strings.Contains(lowered, "可访问"):
+		return "full"
+	default:
+		return "available"
+	}
+}
+
+func fallbackStreamingValue(value string, fallback string) string {
+	if strings.TrimSpace(value) == "" {
+		return fallback
+	}
+	return strings.TrimSpace(value)
 }
 
 // CheckAll 检测所有平台

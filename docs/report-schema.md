@@ -154,6 +154,20 @@
 - `score_calibration`: 本次评分使用的校准版本、基准线和等级阈值
 - `score_breakdown`: 评分计算依据和分项权重
 
+## IP Quality Report
+
+`summary.ip_quality_report` 表示 IP 节点分析报告。
+
+- `public_ip`、`ip_version`、`isp`、`country`、`city`、`asn`、`organization`、`reverse_dns`: 基础 IP、ASN 和反向 DNS 信息
+- `ip_type`: IP 类型推断，例如 `datacenter_likely` 或 `residential_or_isp_likely`
+- `risk_level`、`risk_score`: 风险等级和 0-100 风险分
+- `risk_sources`: 风险来源摘要，包含 Team Cymru ASN、Reverse DNS、DNSBL、本地关键词启发式，以及默认禁用的商业风险 API 说明
+- `risk_factors`: 风险因子明细，例如代理、VPN、Tor、机房/托管和滥用线索
+- `blacklist_summary`、`blacklist_checks`: DNSBL 黑名单汇总和逐项结果
+- `mail_summary`、`mail_checks`: 邮件服务商出站连通性汇总和逐项结果
+- `network_stack`: 当前 IP 质量检测所基于的网络栈视角
+- `verdict`、`evidence`、`recommendations`、`notes`: 面向人工阅读的结论、证据、建议和说明
+
 ## VPS Benchmark Summary
 
 `vps_benchmark_summary` 是对完整报告的压缩摘要，便于复制分享和脚本快速读取。它不替代完整 `test_results`，只保留 VPS 测评最常用的核心指标。
@@ -191,6 +205,30 @@
 - `speedtest_*`: Ookla Speedtest CLI 返回的节点信息，包括节点 ID、名称、地区、国家、Host、ISP、结果 URL、出口 IP、网卡名称、VPN 标记和 ping jitter
 - `iperf3_matrix_*`: iperf3 多节点矩阵，包括节点数、成功数、平均/最佳上下行，以及每个节点的 server、协议、端口、延迟、上下行和错误信息
 - `network_quality_*`: 内置 TCP connect 质量矩阵，包括 IPv4/IPv6 可用性、失败率、平均延迟和抖动
+
+## Streaming Results
+
+`streaming_results` 是流媒体解锁检测结果，键为平台名称。每个平台结果包含：
+
+- `platform`: 平台名称，例如 `Netflix`、`Disney+`
+- `available`: 是否可访问
+- `region`: 判定区域；无法从响应确认时可能使用平台主要服务区域作为提示
+- `message`: 检测说明
+- `category`: 平台分组，例如 `global`、`us`、`jp`、`kr`、`music`、`sports`
+- `unlock_type`: 解锁类型，例如 `full`、`partial`、`blocked`、`login_required`、`available`
+- `protocol`: 当前检测视角，默认 `default`
+- `region_source`: 区域来源，例如 `response`、`platform_hint` 或 `unknown`
+
+## AI Results
+
+`ai_results` 是 AI 服务可访问性检测结果，键为服务名称。每个服务结果包含：
+
+- `service`: 服务名称，例如 `ChatGPT`、`Claude`、`Gemini`
+- `available`: 是否可访问
+- `message`: 检测说明，例如需要登录、地区限制、需要额外验证
+- `category`: 服务分组，例如 `chatbot`、`assistant`、`search`、`coding`
+- `access_type`: 访问类型，例如 `full`、`login_required`、`verification_required`、`rate_limited`、`restricted`
+- `region_hint`: 服务主要区域或区域策略提示
 
 ## Confidence Level
 

@@ -555,6 +555,127 @@ def availability_section(section_id: str, title: str, subtitle: str, value: Any,
     }
 
 
+def streaming_category(value: Any) -> str:
+    return {
+        "global": "全球",
+        "us": "美国",
+        "jp": "日本",
+        "cn": "中国",
+        "hk": "香港",
+        "kr": "韩国",
+        "eu": "欧洲",
+        "asia": "亚洲",
+        "music": "音乐",
+        "sports": "体育",
+    }.get(text(value, ""), text(value))
+
+
+def streaming_unlock_type(value: Any) -> str:
+    return {
+        "full": "完整解锁",
+        "partial": "部分解锁",
+        "limited": "受限",
+        "blocked": "不可用",
+        "login_required": "需要登录",
+        "available": "可访问",
+    }.get(text(value, ""), text(value))
+
+
+def streaming_section(value: Any) -> dict[str, Any]:
+    hint = "本次未启用流媒体检测。使用 --streaming、--full 或 bootstrap 的 standard/full 档位启用。"
+    if not isinstance(value, dict) or not value:
+        return optional_section("streaming", "流媒体解锁", "Netflix、Disney+、YouTube 等平台的区域访问能力。", None, hint)
+
+    items = [item for item in value.values() if isinstance(item, dict)]
+    available_count = sum(1 for item in items if item.get("available"))
+    status = "success" if available_count == len(items) else "warning" if available_count else "failed"
+    rows = [
+        [
+            streaming_category(item.get("category")),
+            item.get("platform") or "-",
+            "可用" if item.get("available") else "不可用",
+            item.get("region") or "-",
+            streaming_unlock_type(item.get("unlock_type")),
+            item.get("protocol") or "-",
+            item.get("message") or "-",
+        ]
+        for item in sorted(items, key=lambda row: (streaming_category(row.get("category")), text(row.get("platform"))))
+    ]
+    return {
+        "id": "streaming",
+        "title": "流媒体解锁",
+        "subtitle": "Netflix、Disney+、YouTube 等平台的区域访问能力。",
+        "status": status,
+        "status_text": f"{available_count}/{len(items)} 可用",
+        "summary": f"检测 {len(items)} 个平台，可用 {available_count} 个。",
+        "metrics": [
+            metric("平台数", len(items), "", "primary"),
+            metric("可用", available_count, f"/ {len(items)}", "green" if available_count else "red"),
+            metric("不可用", len(items) - available_count, "", "amber" if available_count else "red"),
+        ],
+        "details": [],
+        "tables": [table("平台结果", ["分组", "平台", "状态", "区域", "解锁类型", "协议", "说明"], rows)],
+        "hint": "",
+    }
+
+
+def ai_category(value: Any) -> str:
+    return {
+        "chatbot": "对话",
+        "assistant": "助手",
+        "search": "搜索",
+        "coding": "编程",
+    }.get(text(value, ""), text(value))
+
+
+def ai_access_type(value: Any) -> str:
+    return {
+        "full": "可访问",
+        "login_required": "需要登录",
+        "verification_required": "需验证",
+        "rate_limited": "限流",
+        "restricted": "受限",
+        "available": "可用",
+    }.get(text(value, ""), text(value))
+
+
+def ai_section(value: Any) -> dict[str, Any]:
+    hint = "本次未启用 AI 服务检测。使用 --ai-services、--full 或 bootstrap 的 standard/full 档位启用。"
+    if not isinstance(value, dict) or not value:
+        return optional_section("ai", "AI 服务检测", "OpenAI、Gemini 等 AI 服务的可访问性。", None, hint)
+
+    items = [item for item in value.values() if isinstance(item, dict)]
+    available_count = sum(1 for item in items if item.get("available"))
+    status = "success" if available_count == len(items) else "warning" if available_count else "failed"
+    rows = [
+        [
+            ai_category(item.get("category")),
+            item.get("service") or "-",
+            "可用" if item.get("available") else "不可用",
+            ai_access_type(item.get("access_type")),
+            item.get("region_hint") or "-",
+            item.get("message") or "-",
+        ]
+        for item in sorted(items, key=lambda row: (ai_category(row.get("category")), text(row.get("service"))))
+    ]
+    return {
+        "id": "ai",
+        "title": "AI 服务检测",
+        "subtitle": "OpenAI、Gemini 等 AI 服务的可访问性。",
+        "status": status,
+        "status_text": f"{available_count}/{len(items)} 可用",
+        "summary": f"检测 {len(items)} 个 AI 服务，可用 {available_count} 个。",
+        "metrics": [
+            metric("服务数", len(items), "", "primary"),
+            metric("可用", available_count, f"/ {len(items)}", "green" if available_count else "red"),
+            metric("不可用", len(items) - available_count, "", "amber" if available_count else "red"),
+        ],
+        "details": [],
+        "tables": [table("服务结果", ["分组", "服务", "状态", "访问类型", "区域提示", "说明"], rows)],
+        "hint": "",
+    }
+
+
 def stress_section(value: Any) -> dict[str, Any]:
     hint = "本次未启用压力测试。使用 --stress、--full 或 bootstrap 的 full 档位启用。"
     if not isinstance(value, dict):
@@ -803,11 +924,19 @@ def ip_quality_section(summary: dict[str, Any]) -> dict[str, Any]:
     evidence = report.get("evidence") if isinstance(report.get("evidence"), list) else []
     recommendations = report.get("recommendations") if isinstance(report.get("recommendations"), list) else []
     risk_factors = report.get("risk_factors") if isinstance(report.get("risk_factors"), list) else []
+    risk_sources = report.get("risk_sources") if isinstance(report.get("risk_sources"), list) else []
     blacklists = report.get("blacklist_checks") if isinstance(report.get("blacklist_checks"), list) else []
     mail_checks = report.get("mail_checks") if isinstance(report.get("mail_checks"), list) else []
+    mail_summary = report.get("mail_summary") if isinstance(report.get("mail_summary"), dict) else {}
+    network_stack = report.get("network_stack") if isinstance(report.get("network_stack"), dict) else {}
     level = text(report.get("risk_level"), "unknown")
     status = "failed" if level == "high" else "warning" if level == "medium" else "success"
     tables = []
+    if risk_sources:
+        tables.append(table("风险来源", ["来源", "类型", "状态", "信号", "说明"], [
+            [item.get("name"), item.get("type"), risk_source_status_label(item.get("status")), item.get("signal"), item.get("detail")]
+            for item in risk_sources if isinstance(item, dict)
+        ]))
     if evidence:
         tables.append(table("结论证据", ["证据", "结果", "状态", "说明"], [
             [item.get("name"), item.get("value"), item.get("status"), item.get("detail")]
@@ -829,8 +958,8 @@ def ip_quality_section(summary: dict[str, Any]) -> dict[str, Any]:
             for item in blacklists if isinstance(item, dict)
         ]))
     if mail_checks:
-        tables.append(table("邮件端口连通性", ["目标", "端口", "状态", "可达", "说明"], [
-            [item.get("target"), item.get("port"), item.get("status"), "是" if item.get("reachable") else "否", item.get("detail")]
+        tables.append(table("邮件端口连通性", ["服务商", "目标", "端口", "状态", "可达", "说明"], [
+            [item.get("provider"), item.get("target"), item.get("port"), item.get("status"), "是" if item.get("reachable") else "否", item.get("detail")]
             for item in mail_checks if isinstance(item, dict)
         ]))
     return {
@@ -845,6 +974,7 @@ def ip_quality_section(summary: dict[str, Any]) -> dict[str, Any]:
             metric("综合评级", verdict.get("grade") or ip_quality_grade(report), verdict.get("risk_label") or {"low": "低风险", "medium": "中风险", "high": "高风险"}.get(level, "未知"), "red" if status == "failed" else "amber" if status == "warning" else "green"),
             metric("DNSBL 命中", blacklist.get("listed", 0), f"/ {blacklist.get('total', len(blacklists))}", "amber"),
             metric("邮件可连", count_reachable_mail(mail_checks), f"/ {len(mail_checks)}", "cyan"),
+            metric("可连服务商", mail_summary.get("provider_open", 0), f"/ {mail_summary.get('providers', 0)}", "cyan"),
         ],
         "details": [
             detail("IP 地址", report.get("public_ip")),
@@ -853,7 +983,9 @@ def ip_quality_section(summary: dict[str, Any]) -> dict[str, Any]:
             detail("IP 类型", verdict.get("ip_type_label") or ip_node_type_summary(report)),
             detail("代理/VPN 标记", "是" if verdict.get("proxy_hint") or risk_factor_detected(report, "proxy") or risk_factor_detected(report, "vpn") else "否"),
             detail("机房/托管标记", "是" if verdict.get("hosting_hint") or risk_factor_detected(report, "datacenter") else "否"),
+            detail("网络栈", network_stack_label(network_stack)),
             detail("邮件可用", "是" if verdict.get("mail_usable") else "否"),
+            detail("邮件汇总", f"服务商 {text(mail_summary.get('providers'), '0')} 个，可连服务商 {text(mail_summary.get('provider_open'), '0')} 个；可连端口 {text(mail_summary.get('reachable'), '0')}/{text(mail_summary.get('total'), '0')}"),
             detail("评级依据", ip_quality_basis(report, blacklist, mail_checks)),
         ],
         "tables": tables,
@@ -864,6 +996,25 @@ def ip_quality_section(summary: dict[str, Any]) -> dict[str, Any]:
 def risk_factor_detected(report: dict[str, Any], name: str) -> bool:
     factors = report.get("risk_factors") if isinstance(report.get("risk_factors"), list) else []
     return any(isinstance(item, dict) and item.get("name") == name and item.get("detected") for item in factors)
+
+
+def risk_source_status_label(value: Any) -> str:
+    return {
+        "available": "可用",
+        "missing": "缺失",
+        "clean": "正常",
+        "listed": "命中",
+        "partial": "部分",
+        "disabled": "未启用",
+    }.get(text(value, ""), text(value))
+
+
+def network_stack_label(value: dict[str, Any]) -> str:
+    if not isinstance(value, dict) or not value:
+        return "-"
+    if value.get("dual_stack"):
+        return "IPv4/IPv6 双栈"
+    return text(value.get("detected_version"))
 
 
 def count_reachable_mail(checks: list[Any]) -> int:
@@ -1105,8 +1256,8 @@ def build_report_sections(report: dict[str, Any], output_dir: Optional[Path] = N
 
     sections.extend([
         route_section(summary.get("route_trace_results")),
-        availability_section("streaming", "流媒体解锁", "Netflix、Disney+、YouTube 等平台的区域访问能力。", summary.get("streaming_results"), "本次未启用流媒体检测。使用 --streaming、--full 或 bootstrap 的 standard/full 档位启用。", "platform", "区域"),
-        availability_section("ai", "AI 服务检测", "OpenAI、Gemini 等 AI 服务的可访问性。", summary.get("ai_results"), "本次未启用 AI 服务检测。使用 --ai-services、--full 或 bootstrap 的 standard/full 档位启用。", "service", "区域"),
+        streaming_section(summary.get("streaming_results")),
+        ai_section(summary.get("ai_results")),
         ip_quality_section(summary),
         stress_section(summary.get("stress_report")),
         security_section(summary.get("security_report")),

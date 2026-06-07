@@ -12,4 +12,13 @@ type AIServiceResult struct {
 
 	// Message 附加信息（如区域限制、需要登录等）
 	Message string `json:"message"`
+
+	// Category 服务分组，如 chatbot、search、coding
+	Category string `json:"category,omitempty"`
+
+	// AccessType 访问类型，如 full、login_required、restricted、rate_limited
+	AccessType string `json:"access_type,omitempty"`
+
+	// RegionHint 服务主要区域或区域策略提示
+	RegionHint string `json:"region_hint,omitempty"`
 }

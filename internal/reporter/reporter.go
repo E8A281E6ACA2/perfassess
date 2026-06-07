@@ -3,6 +3,7 @@ package reporter
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -834,15 +835,22 @@ func (rg *ReportGenerator) FormatReport(report *models.Report) string {
 		// 流媒体检测结果
 		if streamingResults, ok := report.Summary["streaming_results"].(map[string]*models.StreamingResult); ok && len(streamingResults) > 0 {
 			sb.WriteString("=== 流媒体解锁检测 ===\n\n")
-			for platform, result := range streamingResults {
+			for _, pair := range sortedStreamingResultsForText(streamingResults) {
+				result := pair.result
 				status := "❌ 不可用"
-				if result.Available {
+				if result != nil && result.Available {
 					status = "✅ 可用"
 					if result.Region != "" && result.Region != "Unknown" {
 						status += fmt.Sprintf(" (%s)", result.Region)
 					}
 				}
-				sb.WriteString(fmt.Sprintf("%-15s  %s  - %s\n", platform, status, result.Message))
+				sb.WriteString(fmt.Sprintf("%-15s  %-8s  %-10s  %-14s  %s\n",
+					pair.key,
+					streamingTextCategory(result),
+					status,
+					streamingTextUnlockType(result),
+					streamingTextMessage(result),
+				))
 			}
 			sb.WriteString("\n")
 		}
@@ -850,12 +858,19 @@ func (rg *ReportGenerator) FormatReport(report *models.Report) string {
 		// AI 服务检测结果
 		if aiResults, ok := report.Summary["ai_results"].(map[string]*models.AIServiceResult); ok && len(aiResults) > 0 {
 			sb.WriteString("=== AI服务检测 ===\n\n")
-			for service, result := range aiResults {
+			for _, pair := range sortedAIResultsForText(aiResults) {
+				result := pair.result
 				status := "❌ 不可用"
-				if result.Available {
+				if result != nil && result.Available {
 					status = "✅ 可用"
 				}
-				sb.WriteString(fmt.Sprintf("%-15s  %s  - %s\n", service, status, result.Message))
+				sb.WriteString(fmt.Sprintf("%-15s  %-8s  %-10s  %-14s  %s\n",
+					pair.key,
+					aiTextCategory(result),
+					status,
+					aiTextAccessType(result),
+					aiTextMessage(result),
+				))
 			}
 			sb.WriteString("\n")
 		}
@@ -886,6 +901,27 @@ func (rg *ReportGenerator) FormatReport(report *models.Report) string {
 			sb.WriteString(fmt.Sprintf("综合评级:       [ %s ] %s\n", ipQualityTextCompositeGrade(ipQualityReport), ipQualityTextGradeDescription(ipQualityReport)))
 			sb.WriteString(fmt.Sprintf("评级依据:       %s\n\n", ipQualityTextBasis(ipQualityReport)))
 
+			if ipQualityReport.NetworkStack != nil {
+				sb.WriteString(fmt.Sprintf("网络栈:         %s\n", ipQualityTextNetworkStackLabel(ipQualityReport.NetworkStack)))
+				if ipQualityReport.NetworkStack.Note != "" {
+					sb.WriteString(fmt.Sprintf("网络栈说明:     %s\n", ipQualityReport.NetworkStack.Note))
+				}
+				sb.WriteString("\n")
+			}
+			if len(ipQualityReport.RiskSources) > 0 {
+				sb.WriteString("风险来源:\n")
+				for _, source := range ipQualityReport.RiskSources {
+					if source == nil {
+						continue
+					}
+					sb.WriteString(fmt.Sprintf("  - %-22s %-10s %s", source.Name, ipRiskSourceStatusLabel(source), source.Detail))
+					if source.Signal != "" {
+						sb.WriteString(fmt.Sprintf(" - %s", source.Signal))
+					}
+					sb.WriteString("\n")
+				}
+				sb.WriteString("\n")
+			}
 			if len(ipQualityReport.RiskFactors) > 0 {
 				sb.WriteString("IP 类型与风险因子:\n")
 				for _, factor := range ipQualityReport.RiskFactors {
@@ -910,8 +946,13 @@ func (rg *ReportGenerator) FormatReport(report *models.Report) string {
 			}
 			if len(ipQualityReport.MailChecks) > 0 {
 				sb.WriteString("邮件端口连通性:\n")
+				if ipQualityReport.MailSummary != nil {
+					summary := ipQualityReport.MailSummary
+					sb.WriteString(fmt.Sprintf("  汇总: 服务商 %d 个 / 可连服务商 %d 个 / 可连端口 %d / 阻断 %d / 超时 %d\n",
+						summary.Providers, summary.ProviderOpen, summary.Reachable, summary.Blocked, summary.Timeout))
+				}
 				for _, check := range ipQualityReport.MailChecks {
-					sb.WriteString(fmt.Sprintf("  - %-32s %-5d %s", check.Target, check.Port, mailCheckStatusLabel(check)))
+					sb.WriteString(fmt.Sprintf("  - %-10s %-18s %-5d %s", fallbackText(check.Provider, "-"), check.Target, check.Port, mailCheckStatusLabel(check)))
 					if check.Detail != "" {
 						sb.WriteString(fmt.Sprintf(" - %s", check.Detail))
 					}
@@ -977,6 +1018,193 @@ func (rg *ReportGenerator) FormatReport(report *models.Report) string {
 	sb.WriteString("════════════════════════════════════════════════════════════════\n")
 
 	return sb.String()
+}
+
+func ipRiskSourceStatusLabel(source *models.IPRiskSource) string {
+	if source == nil {
+		return "未知"
+	}
+	switch source.Status {
+	case "available":
+		return "可用"
+	case "missing":
+		return "缺失"
+	case "clean":
+		return "正常"
+	case "listed":
+		return "命中"
+	case "partial":
+		return "部分"
+	case "disabled":
+		return "未启用"
+	default:
+		return source.Status
+	}
+}
+
+type streamingTextResultPair struct {
+	key    string
+	result *models.StreamingResult
+}
+
+func sortedStreamingResultsForText(results map[string]*models.StreamingResult) []streamingTextResultPair {
+	pairs := make([]streamingTextResultPair, 0, len(results))
+	for key, result := range results {
+		pairs = append(pairs, streamingTextResultPair{key: key, result: result})
+	}
+	sort.Slice(pairs, func(i, j int) bool {
+		leftCategory := streamingTextCategory(pairs[i].result)
+		rightCategory := streamingTextCategory(pairs[j].result)
+		if leftCategory != rightCategory {
+			return leftCategory < rightCategory
+		}
+		return strings.ToLower(pairs[i].key) < strings.ToLower(pairs[j].key)
+	})
+	return pairs
+}
+
+func streamingTextCategory(result *models.StreamingResult) string {
+	if result == nil {
+		return "-"
+	}
+	switch result.Category {
+	case "global":
+		return "全球"
+	case "us":
+		return "美国"
+	case "jp":
+		return "日本"
+	case "cn":
+		return "中国"
+	case "hk":
+		return "香港"
+	case "kr":
+		return "韩国"
+	case "eu":
+		return "欧洲"
+	case "asia":
+		return "亚洲"
+	case "music":
+		return "音乐"
+	case "sports":
+		return "体育"
+	default:
+		return fallbackText(result.Category, "-")
+	}
+}
+
+func streamingTextUnlockType(result *models.StreamingResult) string {
+	if result == nil {
+		return "-"
+	}
+	switch result.UnlockType {
+	case "full":
+		return "完整解锁"
+	case "partial":
+		return "部分解锁"
+	case "limited":
+		return "受限"
+	case "blocked":
+		return "不可用"
+	case "login_required":
+		return "需要登录"
+	case "available":
+		return "可访问"
+	default:
+		return fallbackText(result.UnlockType, "-")
+	}
+}
+
+func streamingTextMessage(result *models.StreamingResult) string {
+	if result == nil {
+		return "-"
+	}
+	if result.RegionSource != "" && result.RegionSource != "unknown" {
+		return fmt.Sprintf("%s；区域来源: %s", fallbackText(result.Message, "-"), streamingTextRegionSource(result.RegionSource))
+	}
+	return fallbackText(result.Message, "-")
+}
+
+func streamingTextRegionSource(source string) string {
+	switch source {
+	case "response":
+		return "响应"
+	case "platform_hint":
+		return "平台提示"
+	default:
+		return source
+	}
+}
+
+type aiTextResultPair struct {
+	key    string
+	result *models.AIServiceResult
+}
+
+func sortedAIResultsForText(results map[string]*models.AIServiceResult) []aiTextResultPair {
+	pairs := make([]aiTextResultPair, 0, len(results))
+	for key, result := range results {
+		pairs = append(pairs, aiTextResultPair{key: key, result: result})
+	}
+	sort.Slice(pairs, func(i, j int) bool {
+		leftCategory := aiTextCategory(pairs[i].result)
+		rightCategory := aiTextCategory(pairs[j].result)
+		if leftCategory != rightCategory {
+			return leftCategory < rightCategory
+		}
+		return strings.ToLower(pairs[i].key) < strings.ToLower(pairs[j].key)
+	})
+	return pairs
+}
+
+func aiTextCategory(result *models.AIServiceResult) string {
+	if result == nil {
+		return "-"
+	}
+	switch result.Category {
+	case "chatbot":
+		return "对话"
+	case "assistant":
+		return "助手"
+	case "search":
+		return "搜索"
+	case "coding":
+		return "编程"
+	default:
+		return fallbackText(result.Category, "-")
+	}
+}
+
+func aiTextAccessType(result *models.AIServiceResult) string {
+	if result == nil {
+		return "-"
+	}
+	switch result.AccessType {
+	case "full":
+		return "可访问"
+	case "login_required":
+		return "需要登录"
+	case "verification_required":
+		return "需验证"
+	case "rate_limited":
+		return "限流"
+	case "restricted":
+		return "受限"
+	case "available":
+		return "可用"
+	default:
+		return fallbackText(result.AccessType, "-")
+	}
+}
+
+func aiTextMessage(result *models.AIServiceResult) string {
+	if result == nil {
+		return "-"
+	}
+	if result.RegionHint != "" {
+		return fmt.Sprintf("%s；区域提示: %s", fallbackText(result.Message, "-"), result.RegionHint)
+	}
+	return fallbackText(result.Message, "-")
 }
 
 func fallbackText(value, fallback string) string {
@@ -1143,9 +1371,23 @@ func ipQualityTextBasis(report *models.IPQualityReport) string {
 		parts = append(parts, fmt.Sprintf("DNSBL 命中 %d/%d", report.BlacklistSummary.Listed, report.BlacklistSummary.Total))
 	}
 	if len(report.MailChecks) > 0 {
-		parts = append(parts, fmt.Sprintf("邮件端口可连 %d/%d", countReachableMailChecks(report.MailChecks), len(report.MailChecks)))
+		if report.MailSummary != nil {
+			parts = append(parts, fmt.Sprintf("邮件端口可连 %d/%d，服务商 %d/%d", report.MailSummary.Reachable, report.MailSummary.Total, report.MailSummary.ProviderOpen, report.MailSummary.Providers))
+		} else {
+			parts = append(parts, fmt.Sprintf("邮件端口可连 %d/%d", countReachableMailChecks(report.MailChecks), len(report.MailChecks)))
+		}
 	}
 	return strings.Join(parts, " + ")
+}
+
+func ipQualityTextNetworkStackLabel(stack *models.IPNetworkStack) string {
+	if stack == nil {
+		return "-"
+	}
+	if stack.DualStack {
+		return "IPv4/IPv6 双栈"
+	}
+	return fallbackText(stack.DetectedVersion, "-")
 }
 
 func ipQualityRiskBar(score int) string {

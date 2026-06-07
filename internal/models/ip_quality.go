@@ -14,9 +14,12 @@ type IPQualityReport struct {
 	RiskLevel        string               `json:"risk_level"`
 	RiskScore        int                  `json:"risk_score"`
 	RiskFactors      []*IPRiskFactor      `json:"risk_factors"`
+	RiskSources      []*IPRiskSource      `json:"risk_sources,omitempty"`
 	BlacklistSummary *IPBlacklistSummary  `json:"blacklist_summary,omitempty"`
 	BlacklistChecks  []*IPBlacklistCheck  `json:"blacklist_checks"`
+	MailSummary      *MailPortSummary     `json:"mail_summary,omitempty"`
 	MailChecks       []*MailPortCheck     `json:"mail_checks"`
+	NetworkStack     *IPNetworkStack      `json:"network_stack,omitempty"`
 	Verdict          *IPQualityVerdict    `json:"verdict,omitempty"`
 	Evidence         []*IPQualityEvidence `json:"evidence,omitempty"`
 	Recommendations  []string             `json:"recommendations,omitempty"`
@@ -51,6 +54,17 @@ type IPRiskFactor struct {
 	Detail     string `json:"detail,omitempty"`
 }
 
+// IPRiskSource 表示一个风险数据来源或启发式来源的可用性。
+type IPRiskSource struct {
+	Name    string `json:"name"`
+	Type    string `json:"type"`
+	Status  string `json:"status"`
+	Signal  string `json:"signal,omitempty"`
+	Detail  string `json:"detail,omitempty"`
+	Weight  int    `json:"weight,omitempty"`
+	Enabled bool   `json:"enabled"`
+}
+
 // IPBlacklistSummary 汇总 DNSBL 查询结果
 type IPBlacklistSummary struct {
 	Total   int `json:"total"`
@@ -71,9 +85,30 @@ type IPBlacklistCheck struct {
 
 // MailPortCheck 表示单个邮件端口连通性检测结果
 type MailPortCheck struct {
+	Service   string `json:"service,omitempty"`
+	Provider  string `json:"provider,omitempty"`
 	Target    string `json:"target"`
 	Port      int    `json:"port"`
 	Reachable bool   `json:"reachable"`
 	Status    string `json:"status"`
 	Detail    string `json:"detail,omitempty"`
+}
+
+// MailPortSummary 汇总邮件服务商连通性。
+type MailPortSummary struct {
+	Total        int `json:"total"`
+	Reachable    int `json:"reachable"`
+	Blocked      int `json:"blocked"`
+	Timeout      int `json:"timeout"`
+	Providers    int `json:"providers"`
+	ProviderOpen int `json:"provider_open"`
+}
+
+// IPNetworkStack 表示本次 IP 质量检测的网络栈视角。
+type IPNetworkStack struct {
+	DetectedVersion string `json:"detected_version"`
+	IPv4Available   bool   `json:"ipv4_available"`
+	IPv6Available   bool   `json:"ipv6_available"`
+	DualStack       bool   `json:"dual_stack"`
+	Note            string `json:"note,omitempty"`
 }

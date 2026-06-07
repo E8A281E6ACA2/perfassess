@@ -15,9 +15,11 @@ import (
 
 // AIService 表示单个 AI 服务的检测配置
 type AIService struct {
-	Name      string
-	TestURL   string
-	CheckFunc func(resp *http.Response, body string) (bool, string)
+	Name       string
+	TestURL    string
+	Category   string
+	RegionHint string
+	CheckFunc  func(resp *http.Response, body string) (bool, string)
 }
 
 // AIServiceDetector 负责检测 AI 服务可用性
@@ -52,24 +54,30 @@ func NewAIServiceDetector(logger *logger.Logger) *AIServiceDetector {
 // initDefaultServices 初始化默认 AI 服务列表
 func (ad *AIServiceDetector) initDefaultServices() {
 	ad.services["ChatGPT"] = AIService{
-		Name:    "ChatGPT",
-		TestURL: "https://chat.openai.com/",
+		Name:       "ChatGPT",
+		TestURL:    "https://chat.openai.com/",
+		Category:   "chatbot",
+		RegionHint: "Global",
 		CheckFunc: func(resp *http.Response, body string) (bool, string) {
 			return interpretGenericAIResponse(resp, body, "需要登录")
 		},
 	}
 
 	ad.services["Claude"] = AIService{
-		Name:    "Claude",
-		TestURL: "https://claude.ai/",
+		Name:       "Claude",
+		TestURL:    "https://claude.ai/",
+		Category:   "chatbot",
+		RegionHint: "Global",
 		CheckFunc: func(resp *http.Response, body string) (bool, string) {
 			return interpretGenericAIResponse(resp, body, "需要登录")
 		},
 	}
 
 	ad.services["Gemini"] = AIService{
-		Name:    "Gemini",
-		TestURL: "https://gemini.google.com/",
+		Name:       "Gemini",
+		TestURL:    "https://gemini.google.com/",
+		Category:   "chatbot",
+		RegionHint: "Global",
 		CheckFunc: func(resp *http.Response, body string) (bool, string) {
 			if strings.Contains(body, "region is not yet supported") {
 				return false, "地区暂不支持"
@@ -79,16 +87,20 @@ func (ad *AIServiceDetector) initDefaultServices() {
 	}
 
 	ad.services["Mistral"] = AIService{
-		Name:    "Mistral",
-		TestURL: "https://chat.mistral.ai/",
+		Name:       "Mistral",
+		TestURL:    "https://chat.mistral.ai/",
+		Category:   "chatbot",
+		RegionHint: "Global",
 		CheckFunc: func(resp *http.Response, body string) (bool, string) {
 			return interpretGenericAIResponse(resp, body, "需要登录")
 		},
 	}
 
 	ad.services["Copilot"] = AIService{
-		Name:    "Copilot",
-		TestURL: "https://copilot.microsoft.com/",
+		Name:       "Copilot",
+		TestURL:    "https://copilot.microsoft.com/",
+		Category:   "assistant",
+		RegionHint: "Global",
 		CheckFunc: func(resp *http.Response, body string) (bool, string) {
 			if strings.Contains(body, "Copilot is not available in your country") {
 				return false, "地区限制"
@@ -142,6 +154,24 @@ func looksLikeLoginPage(bodyLower string) bool {
 	return false
 }
 
+func aiAccessType(available bool, message string) string {
+	lowered := strings.ToLower(message)
+	switch {
+	case !available:
+		return "restricted"
+	case strings.Contains(message, "需要登录") || strings.Contains(lowered, "login"):
+		return "login_required"
+	case strings.Contains(message, "频繁") || strings.Contains(lowered, "rate"):
+		return "rate_limited"
+	case strings.Contains(message, "验证"):
+		return "verification_required"
+	case strings.Contains(message, "可访问"):
+		return "full"
+	default:
+		return "available"
+	}
+}
+
 // CheckService 检测单个 AI 服务
 func (ad *AIServiceDetector) CheckService(name string) (*models.AIServiceResult, error) {
 	service, ok := ad.services[name]
@@ -157,9 +187,12 @@ func (ad *AIServiceDetector) CheckService(name string) (*models.AIServiceResult,
 	req, err := http.NewRequestWithContext(ctx, "GET", service.TestURL, nil)
 	if err != nil {
 		return &models.AIServiceResult{
-			Service:   name,
-			Available: false,
-			Message:   fmt.Sprintf("创建请求失败: %v", err),
+			Service:    name,
+			Available:  false,
+			Message:    fmt.Sprintf("创建请求失败: %v", err),
+			Category:   service.Category,
+			AccessType: "restricted",
+			RegionHint: service.RegionHint,
 		}, err
 	}
 
@@ -171,9 +204,12 @@ func (ad *AIServiceDetector) CheckService(name string) (*models.AIServiceResult,
 	if err != nil {
 		ad.logger.Warn(fmt.Sprintf("检测 %s 失败: %v", name, err))
 		return &models.AIServiceResult{
-			Service:   name,
-			Available: false,
-			Message:   fmt.Sprintf("请求失败: %v", err),
+			Service:    name,
+			Available:  false,
+			Message:    fmt.Sprintf("请求失败: %v", err),
+			Category:   service.Category,
+			AccessType: "restricted",
+			RegionHint: service.RegionHint,
 		}, nil
 	}
 	defer resp.Body.Close()
@@ -182,18 +218,24 @@ func (ad *AIServiceDetector) CheckService(name string) (*models.AIServiceResult,
 	bodyBytes, err := io.ReadAll(limitedBody)
 	if err != nil {
 		return &models.AIServiceResult{
-			Service:   name,
-			Available: false,
-			Message:   fmt.Sprintf("读取响应失败: %v", err),
+			Service:    name,
+			Available:  false,
+			Message:    fmt.Sprintf("读取响应失败: %v", err),
+			Category:   service.Category,
+			AccessType: "restricted",
+			RegionHint: service.RegionHint,
 		}, nil
 	}
 
 	available, message := service.CheckFunc(resp, string(bodyBytes))
 
 	result := &models.AIServiceResult{
-		Service:   name,
-		Available: available,
-		Message:   message,
+		Service:    name,
+		Available:  available,
+		Message:    message,
+		Category:   service.Category,
+		AccessType: aiAccessType(available, message),
+		RegionHint: service.RegionHint,
 	}
 
 	ad.logger.Info(fmt.Sprintf("检测 %s 完成: %s", name, message))

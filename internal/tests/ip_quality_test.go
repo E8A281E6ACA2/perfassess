@@ -118,8 +118,10 @@ func TestBuildIPQualityVerdictEvidenceAndRecommendations(t *testing.T) {
 			{Name: "datacenter", Detected: true, Confidence: "medium", Detail: "hosting keyword"},
 		},
 		MailChecks: []*models.MailPortCheck{
-			{Target: "smtp.example", Port: 25, Status: "blocked"},
+			{Provider: "Example", Target: "smtp.example", Port: 25, Status: "blocked"},
 		},
+		MailSummary:  &models.MailPortSummary{Total: 1, Providers: 1, Blocked: 1},
+		NetworkStack: &models.IPNetworkStack{DetectedVersion: "IPv4", IPv4Available: true},
 	}
 
 	verdict := buildIPQualityVerdict(report)
@@ -138,6 +140,73 @@ func TestBuildIPQualityVerdictEvidenceAndRecommendations(t *testing.T) {
 	recommendations := buildIPQualityRecommendations(report)
 	if len(recommendations) == 0 {
 		t.Fatal("expected recommendations")
+	}
+}
+
+func TestIPQualityDefaultsIncludeExpandedChecks(t *testing.T) {
+	scanner := NewIPQualityScanner(nil)
+
+	if len(scanner.blacklistZones) < 20 {
+		t.Fatalf("expected expanded DNSBL list, got %d", len(scanner.blacklistZones))
+	}
+	if len(scanner.mailTargets) < 12 {
+		t.Fatalf("expected expanded mail target list, got %d", len(scanner.mailTargets))
+	}
+	providers := map[string]bool{}
+	for _, target := range scanner.mailTargets {
+		providers[target.Provider] = true
+	}
+	for _, provider := range []string{"Gmail", "Outlook", "Yahoo", "Apple", "QQ", "Mail.ru", "AOL", "GMX", "Mail.com", "163", "Sohu", "Sina"} {
+		if !providers[provider] {
+			t.Fatalf("expected provider %s in mail matrix", provider)
+		}
+	}
+}
+
+func TestSummarizeMailPorts(t *testing.T) {
+	summary := summarizeMailPorts([]*models.MailPortCheck{
+		{Provider: "Gmail", Status: "reachable", Reachable: true},
+		{Provider: "Gmail", Status: "blocked"},
+		{Provider: "Outlook", Status: "timeout"},
+		{Provider: "Yahoo", Status: "blocked"},
+	})
+
+	if summary.Total != 4 || summary.Reachable != 1 || summary.Blocked != 2 || summary.Timeout != 1 {
+		t.Fatalf("unexpected mail summary counts: %#v", summary)
+	}
+	if summary.Providers != 3 || summary.ProviderOpen != 1 {
+		t.Fatalf("unexpected mail provider counts: %#v", summary)
+	}
+}
+
+func TestBuildIPRiskSources(t *testing.T) {
+	report := &models.IPQualityReport{
+		ASN:          "64500",
+		Organization: "Example Hosting",
+		ReverseDNS:   []string{"host.example"},
+		BlacklistSummary: &models.IPBlacklistSummary{
+			Total:  3,
+			Clean:  2,
+			Listed: 1,
+		},
+		RiskFactors: []*models.IPRiskFactor{
+			{Name: "datacenter", Detected: true},
+		},
+	}
+
+	sources := buildIPRiskSources(report)
+	statusByName := map[string]string{}
+	for _, source := range sources {
+		statusByName[source.Name] = source.Status
+	}
+	if statusByName["Team Cymru ASN"] != "available" {
+		t.Fatalf("expected Team Cymru source available, got %#v", statusByName)
+	}
+	if statusByName["DNSBL"] != "listed" {
+		t.Fatalf("expected DNSBL listed, got %#v", statusByName)
+	}
+	if statusByName["Commercial Risk APIs"] != "disabled" {
+		t.Fatalf("expected commercial APIs disabled, got %#v", statusByName)
 	}
 }
 

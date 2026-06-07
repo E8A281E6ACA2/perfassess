@@ -19,4 +19,16 @@ type StreamingResult struct {
 	// Message 检测消息
 	// 提供额外的状态信息，如 "完全解锁", "仅限自制内容", "不可用"
 	Message string `json:"message"`
+
+	// Category 平台分类，如 global、us、jp、cn、hk、kr、eu、asia、music
+	Category string `json:"category,omitempty"`
+
+	// UnlockType 解锁类型，如 full、partial、limited、blocked、login_required
+	UnlockType string `json:"unlock_type,omitempty"`
+
+	// Protocol 本次检测使用的网络协议视角，当前为 default
+	Protocol string `json:"protocol,omitempty"`
+
+	// RegionSource 区域判定来源说明
+	RegionSource string `json:"region_source,omitempty"`
 }

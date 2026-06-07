@@ -75,7 +75,7 @@ curl -fsSL https://raw.githubusercontent.com/E8A281E6ACA2/perfassess/main/script
 - `/tmp/perfassess-auto/net_quality.json`：网络质量模块，包含吞吐、IPv4/IPv6、iperf3 多节点矩阵、路由、流媒体和 AI 服务摘要
 - `/tmp/perfassess-auto/route_trace.json`：路由追踪模块，包含每个目标的跳数、末跳和错误信息
 - `/tmp/perfassess-auto/backroute_trace.json`：国内方向参考兼容模块，只包含本机到国内目标的出站路径，不是真实回程
-- `/tmp/perfassess-auto/ip_quality.json`：IP 质量模块，包含 ASN、rDNS、DNSBL、邮件端口和风险评分
+- `/tmp/perfassess-auto/ip_quality.json`：IP 质量模块，包含 ASN、rDNS、风险来源、DNSBL、邮件服务商矩阵、网络栈和风险评分
 - `/tmp/perfassess-auto/perfassess-report.zip`：报告压缩包，包含报告、日志和验收摘要
 
 最终控制台报告和 `summary.md` 会包含“耗时统计”，列出构建、依赖检查、完整 JSON 报告、完整文本报告、快速测评、验收流程和汇总生成各自耗时。
@@ -128,7 +128,7 @@ ssh -L 8080:localhost:8080 root@SERVER_PUBLIC_IP
 http://localhost:8080
 ```
 
-测评完成后，页面会显示分组完整报告、Markdown 摘要、JSON 报告、文本报告、报告压缩包和验收摘要入口。Linux 控制台默认显示彩色结构化报告；`/tmp/perfassess-auto/console.txt` 是无颜色纯文本版，`/tmp/perfassess-auto/summary.md` 是 Markdown 摘要版。控制台和 Markdown 摘要会展开路由追踪明细；如果使用 iperf3 多节点，控制台、Markdown 和 `net_quality.json` 也会展示节点矩阵。其中“国内方向参考”是本机到国内目标的出站路径，不是真实回程。
+测评完成后，页面会显示分组完整报告、Markdown 摘要、JSON 报告、文本报告、报告压缩包和验收摘要入口。Linux 控制台默认显示彩色结构化报告；`/tmp/perfassess-auto/console.txt` 是无颜色纯文本版，`/tmp/perfassess-auto/summary.md` 是 Markdown 摘要版。控制台和 Markdown 摘要会展开路由追踪明细、流媒体分组解锁、AI 服务访问类型、IP 风险来源、安全体检和压力组件；如果使用 iperf3 多节点，控制台、Markdown 和 `net_quality.json` 也会展示节点矩阵。其中“国内方向参考”是本机到国内目标的出站路径，不是真实回程。
 
 如果机器没有 `curl`，可以用 `wget`：
 
@@ -562,7 +562,7 @@ make run
 ./build/perfassess --full
 ```
 
-IP 质量检测会写入文本报告、JSON `summary.ip_quality_report` 和 Web 报告的“IP 节点分析报告”模块。当前版本包含 Team Cymru ASN 查询、反向 DNS、风险因子启发式判断、精选 DNSBL 黑名单查询、多个邮件服务商出站连通性、基于 ISP/ASN/rDNS 关键词的 IP 类型推断、欺诈风险分和综合评级；这些检测只做 DNS/TCP 网络查询，不会安装依赖。
+IP 质量检测会写入文本报告、JSON `summary.ip_quality_report` 和 Web 报告的“IP 节点分析报告”模块。当前版本包含 Team Cymru ASN 查询、反向 DNS、风险来源摘要、风险因子启发式判断、扩展 DNSBL 黑名单查询、多个邮件服务商出站连通性矩阵、网络栈说明、基于 ISP/ASN/rDNS 关键词的 IP 类型推断、欺诈风险分和综合评级；这些检测只做 DNS/TCP 网络查询，不会安装依赖，也不会默认调用需要 API Key 的商业风险数据库。
 
 #### 🌐 Web 报告（新功能）
 
@@ -583,7 +583,7 @@ IP 质量检测会写入文本报告、JSON `summary.ip_quality_report` 和 Web 
 - 💻 响应式设计，支持手机/平板
 - 🎨 Surface、Card、Chip、Tonal 区块等现代视觉层级
 - 📋 左侧分组目录，按概览、核心性能、网络扩展、稳定性和交付内容组织报告
-- 🧭 路由、流媒体、AI、IP 质量、压力和安全体检都有专用指标与表格视图
+- 🧭 路由、流媒体、AI、IP 质量、压力和安全体检都有专用指标与表格视图；流媒体按区域/平台分组，AI 按服务类别和访问类型展示
 
 提示：`basic` 档位只展示 CPU、内存、磁盘和网络核心测评；如需路由、流媒体、AI、IP 质量和安全体检，请使用 `scripts/bootstrap.sh --web --profile standard`。如需压力测试，再使用 `--profile full`。
 
@@ -1045,12 +1045,7 @@ A:
 
 ### Q: 流媒体检测支持哪些平台？
 
-A: 目前支持：
-- Netflix
-- YouTube Premium
-- Disney+
-- HBO Max
-- Amazon Prime Video
+A: `quick` 档位覆盖 Netflix、YouTube、Disney+、Prime Video、HBO Max、Hulu、Paramount+、BBC iPlayer；`standard` 会增加 Apple TV+、Spotify、TikTok、DAZN；`full` 会继续增加 Abema、Niconico、TVer、U-NEXT、Bilibili、TVB Anywhere、Wavve、Tving、Viu 等区域型平台。报告会显示平台分组、区域、解锁类型和说明。
 
 ### Q: Web 报告服务器如何停止？
 

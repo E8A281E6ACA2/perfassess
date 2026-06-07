@@ -13,9 +13,10 @@ import (
 )
 
 type ipQualityMailTarget struct {
-	Service string
-	Host    string
-	Port    int
+	Provider string
+	Service  string
+	Host     string
+	Port     int
 }
 
 // IPQualityScanner 执行公网 IP 质量检测
@@ -45,15 +46,34 @@ func NewIPQualityScanner(logger *logger.Logger) *IPQualityScanner {
 			"combined.abuse.ch",
 			"dnsbl.dronebl.org",
 			"spam.dnsbl.sorbs.net",
+			"all.spamrats.com",
+			"auth.spamrats.com",
+			"dyna.spamrats.com",
+			"noptr.spamrats.com",
+			"psbl.surriel.com",
+			"rbl.interserver.net",
+			"spamrbl.imp.ch",
+			"ubl.unsubscore.com",
+			"truncate.gbudb.net",
+			"bl.blocklist.de",
+			"hostkarma.junkemailfilter.com",
+			"mail-abuse.blacklist.jippg.org",
 		},
 		mailTargets: []ipQualityMailTarget{
-			{Service: "Gmail MX", Host: "gmail-smtp-in.l.google.com", Port: 25},
-			{Service: "Gmail SMTP SSL", Host: "smtp.gmail.com", Port: 465},
-			{Service: "Gmail SMTP Submission", Host: "smtp.gmail.com", Port: 587},
-			{Service: "Outlook SMTP", Host: "smtp-mail.outlook.com", Port: 587},
-			{Service: "Yahoo SMTP", Host: "smtp.mail.yahoo.com", Port: 587},
-			{Service: "QQ SMTP", Host: "smtp.qq.com", Port: 465},
-			{Service: "163 SMTP", Host: "smtp.163.com", Port: 465},
+			{Provider: "Gmail", Service: "MX", Host: "gmail-smtp-in.l.google.com", Port: 25},
+			{Provider: "Gmail", Service: "SMTP SSL", Host: "smtp.gmail.com", Port: 465},
+			{Provider: "Gmail", Service: "Submission", Host: "smtp.gmail.com", Port: 587},
+			{Provider: "Outlook", Service: "Submission", Host: "smtp-mail.outlook.com", Port: 587},
+			{Provider: "Yahoo", Service: "Submission", Host: "smtp.mail.yahoo.com", Port: 587},
+			{Provider: "Apple", Service: "Submission", Host: "smtp.mail.me.com", Port: 587},
+			{Provider: "QQ", Service: "SMTP SSL", Host: "smtp.qq.com", Port: 465},
+			{Provider: "Mail.ru", Service: "SMTP SSL", Host: "smtp.mail.ru", Port: 465},
+			{Provider: "AOL", Service: "Submission", Host: "smtp.aol.com", Port: 587},
+			{Provider: "GMX", Service: "Submission", Host: "mail.gmx.com", Port: 587},
+			{Provider: "Mail.com", Service: "Submission", Host: "smtp.mail.com", Port: 587},
+			{Provider: "163", Service: "SMTP SSL", Host: "smtp.163.com", Port: 465},
+			{Provider: "Sohu", Service: "SMTP SSL", Host: "smtp.sohu.com", Port: 465},
+			{Provider: "Sina", Service: "SMTP SSL", Host: "smtp.sina.com", Port: 465},
 		},
 		lookupTimeout:  3 * time.Second,
 		connectTimeout: 3 * time.Second,
@@ -99,6 +119,9 @@ func (s *IPQualityScanner) Run(systemInfo *models.SystemInfo) *models.IPQualityR
 	report.BlacklistChecks = s.checkBlacklists(parsedIP)
 	report.BlacklistSummary = summarizeBlacklists(report.BlacklistChecks)
 	report.MailChecks = s.checkMailPorts()
+	report.MailSummary = summarizeMailPorts(report.MailChecks)
+	report.NetworkStack = buildIPNetworkStack(report.IPVersion)
+	report.RiskSources = buildIPRiskSources(report)
 	report.RiskScore, report.RiskLevel = calculateIPRisk(report)
 	report.Verdict = buildIPQualityVerdict(report)
 	report.Evidence = buildIPQualityEvidence(report)
@@ -111,6 +134,7 @@ func (s *IPQualityScanner) Run(systemInfo *models.SystemInfo) *models.IPQualityR
 		report.Notes = append(report.Notes, "IP 类型基于 ISP、ASN 组织和反向 DNS 关键词推断，仅作为参考。")
 	}
 	report.Notes = append(report.Notes, "ASN 信息通过 Team Cymru DNS 查询获取；若网络或 DNS 限制导致失败，会自动留空。")
+	report.Notes = append(report.Notes, "风险来源当前使用 DNSBL、Team Cymru ASN、反向 DNS 和关键词启发式；未使用需要 API Key 的商业数据库。")
 	report.Notes = append(report.Notes, "邮件连通性只测试出站 TCP 连接，不代表收信信誉或真实投递率。")
 
 	return report
@@ -153,12 +177,25 @@ func buildIPQualityEvidence(report *models.IPQualityReport) []*models.IPQualityE
 			Detail: fmt.Sprintf("干净 %d，超时 %d，跳过 %d，其他 %d", report.BlacklistSummary.Clean, report.BlacklistSummary.Timeout, report.BlacklistSummary.Skipped, report.BlacklistSummary.Other),
 		})
 	}
+	mailReachable := countReachableIPQualityMail(report.MailChecks)
+	mailDetail := "仅表示 TCP 出站连通性，不代表真实投递率"
+	if report.MailSummary != nil {
+		mailDetail = fmt.Sprintf("服务商 %d 个，可连服务商 %d 个；%s", report.MailSummary.Providers, report.MailSummary.ProviderOpen, mailDetail)
+	}
 	evidence = append(evidence, &models.IPQualityEvidence{
 		Name:   "邮件端口",
-		Value:  fmt.Sprintf("可连 %d/%d", countReachableIPQualityMail(report.MailChecks), len(report.MailChecks)),
+		Value:  fmt.Sprintf("可连 %d/%d", mailReachable, len(report.MailChecks)),
 		Status: ipQualityMailStatus(report.MailChecks),
-		Detail: "仅表示 TCP 出站连通性，不代表真实投递率",
+		Detail: mailDetail,
 	})
+	if report.NetworkStack != nil {
+		evidence = append(evidence, &models.IPQualityEvidence{
+			Name:   "网络栈",
+			Value:  ipQualityNetworkStackLabel(report.NetworkStack),
+			Status: "info",
+			Detail: report.NetworkStack.Note,
+		})
+	}
 	for _, factor := range report.RiskFactors {
 		if factor == nil || !factor.Detected {
 			continue
@@ -260,14 +297,44 @@ func summarizeBlacklists(checks []*models.IPBlacklistCheck) *models.IPBlacklistS
 	return summary
 }
 
+func summarizeMailPorts(checks []*models.MailPortCheck) *models.MailPortSummary {
+	summary := &models.MailPortSummary{Total: len(checks)}
+	providers := map[string]bool{}
+	openProviders := map[string]bool{}
+	for _, check := range checks {
+		if check == nil {
+			continue
+		}
+		if check.Provider != "" {
+			providers[check.Provider] = true
+		}
+		switch check.Status {
+		case "reachable":
+			summary.Reachable++
+			if check.Provider != "" {
+				openProviders[check.Provider] = true
+			}
+		case "timeout":
+			summary.Timeout++
+		default:
+			summary.Blocked++
+		}
+	}
+	summary.Providers = len(providers)
+	summary.ProviderOpen = len(openProviders)
+	return summary
+}
+
 func (s *IPQualityScanner) checkMailPorts() []*models.MailPortCheck {
 	checks := make([]*models.MailPortCheck, 0, len(s.mailTargets))
 	for _, target := range s.mailTargets {
 		address := net.JoinHostPort(target.Host, fmt.Sprintf("%d", target.Port))
 		conn, err := net.DialTimeout("tcp", address, s.connectTimeout)
 		check := &models.MailPortCheck{
-			Target: fmt.Sprintf("%s (%s)", target.Service, target.Host),
-			Port:   target.Port,
+			Service:  target.Service,
+			Provider: target.Provider,
+			Target:   fmt.Sprintf("%s %s (%s)", target.Provider, target.Service, target.Host),
+			Port:     target.Port,
 		}
 		if err == nil {
 			conn.Close()
@@ -283,6 +350,103 @@ func (s *IPQualityScanner) checkMailPorts() []*models.MailPortCheck {
 		checks = append(checks, check)
 	}
 	return checks
+}
+
+func buildIPRiskSources(report *models.IPQualityReport) []*models.IPRiskSource {
+	sources := []*models.IPRiskSource{
+		{
+			Name:    "Team Cymru ASN",
+			Type:    "dns",
+			Status:  enabledStatus(report.ASN != "" || report.Organization != ""),
+			Signal:  ipQualityASNValue(report),
+			Detail:  "ASN 和组织名称，用于判断云厂商、托管和运营商线索",
+			Weight:  15,
+			Enabled: true,
+		},
+		{
+			Name:    "Reverse DNS",
+			Type:    "dns",
+			Status:  enabledStatus(len(report.ReverseDNS) > 0),
+			Signal:  strings.Join(report.ReverseDNS, ", "),
+			Detail:  "反向 DNS 关键词可辅助判断代理、VPN、Tor 或托管线索",
+			Weight:  10,
+			Enabled: true,
+		},
+		{
+			Name:    "DNSBL",
+			Type:    "dnsbl",
+			Status:  dnsblSourceStatus(report.BlacklistSummary),
+			Signal:  dnsblSourceSignal(report.BlacklistSummary),
+			Detail:  "多组公开 DNSBL 黑名单查询",
+			Weight:  35,
+			Enabled: true,
+		},
+		{
+			Name:    "Heuristic Keywords",
+			Type:    "heuristic",
+			Status:  enabledStatus(hasDetectedIPRiskFactor(report.RiskFactors)),
+			Detail:  "基于 ISP、ASN 组织和 rDNS 的本地关键词判断",
+			Weight:  20,
+			Enabled: true,
+		},
+		{
+			Name:    "Commercial Risk APIs",
+			Type:    "external_api",
+			Status:  "disabled",
+			Detail:  "未调用需要 API Key 的商业风险数据库，避免默认流程依赖第三方账号",
+			Enabled: false,
+		},
+	}
+	return sources
+}
+
+func dnsblSourceStatus(summary *models.IPBlacklistSummary) string {
+	if summary == nil || summary.Total == 0 {
+		return "missing"
+	}
+	if summary.Listed > 0 {
+		return "listed"
+	}
+	if summary.Timeout > 0 || summary.Other > 0 {
+		return "partial"
+	}
+	return "clean"
+}
+
+func dnsblSourceSignal(summary *models.IPBlacklistSummary) string {
+	if summary == nil {
+		return ""
+	}
+	return fmt.Sprintf("命中 %d/%d，正常 %d，超时 %d", summary.Listed, summary.Total, summary.Clean, summary.Timeout)
+}
+
+func buildIPNetworkStack(version string) *models.IPNetworkStack {
+	stack := &models.IPNetworkStack{DetectedVersion: version}
+	switch version {
+	case "IPv4":
+		stack.IPv4Available = true
+	case "IPv6":
+		stack.IPv6Available = true
+	}
+	stack.DualStack = stack.IPv4Available && stack.IPv6Available
+	stack.Note = "IP 质量模块基于当前采集到的公网 IP 检测；完整双栈对比建议结合网络质量矩阵查看。"
+	return stack
+}
+
+func enabledStatus(value bool) string {
+	if value {
+		return "available"
+	}
+	return "missing"
+}
+
+func hasDetectedIPRiskFactor(factors []*models.IPRiskFactor) bool {
+	for _, factor := range factors {
+		if factor != nil && factor.Detected {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *IPQualityScanner) lookupReverseDNS(ip net.IP) []string {
@@ -540,6 +704,16 @@ func ipQualityMailStatus(checks []*models.MailPortCheck) string {
 	default:
 		return "blocked"
 	}
+}
+
+func ipQualityNetworkStackLabel(stack *models.IPNetworkStack) string {
+	if stack == nil {
+		return "-"
+	}
+	if stack.DualStack {
+		return "IPv4/IPv6 双栈"
+	}
+	return stack.DetectedVersion
 }
 
 func countReachableIPQualityMail(checks []*models.MailPortCheck) int {

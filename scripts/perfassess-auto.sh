@@ -556,6 +556,84 @@ def yes_no(value):
         return "不可用"
     return "-"
 
+def streaming_category(value):
+    return {
+        "global": "全球",
+        "us": "美国",
+        "jp": "日本",
+        "cn": "中国",
+        "hk": "香港",
+        "kr": "韩国",
+        "eu": "欧洲",
+        "asia": "亚洲",
+        "music": "音乐",
+        "sports": "体育",
+    }.get(text(value, ""), text(value))
+
+def streaming_unlock_type(value):
+    return {
+        "full": "完整解锁",
+        "partial": "部分解锁",
+        "limited": "受限",
+        "blocked": "不可用",
+        "login_required": "需要登录",
+        "available": "可访问",
+    }.get(text(value, ""), text(value))
+
+def streaming_rows(results):
+    if not isinstance(results, dict):
+        return []
+    rows = []
+    for name, item in results.items():
+        if not isinstance(item, dict):
+            continue
+        rows.append([
+            streaming_category(item.get("category")),
+            text(item.get("platform"), name),
+            yes_no(item.get("available")),
+            text(item.get("region")),
+            streaming_unlock_type(item.get("unlock_type")),
+            text(item.get("message")),
+        ])
+    rows.sort(key=lambda row: (row[0], row[1]))
+    return rows
+
+def ai_category(value):
+    return {
+        "chatbot": "对话",
+        "assistant": "助手",
+        "search": "搜索",
+        "coding": "编程",
+    }.get(text(value, ""), text(value))
+
+def ai_access_type(value):
+    return {
+        "full": "可访问",
+        "login_required": "需要登录",
+        "verification_required": "需验证",
+        "rate_limited": "限流",
+        "restricted": "受限",
+        "available": "可用",
+    }.get(text(value, ""), text(value))
+
+def ai_rows(results):
+    if not isinstance(results, dict):
+        return []
+    rows = []
+    for name, item in results.items():
+        if not isinstance(item, dict):
+            continue
+        rows.append([
+            ai_category(item.get("category")),
+            text(item.get("service"), name),
+            yes_no(item.get("available")),
+            ai_access_type(item.get("access_type")),
+            text(item.get("region_hint")),
+            text(item.get("message")),
+        ])
+    rows.sort(key=lambda row: (row[0], row[1]))
+    return rows
+
 def progress_step_rows():
     rows = []
     for item in as_dict(progress_report).get("steps", []):
@@ -597,6 +675,28 @@ def json_dump(path, value):
 
 def md_cell(value):
     return text(value).replace("|", "\\|")
+
+def md_table(headers, rows):
+    lines = [
+        "| " + " | ".join(md_cell(item) for item in headers) + " |",
+        "| " + " | ".join("---" for _ in headers) + " |",
+    ]
+    for row in rows:
+        lines.append("| " + " | ".join(md_cell(item) for item in row) + " |")
+    return lines
+
+def detected_ip_factors(value, limit=8):
+    if not isinstance(value, dict):
+        return []
+    factors = value.get("risk_factors") if isinstance(value.get("risk_factors"), list) else []
+    rows = []
+    for item in factors:
+        if not isinstance(item, dict) or not item.get("detected"):
+            continue
+        rows.append([text(item.get("name")), text(item.get("confidence")), text(item.get("detail"))])
+        if len(rows) >= limit:
+            break
+    return rows
 
 def route_group(target):
     lowered = text(target, "").lower()
@@ -923,14 +1023,18 @@ def write_module_artifacts():
         "verdict": ip_verdict(ip_report),
         "evidence": ip_report.get("evidence", []) if isinstance(ip_report, dict) else [],
         "recommendations": ip_recommendations(ip_report),
+        "risk_sources": ip_report.get("risk_sources", []) if isinstance(ip_report, dict) else [],
+        "mail_summary": ip_report.get("mail_summary", {}) if isinstance(ip_report, dict) else {},
+        "network_stack": ip_report.get("network_stack", {}) if isinstance(ip_report, dict) else {},
         "report": ip_report,
     }
     streaming_payload = {
         **module_common,
         "profile": text(default_summary.get("streaming_profile"), streaming_profile),
         "results": default_summary.get("streaming_results", {}),
+        "rows": streaming_rows(default_summary.get("streaming_results")),
     }
-    ai_payload = {**module_common, "results": default_summary.get("ai_results", {})}
+    ai_payload = {**module_common, "results": default_summary.get("ai_results", {}), "rows": ai_rows(default_summary.get("ai_results"))}
     security_payload = {**module_common, "report": default_summary.get("security_report", {})}
     stress_payload = {**module_common, "report": stress_report}
 
@@ -992,6 +1096,10 @@ def write_module_artifacts():
             "Perfassess IP 质量摘要",
             ip_quality_summary(ip_report),
             f"ASN: {text(ip_report.get('asn'))} | 组织: {text(ip_report.get('organization'))}" if ip_report else "未执行",
+            f"网络栈: {text(ip_report.get('network_stack', {}).get('detected_version'))} | 双栈 {yes_no(ip_report.get('network_stack', {}).get('dual_stack'))}" if ip_report else "网络栈: 未执行",
+            f"邮件汇总: 服务商 {text(ip_report.get('mail_summary', {}).get('providers'), '0')} | 可连服务商 {text(ip_report.get('mail_summary', {}).get('provider_open'), '0')} | 可连端口 {text(ip_report.get('mail_summary', {}).get('reachable'), '0')}/{text(ip_report.get('mail_summary', {}).get('total'), '0')}" if ip_report else "邮件汇总: 未执行",
+            "风险来源:",
+            *[f"- {text(item.get('name'))}: {text(item.get('status'))} | {text(item.get('signal'))} | {text(item.get('detail'))}" for item in (ip_report.get("risk_sources", []) if isinstance(ip_report.get("risk_sources"), list) else []) if isinstance(item, dict)],
             "证据:",
             *[f"- {row[0]}: {row[1]} | {row[2]} | {row[3]}" for row in ip_evidence_rows(ip_report)],
             "建议:",
@@ -1070,6 +1178,8 @@ def console_report(color=False):
     ip_location = "，".join(part for part in [text(system.get("location"), ""), text(system.get("isp"), "")] if part)
     blacklists = ip_report.get("blacklist_summary", {}) if isinstance(ip_report.get("blacklist_summary"), dict) else {}
     mail_checks = ip_report.get("mail_checks", []) if isinstance(ip_report.get("mail_checks"), list) else []
+    mail_summary = ip_report.get("mail_summary", {}) if isinstance(ip_report.get("mail_summary"), dict) else {}
+    network_stack = ip_report.get("network_stack", {}) if isinstance(ip_report.get("network_stack"), dict) else {}
     mail_ok = sum(1 for item in mail_checks if isinstance(item, dict) and item.get("reachable"))
 
     rows = [
@@ -1154,10 +1264,19 @@ def console_report(color=False):
             kv("IP", f"{text(ip_report.get('public_ip'))} | {text(ip_report.get('country'))} {text(ip_report.get('city'))}"),
             kv("运营商", f"{text(ip_report.get('isp'))} / {text(ip_report.get('organization'))}"),
             kv("类型", f"{text(ip_report.get('ip_version'))} | {text(verdict.get('ip_type_label'), text(ip_report.get('ip_type')))}"),
+            kv("网络栈", f"{text(network_stack.get('detected_version'))} | 双栈 {yes_no(network_stack.get('dual_stack'))}"),
             kv("风险", f"{text(ip_report.get('risk_level'))} | {text(ip_report.get('risk_score'))}/100", style_for_status(ip_report.get("risk_level"))),
             kv("黑名单", f"干净 {text(blacklists.get('clean'))}/{text(blacklists.get('total'))} | 命中 {text(blacklists.get('listed'))}"),
-            kv("邮件端口", f"连通 {mail_ok}/{len(mail_checks)}"),
+            kv("邮件端口", f"连通 {mail_ok}/{len(mail_checks)} | 服务商 {text(mail_summary.get('provider_open'), '0')}/{text(mail_summary.get('providers'), '0')}"),
         ])
+        risk_sources = ip_report.get("risk_sources") if isinstance(ip_report.get("risk_sources"), list) else []
+        if risk_sources:
+            rows.extend(table(
+                ["来源", "类型", "状态", "信号"],
+                [[text(item.get("name")), text(item.get("type")), text(item.get("status")), text(item.get("signal"))] for item in risk_sources if isinstance(item, dict)],
+                [22, 12, 10, 30],
+                status_col=2,
+            ))
         evidence_rows = ip_evidence_rows(ip_report)
         if evidence_rows:
             rows.extend(table(
@@ -1211,20 +1330,20 @@ def console_report(color=False):
     if isinstance(streaming, dict) and streaming:
         rows += section("流媒体解锁")
         rows.extend(table(
-            ["平台", "状态", "区域", "说明"],
-            [[text(item.get("platform"), name), yes_no(item.get("available")), text(item.get("region")), text(item.get("message"))] for name, item in streaming.items() if isinstance(item, dict)],
-            [18, 10, 12, 30],
-            status_col=1,
+            ["分组", "平台", "状态", "区域", "解锁", "说明"],
+            streaming_rows(streaming),
+            [8, 16, 8, 10, 10, 24],
+            status_col=2,
         ))
 
     ai = default_summary.get("ai_results")
     if isinstance(ai, dict) and ai:
         rows += section("AI 服务")
         rows.extend(table(
-            ["服务", "状态", "说明"],
-            [[text(item.get("service"), name), yes_no(item.get("available")), text(item.get("message"))] for name, item in ai.items() if isinstance(item, dict)],
-            [18, 10, 44],
-            status_col=1,
+            ["分组", "服务", "状态", "访问", "区域", "说明"],
+            ai_rows(ai),
+            [8, 16, 8, 10, 10, 26],
+            status_col=2,
         ))
 
     security = default_summary.get("security_report")
@@ -1338,6 +1457,75 @@ lines.extend([
     "",
 ])
 
+if ip_report:
+    verdict = ip_verdict(ip_report)
+    blacklists = ip_report.get("blacklist_summary", {}) if isinstance(ip_report.get("blacklist_summary"), dict) else {}
+    mail_summary = ip_report.get("mail_summary", {}) if isinstance(ip_report.get("mail_summary"), dict) else {}
+    network_stack = ip_report.get("network_stack", {}) if isinstance(ip_report.get("network_stack"), dict) else {}
+    ip_identity = f"{text(ip_report.get('public_ip'))} / {text(ip_report.get('ip_version'))}"
+    ip_location = f"{text(ip_report.get('country'))} {text(ip_report.get('city'))}"
+    ip_operator = f"{text(ip_report.get('isp'))} / {text(ip_report.get('organization'))}"
+    ip_risk = f"{text(ip_report.get('risk_level'))} / {text(ip_report.get('risk_score'))}/100"
+    ip_blacklist = f"干净 {text(blacklists.get('clean'))}/{text(blacklists.get('total'))}，命中 {text(blacklists.get('listed'))}"
+    ip_mail = f"可连 {text(mail_summary.get('provider_open'), '0')}/{text(mail_summary.get('providers'), '0')}，端口 {text(mail_summary.get('reachable'), '0')}/{text(mail_summary.get('total'), '0')}"
+    ip_stack = f"{text(network_stack.get('detected_version'))}，双栈 {yes_no(network_stack.get('dual_stack'))}"
+    lines.extend([
+        "## IP 质量",
+        "",
+        "| 项目 | 值 |",
+        "|------|----|",
+        f"| 结论 | {md_cell(text(verdict.get('summary'), ip_quality_summary(ip_report)))} |",
+        f"| IP | {md_cell(ip_identity)} |",
+        f"| 位置 | {md_cell(ip_location)} |",
+        f"| 运营商 | {md_cell(ip_operator)} |",
+        f"| 类型 | {md_cell(text(verdict.get('ip_type_label'), text(ip_report.get('ip_type'))))} |",
+        f"| 风险 | {md_cell(ip_risk)} |",
+        f"| 黑名单 | {md_cell(ip_blacklist)} |",
+        f"| 邮件服务商 | {md_cell(ip_mail)} |",
+        f"| 网络栈 | {md_cell(ip_stack)} |",
+        "",
+    ])
+    risk_sources = ip_report.get("risk_sources") if isinstance(ip_report.get("risk_sources"), list) else []
+    if risk_sources:
+        lines.extend([
+            "### IP 风险来源",
+            "",
+            *md_table(
+                ["来源", "类型", "状态", "信号", "说明"],
+                [[text(item.get("name")), text(item.get("type")), text(item.get("status")), text(item.get("signal")), text(item.get("detail"))] for item in risk_sources if isinstance(item, dict)],
+            ),
+            "",
+        ])
+    evidence_rows = ip_evidence_rows(ip_report)
+    if evidence_rows:
+        lines.extend(["### IP 证据", "", *md_table(["证据", "结果", "状态", "说明"], evidence_rows[:8]), ""])
+    factor_rows = detected_ip_factors(ip_report)
+    if factor_rows:
+        lines.extend(["### 命中风险因子", "", *md_table(["风险项", "置信度", "说明"], factor_rows), ""])
+    recommendations = ip_recommendations(ip_report)
+    if recommendations:
+        lines.extend(["### IP 建议", ""])
+        lines.extend(f"- {item}" for item in recommendations[:5])
+        lines.append("")
+
+streaming_detail_rows = streaming_rows(default_summary.get("streaming_results"))
+if streaming_detail_rows:
+    lines.extend([
+        "## 流媒体解锁明细",
+        "",
+        *md_table(["分组", "平台", "状态", "区域", "解锁", "说明"], streaming_detail_rows),
+        "",
+    ])
+
+ai_detail_rows = ai_rows(default_summary.get("ai_results"))
+if ai_detail_rows:
+    lines.extend([
+        "## AI 服务明细",
+        "",
+        *md_table(["分组", "服务", "状态", "访问", "区域", "说明"], ai_detail_rows),
+        "",
+    ])
+
 route_detail_rows = route_rows(default_summary.get("route_trace_results"))
 if route_detail_rows:
     lines.extend([
@@ -1354,6 +1542,31 @@ if route_detail_rows:
             "注意：国内方向参考是本机到国内目标的出站路径，不是真实回程。",
             "",
         ])
+
+security = default_summary.get("security_report")
+security_findings = security.get("findings", []) if isinstance(security, dict) and isinstance(security.get("findings"), list) else []
+if security_findings:
+    lines.extend([
+        "## 安全体检明细",
+        "",
+        *md_table(
+            ["级别", "类别", "问题", "建议"],
+            [[text(item.get("severity")), text(item.get("category")), text(item.get("title")), text(item.get("advice"))] for item in security_findings[:10] if isinstance(item, dict)],
+        ),
+        "",
+    ])
+
+stress_components = stress_report.get("components", []) if isinstance(stress_report.get("components"), list) else []
+if stress_components:
+    lines.extend([
+        "## 压力测试组件",
+        "",
+        *md_table(
+            ["组件", "状态", "耗时", "备注"],
+            [[text(item.get("name")), status_text(item.get("status")), duration_text(item.get("duration_seconds")), text(item.get("notes"))] for item in stress_components if isinstance(item, dict)],
+        ),
+        "",
+    ])
 
 lines.extend([
     "## 输出文件",

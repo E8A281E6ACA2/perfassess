@@ -748,8 +748,8 @@ func TestWebReportTemplateRendersMaterialSummary(t *testing.T) {
 		},
 	}
 	report.Summary["streaming_results"] = map[string]*models.StreamingResult{
-		"Netflix": {Platform: "Netflix", Available: true, Region: "US", Message: "可用"},
-		"Disney+": {Platform: "Disney+", Available: false, Message: "地区限制"},
+		"Netflix": {Platform: "Netflix", Available: true, Region: "US", Message: "可用", Category: "global", UnlockType: "full", Protocol: "default"},
+		"Disney+": {Platform: "Disney+", Available: false, Message: "地区限制", Category: "global", UnlockType: "blocked", Protocol: "default"},
 	}
 	report.Summary["ai_results"] = map[string]*models.AIServiceResult{
 		"ChatGPT": {Service: "ChatGPT", Available: true, Message: "需要登录"},
@@ -791,6 +791,8 @@ func TestWebReportTemplateRendersMaterialSummary(t *testing.T) {
 		"IP 质量",
 		"追踪目标",
 		"平台结果",
+		"解锁类型",
+		"完整解锁",
 		"服务结果",
 		"压力组件",
 		"安全发现",

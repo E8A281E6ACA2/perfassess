@@ -939,12 +939,15 @@ func (ws *WebServer) streamingSection() webReportSection {
 		webMetricCard{Label: "可用", Value: fmt.Sprintf("%d", availableCount), Unit: fmt.Sprintf("/ %d", len(results)), Tone: availabilityTone(availableCount, len(results))},
 	)
 
-	table := webTable{Title: "平台结果", Headers: []string{"平台", "状态", "区域", "说明"}}
+	table := webTable{Title: "平台结果", Headers: []string{"分组", "平台", "状态", "区域", "解锁类型", "协议", "说明"}}
 	for _, pair := range sortedStreamingResults(results) {
 		table.Rows = append(table.Rows, []string{
+			streamingCategory(pair.result),
 			pair.key,
 			availabilityLabel(pair.result != nil && pair.result.Available),
 			streamingRegion(pair.result),
+			streamingUnlockType(pair.result),
+			streamingProtocol(pair.result),
 			streamingMessage(pair.result),
 		})
 	}
@@ -963,9 +966,44 @@ func sortedStreamingResults(results map[string]*models.StreamingResult) []stream
 		pairs = append(pairs, streamingResultPair{key: key, result: result})
 	}
 	sort.Slice(pairs, func(i, j int) bool {
+		leftCategory := streamingCategory(pairs[i].result)
+		rightCategory := streamingCategory(pairs[j].result)
+		if leftCategory != rightCategory {
+			return leftCategory < rightCategory
+		}
 		return strings.ToLower(pairs[i].key) < strings.ToLower(pairs[j].key)
 	})
 	return pairs
+}
+
+func streamingCategory(result *models.StreamingResult) string {
+	if result == nil {
+		return "-"
+	}
+	switch result.Category {
+	case "global":
+		return "全球"
+	case "us":
+		return "美国"
+	case "jp":
+		return "日本"
+	case "cn":
+		return "中国"
+	case "hk":
+		return "香港"
+	case "kr":
+		return "韩国"
+	case "eu":
+		return "欧洲"
+	case "asia":
+		return "亚洲"
+	case "music":
+		return "音乐"
+	case "sports":
+		return "体育"
+	default:
+		return fallback(result.Category, "-")
+	}
 }
 
 func streamingRegion(result *models.StreamingResult) string {
@@ -973,6 +1011,35 @@ func streamingRegion(result *models.StreamingResult) string {
 		return "-"
 	}
 	return fallback(result.Region, "-")
+}
+
+func streamingUnlockType(result *models.StreamingResult) string {
+	if result == nil {
+		return "-"
+	}
+	switch result.UnlockType {
+	case "full":
+		return "完整解锁"
+	case "partial":
+		return "部分解锁"
+	case "limited":
+		return "受限"
+	case "blocked":
+		return "不可用"
+	case "login_required":
+		return "需要登录"
+	case "available":
+		return "可访问"
+	default:
+		return fallback(result.UnlockType, "-")
+	}
+}
+
+func streamingProtocol(result *models.StreamingResult) string {
+	if result == nil {
+		return "-"
+	}
+	return fallback(result.Protocol, "-")
 }
 
 func streamingMessage(result *models.StreamingResult) string {
@@ -1006,11 +1073,14 @@ func (ws *WebServer) aiSection() webReportSection {
 		webMetricCard{Label: "可访问", Value: fmt.Sprintf("%d", availableCount), Unit: fmt.Sprintf("/ %d", len(results)), Tone: availabilityTone(availableCount, len(results))},
 	)
 
-	table := webTable{Title: "服务结果", Headers: []string{"服务", "状态", "说明"}}
+	table := webTable{Title: "服务结果", Headers: []string{"分组", "服务", "状态", "访问类型", "区域提示", "说明"}}
 	for _, pair := range sortedAIResults(results) {
 		table.Rows = append(table.Rows, []string{
+			aiCategory(pair.result),
 			pair.key,
 			availabilityLabel(pair.result != nil && pair.result.Available),
+			aiAccessType(pair.result),
+			aiRegionHint(pair.result),
 			aiMessage(pair.result),
 		})
 	}
@@ -1029,9 +1099,61 @@ func sortedAIResults(results map[string]*models.AIServiceResult) []aiResultPair 
 		pairs = append(pairs, aiResultPair{key: key, result: result})
 	}
 	sort.Slice(pairs, func(i, j int) bool {
+		leftCategory := aiCategory(pairs[i].result)
+		rightCategory := aiCategory(pairs[j].result)
+		if leftCategory != rightCategory {
+			return leftCategory < rightCategory
+		}
 		return strings.ToLower(pairs[i].key) < strings.ToLower(pairs[j].key)
 	})
 	return pairs
+}
+
+func aiCategory(result *models.AIServiceResult) string {
+	if result == nil {
+		return "-"
+	}
+	switch result.Category {
+	case "chatbot":
+		return "对话"
+	case "assistant":
+		return "助手"
+	case "search":
+		return "搜索"
+	case "coding":
+		return "编程"
+	default:
+		return fallback(result.Category, "-")
+	}
+}
+
+func aiAccessType(result *models.AIServiceResult) string {
+	if result == nil {
+		return "-"
+	}
+	switch result.AccessType {
+	case "full":
+		return "可访问"
+	case "login_required":
+		return "需要登录"
+	case "verification_required":
+		return "需验证"
+	case "rate_limited":
+		return "限流"
+	case "restricted":
+		return "受限"
+	case "available":
+		return "可用"
+	default:
+		return fallback(result.AccessType, "-")
+	}
+}
+
+func aiRegionHint(result *models.AIServiceResult) string {
+	if result == nil {
+		return "-"
+	}
+	return fallback(result.RegionHint, "-")
 }
 
 func aiMessage(result *models.AIServiceResult) string {
@@ -1081,8 +1203,25 @@ func (ws *WebServer) ipQualitySection() webReportSection {
 		webDetailRow{Label: "代理/VPN 标记", Value: yesNo(ipRiskFactorDetected(report, "proxy") || ipRiskFactorDetected(report, "vpn"))},
 		webDetailRow{Label: "机房/托管标记", Value: yesNo(ipRiskFactorDetected(report, "datacenter"))},
 		webDetailRow{Label: "反向 DNS", Value: fallback(strings.Join(report.ReverseDNS, ", "), "-")},
+		webDetailRow{Label: "网络栈", Value: ipNetworkStackLabel(report.NetworkStack)},
 		webDetailRow{Label: "判定说明", Value: ipQualityBasis(report)},
 	)
+	if len(report.RiskSources) > 0 {
+		table := webTable{Title: "风险来源", Headers: []string{"来源", "类型", "状态", "信号", "说明"}}
+		for _, source := range report.RiskSources {
+			if source == nil {
+				continue
+			}
+			table.Rows = append(table.Rows, []string{
+				source.Name,
+				source.Type,
+				ipRiskSourceStatusLabel(source),
+				fallback(source.Signal, "-"),
+				source.Detail,
+			})
+		}
+		section.Tables = append(section.Tables, table)
+	}
 	if len(report.RiskFactors) > 0 {
 		table := webTable{Title: "IP 类型与风险因子", Headers: []string{"因子", "状态", "置信度", "来源", "详情"}}
 		for _, factor := range report.RiskFactors {
@@ -1113,9 +1252,22 @@ func (ws *WebServer) ipQualitySection() webReportSection {
 		section.Tables = append(section.Tables, table)
 	}
 	if len(report.MailChecks) > 0 {
-		table := webTable{Title: "邮件端口连通性", Headers: []string{"目标", "端口", "状态", "详情"}}
+		if report.MailSummary != nil {
+			section.Details = append(section.Details, webDetailRow{
+				Label: "邮件汇总",
+				Value: fmt.Sprintf("服务商 %d 个，可连服务商 %d 个；可连端口 %d，阻断 %d，超时 %d",
+					report.MailSummary.Providers,
+					report.MailSummary.ProviderOpen,
+					report.MailSummary.Reachable,
+					report.MailSummary.Blocked,
+					report.MailSummary.Timeout,
+				),
+			})
+		}
+		table := webTable{Title: "邮件端口连通性", Headers: []string{"服务商", "目标", "端口", "状态", "详情"}}
 		for _, check := range report.MailChecks {
 			table.Rows = append(table.Rows, []string{
+				fallback(check.Provider, "-"),
 				check.Target,
 				fmt.Sprintf("%d", check.Port),
 				mailCheckStatusLabel(check),
@@ -1326,9 +1478,23 @@ func ipQualityBasis(report *models.IPQualityReport) string {
 		parts = append(parts, fmt.Sprintf("DNSBL 命中 %d/%d", report.BlacklistSummary.Listed, report.BlacklistSummary.Total))
 	}
 	if len(report.MailChecks) > 0 {
-		parts = append(parts, fmt.Sprintf("邮件端口可连 %d/%d", countReachableMailChecks(report.MailChecks), len(report.MailChecks)))
+		if report.MailSummary != nil {
+			parts = append(parts, fmt.Sprintf("邮件端口可连 %d/%d，服务商 %d/%d", report.MailSummary.Reachable, report.MailSummary.Total, report.MailSummary.ProviderOpen, report.MailSummary.Providers))
+		} else {
+			parts = append(parts, fmt.Sprintf("邮件端口可连 %d/%d", countReachableMailChecks(report.MailChecks), len(report.MailChecks)))
+		}
 	}
 	return strings.Join(parts, " + ")
+}
+
+func ipNetworkStackLabel(stack *models.IPNetworkStack) string {
+	if stack == nil {
+		return "-"
+	}
+	if stack.DualStack {
+		return "IPv4/IPv6 双栈"
+	}
+	return fallback(stack.DetectedVersion, "-")
 }
 
 func ipQualityASNLabel(report *models.IPQualityReport) string {
