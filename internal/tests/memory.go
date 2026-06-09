@@ -34,12 +34,21 @@ type MemoryBenchmarkBackend interface {
 	MeasureWrite(sizeMB int) (MemoryBackendResult, error)
 }
 
+type memoryBenchmarkPreparer interface {
+	Prepare(sizeMB int) error
+}
+
+type memoryBenchmarkReleaser interface {
+	Release()
+}
+
 type MemoryBackendResult struct {
 	SpeedMBps float64
 }
 
 type BuiltinMemoryBackend struct {
-	test *MemoryTest
+	test   *MemoryTest
+	buffer []byte
 }
 
 func (b *BuiltinMemoryBackend) Name() string {
@@ -55,13 +64,36 @@ func (b *BuiltinMemoryBackend) WriteSource() string {
 }
 
 func (b *BuiltinMemoryBackend) MeasureRead(sizeMB int) (MemoryBackendResult, error) {
-	speed, err := b.test.TestSequentialRead(sizeMB)
+	if err := b.Prepare(sizeMB); err != nil {
+		return MemoryBackendResult{}, err
+	}
+	speed, err := b.test.TestSequentialReadWithBuffer(sizeMB, b.buffer)
 	return MemoryBackendResult{SpeedMBps: speed}, err
 }
 
 func (b *BuiltinMemoryBackend) MeasureWrite(sizeMB int) (MemoryBackendResult, error) {
-	speed, err := b.test.TestSequentialWrite(sizeMB)
+	if err := b.Prepare(sizeMB); err != nil {
+		return MemoryBackendResult{}, err
+	}
+	speed, err := b.test.TestSequentialWriteWithBuffer(sizeMB, b.buffer)
 	return MemoryBackendResult{SpeedMBps: speed}, err
+}
+
+func (b *BuiltinMemoryBackend) Prepare(sizeMB int) error {
+	size, err := memoryBufferSize(sizeMB)
+	if err != nil {
+		return err
+	}
+	if cap(b.buffer) < size {
+		b.buffer = make([]byte, size)
+	} else {
+		b.buffer = b.buffer[:size]
+	}
+	return nil
+}
+
+func (b *BuiltinMemoryBackend) Release() {
+	b.buffer = nil
 }
 
 // NewMemoryTest 创建内存性能测试
@@ -112,11 +144,17 @@ func (mt *MemoryTest) Execute() (*models.TestResult, error) {
 	mt.MarkStart()
 	status := "success"
 	defer func() {
+		mt.releaseBackendMemory()
+		runtime.GC()
 		mt.MarkEnd(status)
 	}()
 
 	metrics := make(map[string]interface{})
 	metrics["backend"] = mt.backend.Name()
+	if err := mt.prepareBackendMemory(); err != nil {
+		status = "failed"
+		return mt.CreateResult("failed", metrics, fmt.Sprintf("准备内存测试失败: %v", err)), err
+	}
 
 	// 测试顺序读取速度
 	mt.GetLogger().Info("开始内存顺序读取测试...")
@@ -160,6 +198,19 @@ func (mt *MemoryTest) Execute() (*models.TestResult, error) {
 	mt.GetLogger().Info(fmt.Sprintf("内存测试完成，评分: %.2f", score))
 
 	return mt.CreateResult("success", metrics, ""), nil
+}
+
+func (mt *MemoryTest) prepareBackendMemory() error {
+	if preparer, ok := mt.backend.(memoryBenchmarkPreparer); ok {
+		return preparer.Prepare(mt.testSize)
+	}
+	return nil
+}
+
+func (mt *MemoryTest) releaseBackendMemory() {
+	if releaser, ok := mt.backend.(memoryBenchmarkReleaser); ok {
+		releaser.Release()
+	}
 }
 
 func (mt *MemoryTest) collectSamples(runs int, measure func() (MemoryBackendResult, error)) ([]MemoryBackendResult, error) {
@@ -247,9 +298,22 @@ func (mt *MemoryTest) GetSafeTestSize() (int, error) {
 //   - float64: 读取速度（MB/s）
 //   - error: 测试错误
 func (mt *MemoryTest) TestSequentialRead(sizeMB int) (float64, error) {
-	// 分配内存
-	size := sizeMB * 1024 * 1024 // 转换为字节
-	data := make([]byte, size)
+	size, err := memoryBufferSize(sizeMB)
+	if err != nil {
+		return 0, err
+	}
+	return mt.TestSequentialReadWithBuffer(sizeMB, make([]byte, size))
+}
+
+func (mt *MemoryTest) TestSequentialReadWithBuffer(sizeMB int, data []byte) (float64, error) {
+	size, err := memoryBufferSize(sizeMB)
+	if err != nil {
+		return 0, err
+	}
+	if len(data) < size {
+		return 0, fmt.Errorf("内存测试缓冲区不足: %d < %d bytes", len(data), size)
+	}
+	data = data[:size]
 
 	// 先写入数据
 	for i := 0; i < size; i++ {
@@ -286,9 +350,22 @@ func (mt *MemoryTest) TestSequentialRead(sizeMB int) (float64, error) {
 //   - float64: 写入速度（MB/s）
 //   - error: 测试错误
 func (mt *MemoryTest) TestSequentialWrite(sizeMB int) (float64, error) {
-	// 分配内存
-	size := sizeMB * 1024 * 1024 // 转换为字节
-	data := make([]byte, size)
+	size, err := memoryBufferSize(sizeMB)
+	if err != nil {
+		return 0, err
+	}
+	return mt.TestSequentialWriteWithBuffer(sizeMB, make([]byte, size))
+}
+
+func (mt *MemoryTest) TestSequentialWriteWithBuffer(sizeMB int, data []byte) (float64, error) {
+	size, err := memoryBufferSize(sizeMB)
+	if err != nil {
+		return 0, err
+	}
+	if len(data) < size {
+		return 0, fmt.Errorf("内存测试缓冲区不足: %d < %d bytes", len(data), size)
+	}
+	data = data[:size]
 
 	// 测试写入速度
 	startTime := time.Now()
@@ -304,6 +381,17 @@ func (mt *MemoryTest) TestSequentialWrite(sizeMB int) (float64, error) {
 	speed := float64(sizeMB) / duration.Seconds()
 
 	return speed, nil
+}
+
+func memoryBufferSize(sizeMB int) (int, error) {
+	if sizeMB <= 0 {
+		return 0, fmt.Errorf("内存测试大小必须大于 0 MB，当前为 %d MB", sizeMB)
+	}
+	const bytesPerMB = 1024 * 1024
+	if sizeMB > int(^uint(0)>>1)/bytesPerMB {
+		return 0, fmt.Errorf("内存测试大小过大: %d MB", sizeMB)
+	}
+	return sizeMB * bytesPerMB, nil
 }
 
 // calculateScore 计算内存性能评分

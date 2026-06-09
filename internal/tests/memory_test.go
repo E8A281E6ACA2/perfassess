@@ -22,6 +22,42 @@ func TestMemoryExecutePopulatesBackendAndSources(t *testing.T) {
 	assertMetricInt(t, result.Metrics, "test_size_mb", 256)
 }
 
+func TestBuiltinMemoryBackendReusesAndReleasesBuffer(t *testing.T) {
+	memoryTest := NewMemoryTest(newTestLogger(t))
+	backend, ok := memoryTest.backend.(*BuiltinMemoryBackend)
+	if !ok {
+		t.Fatalf("expected builtin memory backend, got %T", memoryTest.backend)
+	}
+
+	if err := backend.Prepare(1); err != nil {
+		t.Fatalf("expected buffer preparation to succeed, got %v", err)
+	}
+	firstBuffer := &backend.buffer[0]
+	if _, err := backend.MeasureRead(1); err != nil {
+		t.Fatalf("expected read sample to succeed, got %v", err)
+	}
+	if _, err := backend.MeasureWrite(1); err != nil {
+		t.Fatalf("expected write sample to succeed, got %v", err)
+	}
+	if &backend.buffer[0] != firstBuffer {
+		t.Fatal("expected builtin memory backend to reuse the prepared buffer")
+	}
+
+	backend.Release()
+	if backend.buffer != nil {
+		t.Fatal("expected builtin memory backend buffer to be released")
+	}
+}
+
+func TestMemoryBufferSizeRejectsInvalidInput(t *testing.T) {
+	if _, err := memoryBufferSize(0); err == nil {
+		t.Fatal("expected zero memory buffer size to fail")
+	}
+	if _, err := memoryBufferSize(-1); err == nil {
+		t.Fatal("expected negative memory buffer size to fail")
+	}
+}
+
 type fakeMemoryBackend struct {
 	read  float64
 	write float64
