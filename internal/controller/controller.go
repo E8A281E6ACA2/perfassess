@@ -123,6 +123,10 @@ func (ac *AssessmentController) RunAssessment(session *models.AssessmentSession)
 		// 非致命错误，继续生成报告
 		ac.logger.Warn("部分测试失败，继续生成报告")
 	}
+	if testResults == nil {
+		ac.logger.Warn("性能测试没有返回结果，使用空结果继续生成报告")
+		testResults = &models.TestResults{}
+	}
 	ac.logger.Info("性能测试完成")
 
 	// 可选步骤: 路由追踪

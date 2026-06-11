@@ -467,8 +467,12 @@ run_capture "default_json" "运行自动测评档位: $auto_profile (JSON 报告
   "$binary" "${default_args[@]}"
 python3 -m json.tool "$output_dir/default.json" >/dev/null
 
-run_capture "default_text" "运行自动测评档位: $auto_profile (文本报告)" "$output_dir/default-text.stdout.txt" \
-  "$binary" "${default_text_args[@]}"
+step "生成自动测评文本报告"
+current_progress_step="default_text"
+progress_update "default_text" "running" "等待汇总阶段生成文本报告"
+touch "$output_dir/default-text.stdout.txt" "$output_dir/default-text.stdout.txt.stderr.log"
+progress_update "default_text" "success" "文本报告将在汇总阶段由 JSON 结果生成"
+finish_step "生成自动测评文本报告" "0s"
 
 run_capture "quick" "运行快速测评" "$output_dir/quick.stdout.txt" \
   "$binary" --quick --output-format json -o "$output_dir/quick.json"
@@ -1673,6 +1677,7 @@ if share:
 (out / "summary.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
 (out / "console.txt").write_text(console_report(color=False) + "\n", encoding="utf-8")
 (out / "console.ansi").write_text(console_report(color=True) + "\n", encoding="utf-8")
+(out / "default.txt").write_text(console_report(color=False) + "\n", encoding="utf-8")
 write_report_archive()
 PY
 progress_update "summary" "success" "汇总已生成"

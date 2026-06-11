@@ -43,6 +43,31 @@ func TestRunSingleTestPreservesPartialFailureResult(t *testing.T) {
 	assertMetricString(t, result.Metrics, "backend", "sysbench")
 }
 
+func TestRunTestsPreservesFatalFailureResult(t *testing.T) {
+	runner := NewTestRunner(newTestLogger(t))
+	results, err := runner.RunTests([]PerformanceTest{
+		&failingPerformanceTest{
+			name: "内存性能测试",
+			err:  fmt.Errorf("out of memory"),
+		},
+	})
+	if err == nil {
+		t.Fatal("expected fatal test failure to return error")
+	}
+	if results == nil {
+		t.Fatal("expected partial test results")
+	}
+	if results.MemoryResult == nil {
+		t.Fatal("expected failed memory result to be preserved")
+	}
+	if results.MemoryResult.Status != "failed" {
+		t.Fatalf("expected failed status, got %q", results.MemoryResult.Status)
+	}
+	if results.MemoryResult.ErrorMessage == "" {
+		t.Fatal("expected error message to be preserved")
+	}
+}
+
 type failingPerformanceTest struct {
 	name string
 	err  error

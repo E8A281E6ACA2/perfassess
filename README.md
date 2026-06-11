@@ -78,7 +78,7 @@ curl -fsSL https://raw.githubusercontent.com/E8A281E6ACA2/perfassess/main/script
 - `/tmp/perfassess-auto/ip_quality.json`：IP 质量模块，包含 ASN、rDNS、风险来源、DNSBL、邮件服务商矩阵、网络栈和风险评分
 - `/tmp/perfassess-auto/perfassess-report.zip`：报告压缩包，包含报告、日志和验收摘要
 
-最终控制台报告和 `summary.md` 会包含“耗时统计”，列出构建、依赖检查、完整 JSON 报告、完整文本报告、快速测评、验收流程和汇总生成各自耗时。
+最终控制台报告和 `summary.md` 会包含“耗时统计”，列出构建、依赖检查、完整 JSON 报告、文本报告生成、快速测评、验收流程和汇总生成各自耗时。自动脚本只执行一次完整测评，`default.txt`、`console.txt` 和 `summary.md` 会基于 JSON 结果在汇总阶段生成，不会为了文本输出重复执行 full 测评。
 
 如果自动测评在中途失败，脚本也会生成 `/tmp/perfassess-auto/summary.md` 和 `/tmp/perfassess-auto/console.txt`，其中包含失败步骤、退出码、关键日志尾部和排查文件路径。此时优先执行 `cat /tmp/perfassess-auto/summary.md` 查看原因。
 

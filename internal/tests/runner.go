@@ -71,6 +71,17 @@ func (tr *TestRunner) RunTests(tests []PerformanceTest) (*models.TestResults, er
 			action := tr.errorHandler.HandleError(err, test.GetName())
 
 			if action == utils.ActionTerminate {
+				if result == nil {
+					result = &models.TestResult{
+						TestName:        test.GetName(),
+						Status:          "failed",
+						StartTime:       time.Now(),
+						EndTime:         time.Now(),
+						DurationSeconds: 0,
+						ErrorMessage:    err.Error(),
+					}
+				}
+				tr.assignResult(results, test.GetName(), result)
 				return results, fmt.Errorf("测试 %s 遇到致命错误: %w", test.GetName(), err)
 			}
 
