@@ -80,6 +80,8 @@ curl -fsSL https://raw.githubusercontent.com/E8A281E6ACA2/perfassess/main/script
 
 最终控制台报告和 `summary.md` 会包含“耗时统计”，列出构建、依赖检查、完整 JSON 报告、完整文本报告、快速测评、验收流程和汇总生成各自耗时。
 
+如果自动测评在中途失败，脚本也会生成 `/tmp/perfassess-auto/summary.md` 和 `/tmp/perfassess-auto/console.txt`，其中包含失败步骤、退出码、关键日志尾部和排查文件路径。此时优先执行 `cat /tmp/perfassess-auto/summary.md` 查看原因。
+
 如果希望跑完后自动清理构建产物但保留报告，可以使用：
 
 ```bash

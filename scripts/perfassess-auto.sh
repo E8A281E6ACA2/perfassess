@@ -242,6 +242,9 @@ mark_failed() {
   stop_heartbeat
   if [[ "$code" -ne 0 ]]; then
     progress_update "$current_progress_step" "failed" "步骤失败，退出码: $code"
+    if [[ ! -f "$output_dir/summary.md" ]]; then
+      write_failure_summary "$code" "$current_progress_step" "自动测评在 $current_progress_step 阶段失败。"
+    fi
   fi
   exit "$code"
 }
@@ -315,6 +318,76 @@ finish_step() {
   fi
 }
 
+print_log_tail() {
+  local title="$1"
+  local file="$2"
+  [[ -f "$file" ]] || return 0
+  echo
+  echo "---- $title: $file ----" >&2
+  tail -n 80 "$file" >&2 || true
+}
+
+append_log_tail_markdown() {
+  local title="$1"
+  local file="$2"
+  [[ -f "$file" ]] || return 0
+  {
+    echo
+    echo "### $title"
+    echo
+    echo '```text'
+    tail -n 120 "$file" || true
+    echo '```'
+  } >>"$output_dir/summary.md"
+}
+
+write_failure_summary() {
+  local code="$1"
+  local step_id="${2:-$current_progress_step}"
+  local message="${3:-自动测评失败}"
+  mkdir -p "$output_dir"
+  {
+    echo "# Perfassess 自动测评失败"
+    echo
+    echo "| 项目 | 值 |"
+    echo "|------|----|"
+    echo "| 失败步骤 | $step_id |"
+    echo "| 退出码 | $code |"
+    echo "| 自动档位 | $auto_profile |"
+    echo "| 质量档位 | $quality_profile |"
+    echo "| 网络档位 | $network_profile |"
+    echo "| 流媒体档位 | $streaming_profile |"
+    echo "| 输出目录 | $output_dir |"
+    echo
+    echo "## 说明"
+    echo
+    echo "$message"
+    echo
+    echo "请优先查看下面的日志尾部，或把整个目录打包排查。"
+    echo
+    echo "## 排查文件"
+    echo
+    echo "- 进度状态: $progress_file"
+    echo "- 默认 JSON 标准输出: $output_dir/default.stdout.txt"
+    echo "- 默认 JSON 错误输出: $output_dir/default.stdout.txt.stderr.log"
+    echo "- 文本报告标准输出: $output_dir/default-text.stdout.txt"
+    echo "- 文本报告错误输出: $output_dir/default-text.stdout.txt.stderr.log"
+    echo "- 快速测评标准输出: $output_dir/quick.stdout.txt"
+    echo "- 快速测评错误输出: $output_dir/quick.stdout.txt.stderr.log"
+    echo "- 依赖检查: $output_dir/check-deps.txt"
+  } >"$output_dir/summary.md"
+
+  append_log_tail_markdown "当前步骤标准输出" "$output_dir/default.stdout.txt"
+  append_log_tail_markdown "当前步骤错误输出" "$output_dir/default.stdout.txt.stderr.log"
+  append_log_tail_markdown "文本报告标准输出" "$output_dir/default-text.stdout.txt"
+  append_log_tail_markdown "文本报告错误输出" "$output_dir/default-text.stdout.txt.stderr.log"
+  append_log_tail_markdown "快速测评标准输出" "$output_dir/quick.stdout.txt"
+  append_log_tail_markdown "快速测评错误输出" "$output_dir/quick.stdout.txt.stderr.log"
+  append_log_tail_markdown "依赖检查" "$output_dir/check-deps.txt"
+
+  cp "$output_dir/summary.md" "$output_dir/console.txt" 2>/dev/null || true
+}
+
 run_capture() {
   local step_id="$1"
   local label="$2"
@@ -334,7 +407,13 @@ run_capture() {
   local duration
   duration="$(format_duration "$((SECONDS - start_seconds))")"
   if [[ "$code" -ne 0 ]]; then
-    progress_update "$step_id" "failed" "$label 失败，用时 $duration，退出码: $code"
+    local stderr_file="$output_dir/${stdout_file##*/}.stderr.log"
+    local message="$label 失败，用时 $duration，退出码: $code"
+    progress_update "$step_id" "failed" "$message"
+    echo "[FAIL] $message" >&2
+    print_log_tail "$label 标准输出尾部" "$stdout_file"
+    print_log_tail "$label 错误输出尾部" "$stderr_file"
+    write_failure_summary "$code" "$step_id" "$message"
     return "$code"
   fi
   progress_update "$step_id" "success" "$label 完成，用时 $duration"
