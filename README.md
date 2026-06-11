@@ -55,6 +55,12 @@ curl -fsSL https://raw.githubusercontent.com/E8A281E6ACA2/perfassess/main/script
 curl -fsSL https://raw.githubusercontent.com/E8A281E6ACA2/perfassess/main/scripts/bootstrap.sh | bash -s -- --quality mainstream
 ```
 
+真实服务器只想先看完整测评报告时，建议跳过开发验收流程：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/E8A281E6ACA2/perfassess/main/scripts/bootstrap.sh | bash -s -- --profile full --web --skip-acceptance
+```
+
 流媒体检测档位默认跟随自动测评档位：`basic` 不启用，`standard` 使用主流平台集合，`full` 增加区域型平台。需要单独指定时可设置 `PERFASSESS_STREAMING_PROFILE=quick|standard|full`。
 
 如需让 `mainstream` 使用真实 iperf3 上传/下载，需要提供可访问的 iperf3 服务端：

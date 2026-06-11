@@ -14,6 +14,7 @@ WEB_TTL_SECONDS="${PERFASSESS_WEB_TTL_SECONDS:-0}"
 AUTO_PROFILE="${PERFASSESS_AUTO_PROFILE:-auto}"
 QUALITY_PROFILE="${PERFASSESS_QUALITY_PROFILE:-auto}"
 NETWORK_PROFILE="${PERFASSESS_NETWORK_PROFILE:-auto}"
+AUTO_ACCEPTANCE="${PERFASSESS_AUTO_ACCEPTANCE:-1}"
 BOOTSTRAP_INTERACTIVE="${PERFASSESS_BOOTSTRAP_INTERACTIVE:-auto}"
 ACTION="run"
 PROGRESS_SERVER_PID=""
@@ -43,6 +44,8 @@ Options:
   --quality NAME  Benchmark backend quality: auto, builtin, mainstream. Default: $QUALITY_PROFILE
   --network-profile NAME
                    Network test profile: auto, quick, standard, full. Default: $NETWORK_PROFILE
+  --skip-acceptance
+                   Skip post-benchmark acceptance checks. Full report files are still generated.
   --cleanup-after-run
                    Remove build artifacts after benchmark. Reports remain in $OUTPUT_DIR.
   --destroy-after-web
@@ -67,6 +70,7 @@ Environment:
   PERFASSESS_STREAMING_PROFILE=full  Streaming profile: auto, quick, standard, or full.
   PERFASSESS_AUTO_STRESS=1          Include stress test when profile is standard.
   PERFASSESS_AUTO_OPTIONAL=auto  Let acceptance run optional checks when dependencies exist.
+  PERFASSESS_AUTO_ACCEPTANCE=0    Skip post-benchmark acceptance checks.
   PERFASSESS_IPERF3_SERVER=1.2.3.4:5201  Use iperf3 network backend with this server.
 EOF
 }
@@ -124,6 +128,10 @@ while [[ $# -gt 0 ]]; do
       [[ $# -ge 2 ]] || fail "--network-profile requires a value"
       NETWORK_PROFILE="$2"
       shift 2
+      ;;
+    --skip-acceptance)
+      AUTO_ACCEPTANCE="0"
+      shift
       ;;
     --cleanup-after-run)
       BOOTSTRAP_CLEANUP_AFTER_RUN="1"
@@ -638,6 +646,7 @@ choose_auto_profile() {
   export PERFASSESS_AUTO_PROFILE="$AUTO_PROFILE"
   export PERFASSESS_QUALITY_PROFILE="$QUALITY_PROFILE"
   export PERFASSESS_NETWORK_PROFILE="$NETWORK_PROFILE"
+  export PERFASSESS_AUTO_ACCEPTANCE="$AUTO_ACCEPTANCE"
   if [[ "$AUTO_PROFILE" == "full" ]]; then
     export PERFASSESS_AUTO_STRESS="1"
   fi

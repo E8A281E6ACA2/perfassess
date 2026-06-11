@@ -14,6 +14,7 @@ network_profile="${PERFASSESS_NETWORK_PROFILE:-auto}"
 streaming_profile="${PERFASSESS_STREAMING_PROFILE:-auto}"
 extra_args="${PERFASSESS_AUTO_ARGS:-}"
 stress_enabled="${PERFASSESS_AUTO_STRESS:-0}"
+acceptance_enabled="${PERFASSESS_AUTO_ACCEPTANCE:-1}"
 iperf3_server="${PERFASSESS_IPERF3_SERVER:-}"
 iperf3_servers="${PERFASSESS_IPERF3_SERVERS:-}"
 iperf3_server_file="${PERFASSESS_IPERF3_SERVER_FILE:-}"
@@ -478,17 +479,22 @@ run_capture "quick" "运行快速测评" "$output_dir/quick.stdout.txt" \
   "$binary" --quick --output-format json -o "$output_dir/quick.json"
 python3 -m json.tool "$output_dir/quick.json" >/dev/null
 
-step "运行验收流程"
-current_progress_step="acceptance"
-progress_update "acceptance" "running" "运行验收流程"
-acceptance_start="$SECONDS"
-PERFASSESS_BINARY="$binary" \
-PERFASSESS_ACCEPTANCE_DIR="$output_dir/acceptance" \
-PERFASSESS_ACCEPTANCE_OPTIONAL="$optional_mode" \
-scripts/vps-acceptance.sh >"$output_dir/acceptance.stdout.txt" 2>"$output_dir/acceptance.stderr.log"
-acceptance_duration="$(format_duration "$((SECONDS - acceptance_start))")"
-progress_update "acceptance" "success" "验收流程完成，用时 $acceptance_duration"
-finish_step "运行验收流程" "$acceptance_duration"
+case "$acceptance_enabled" in
+  0|false|no)
+    step "跳过验收流程"
+    progress_update "acceptance" "success" "已按配置跳过验收流程"
+    mkdir -p "$output_dir/acceptance"
+    printf '# VPS Acceptance Summary\n\n- status: skipped\n' >"$output_dir/acceptance/summary.md"
+    finish_step "跳过验收流程" "0s"
+    ;;
+  *)
+    PERFASSESS_BINARY="$binary" \
+    PERFASSESS_ACCEPTANCE_DIR="$output_dir/acceptance" \
+    PERFASSESS_ACCEPTANCE_OPTIONAL="$optional_mode" \
+      run_capture "acceptance" "运行验收流程" "$output_dir/acceptance.stdout.txt" \
+      scripts/vps-acceptance.sh
+    ;;
+esac
 
 current_progress_step="summary"
 progress_update "summary" "running" "生成汇总"
