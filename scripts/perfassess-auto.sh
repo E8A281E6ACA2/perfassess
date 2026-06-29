@@ -285,16 +285,43 @@ time_bar() {
   printf '[%s]' "$bar"
 }
 
+current_activity() {
+  local file="$1"
+  [[ -f "$file" ]] || return 0
+  awk '
+    /开始测试:|测试 .* 完成|可选步骤:|开始路由追踪|路由追踪完成|路由追踪超时|检测流媒体平台:|检测 .* 完成|检测 AI 服务:|AI服务检测完成|IP 质量检测完成|CPU 压测|内存压测|磁盘压测|压力测试完成|安全体检/ {
+      line=$0
+    }
+    END {
+      if (line != "") {
+        sub(/^[[:space:]]*[0-9T:+.-]+[[:space:]]+/, "", line)
+        sub(/^[[:space:]]*(INFO|WARN|ERROR)[[:space:]]+/, "", line)
+        gsub(/[[:space:]]+/, " ", line)
+        print line
+      }
+    }
+  ' "$file" 2>/dev/null | tail -n 1
+}
+
 start_heartbeat() {
   local label="$1"
   local start_seconds="$2"
+  local activity_file="${3:-}"
   [[ "$show_progress" == "1" ]] || return 0
   [[ "$heartbeat_interval" =~ ^[0-9]+$ && "$heartbeat_interval" -gt 0 ]] || return 0
   (
     while true; do
       sleep "$heartbeat_interval"
       local elapsed=$((SECONDS - start_seconds))
-      echo "[..] $(time_bar "$elapsed") $label 运行中，已耗时 $(format_duration "$elapsed")"
+      local activity=""
+      if [[ -n "$activity_file" ]]; then
+        activity="$(current_activity "$activity_file")"
+      fi
+      if [[ -n "$activity" ]]; then
+        echo "[..] $(time_bar "$elapsed") $label 运行中，已耗时 $(format_duration "$elapsed")，当前: $activity"
+      else
+        echo "[..] $(time_bar "$elapsed") $label 运行中，已耗时 $(format_duration "$elapsed")"
+      fi
     done
   ) &
   heartbeat_pid="$!"
@@ -399,7 +426,7 @@ run_capture() {
   current_progress_step="$step_id"
   progress_update "$step_id" "running" "$label"
   local start_seconds="$SECONDS"
-  start_heartbeat "$label" "$start_seconds"
+  start_heartbeat "$label" "$start_seconds" "$stdout_file"
   set +e
   "$@" >"$stdout_file" 2>"$output_dir/${stdout_file##*/}.stderr.log"
   local code="$?"
