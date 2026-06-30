@@ -77,6 +77,23 @@ func classifyExternalCommandError(stage string, output []byte, err error, defaul
 
 	text := strings.ToLower(strings.TrimSpace(string(output) + "\n" + errorString(err)))
 	switch {
+	case strings.Contains(text, "executable file not found") ||
+		strings.Contains(text, "no such file or directory"):
+		return newBenchmarkError(BenchmarkErrorMissingDependency, stage, "外部命令不可执行或路径不存在；请确认依赖已安装并在 PATH 中。", err)
+	case strings.Contains(text, "accept the license") ||
+		strings.Contains(text, "license agreement") ||
+		strings.Contains(text, "accept-license") ||
+		strings.Contains(text, "accept-gdpr") ||
+		strings.Contains(text, "terms of use") ||
+		strings.Contains(text, "eula"):
+		return newBenchmarkError(BenchmarkErrorInvalidConfig, stage, "外部工具需要许可/条款确认；请确认命令参数、版本和首次运行授权状态。", err)
+	case strings.Contains(text, "invalid option") ||
+		strings.Contains(text, "unrecognized option") ||
+		strings.Contains(text, "unknown option") ||
+		strings.Contains(text, "invalid argument") ||
+		strings.Contains(text, "unsupported") ||
+		strings.Contains(text, "not supported"):
+		return newBenchmarkError(BenchmarkErrorInvalidConfig, stage, "外部工具参数、版本或当前系统能力不兼容；请检查工具版本、测试参数和平台支持情况。", err)
 	case strings.Contains(text, "permission denied") ||
 		strings.Contains(text, "operation not permitted") ||
 		strings.Contains(text, "not permitted") ||
@@ -86,6 +103,7 @@ func classifyExternalCommandError(stage string, output []byte, err error, defaul
 		strings.Contains(text, "disk full") ||
 		strings.Contains(text, "not enough space") ||
 		strings.Contains(text, "cannot allocate memory") ||
+		strings.Contains(text, "unable to allocate memory") ||
 		strings.Contains(text, "out of memory") ||
 		strings.Contains(text, "killed"):
 		return newBenchmarkError(BenchmarkErrorResource, stage, "资源不足；请检查可用磁盘、内存和 swap，低配机器建议使用 basic/builtin 档位。", err)
@@ -93,9 +111,18 @@ func classifyExternalCommandError(stage string, output []byte, err error, defaul
 		strings.Contains(text, "connection refused") ||
 		strings.Contains(text, "connection timed out") ||
 		strings.Contains(text, "temporary failure in name resolution") ||
+		strings.Contains(text, "name or service not known") ||
 		strings.Contains(text, "could not resolve") ||
+		strings.Contains(text, "couldn't resolve") ||
 		strings.Contains(text, "failed to connect") ||
-		strings.Contains(text, "timeout"):
+		strings.Contains(text, "connection reset") ||
+		strings.Contains(text, "broken pipe") ||
+		strings.Contains(text, "tls handshake timeout") ||
+		strings.Contains(text, "i/o timeout") ||
+		strings.Contains(text, "timeout") ||
+		strings.Contains(text, "too many requests") ||
+		strings.Contains(text, "rate limit") ||
+		strings.Contains(text, "no servers found"):
 		return newBenchmarkError(BenchmarkErrorNetwork, stage, "外部测速网络不可达；请检查 DNS、出口网络、防火墙、安全组或测速服务端状态。", err)
 	default:
 		return newBenchmarkError(BenchmarkErrorCommandFailed, stage, defaultHint, err)

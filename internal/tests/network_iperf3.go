@@ -148,7 +148,7 @@ func (b *Iperf3NetworkBackend) MeasureDownload() (NetworkDownloadResult, error) 
 
 	output, err := b.runner.Run(ctx, "iperf3", b.commandArgs(endpoint, false)...)
 	if err != nil {
-		return NetworkDownloadResult{}, newBenchmarkError(BenchmarkErrorCommandFailed, "iperf3_download_run", "确认 iperf3 服务端可达、端口开放，并检查本机出站防火墙。", err)
+		return NetworkDownloadResult{}, classifyExternalCommandError("iperf3_download_run", output, err, "确认 iperf3 服务端可达、端口开放，并检查本机出站防火墙。")
 	}
 
 	speed, err := parseIperf3Mbps(output)
@@ -185,7 +185,7 @@ func (b *Iperf3NetworkBackend) MeasureUpload(downloadSpeed float64) (float64, bo
 
 	output, err := b.runner.Run(ctx, "iperf3", b.commandArgs(endpoint, true)...)
 	if err != nil {
-		return 0, false, newBenchmarkError(BenchmarkErrorCommandFailed, "iperf3_upload_run", "确认 iperf3 服务端支持 reverse 上传测试，并检查服务端/安全组端口。", err)
+		return 0, false, classifyExternalCommandError("iperf3_upload_run", output, err, "确认 iperf3 服务端支持 reverse 上传测试，并检查服务端/安全组端口。")
 	}
 
 	speed, err := parseIperf3Mbps(output)
@@ -207,6 +207,9 @@ type iperf3ServerResult struct {
 	UploadMbps    float64
 	LatencyMs     float64
 	Error         string
+	ErrorCategory string
+	ErrorStage    string
+	ErrorHint     string
 }
 
 func (b *Iperf3NetworkBackend) AppendMetrics(metrics map[string]interface{}) {
@@ -262,6 +265,15 @@ func (b *Iperf3NetworkBackend) AppendMetrics(metrics map[string]interface{}) {
 		if result.Error != "" {
 			metrics[prefix+"_error"] = result.Error
 		}
+		if result.ErrorCategory != "" {
+			metrics[prefix+"_error_category"] = result.ErrorCategory
+		}
+		if result.ErrorStage != "" {
+			metrics[prefix+"_error_stage"] = result.ErrorStage
+		}
+		if result.ErrorHint != "" {
+			metrics[prefix+"_error_hint"] = result.ErrorHint
+		}
 	}
 }
 
@@ -282,7 +294,7 @@ func (b *Iperf3NetworkBackend) runMatrix() ([]iperf3ServerResult, error) {
 		return nil, err
 	}
 	if len(servers) == 0 {
-		return nil, fmt.Errorf("iperf3 server is required; example: --network-backend iperf3 --iperf3-server 1.2.3.4:5201")
+		return nil, fmt.Errorf("iperf3 server is required; example: --network-backend iperf3 --iperf3-server 192.0.2.10:5201 (documentation-only address, replace with your owned or authorized node)")
 	}
 
 	specs := b.resolveServerSpecs(servers)
@@ -310,11 +322,13 @@ func (b *Iperf3NetworkBackend) runMatrix() ([]iperf3ServerResult, error) {
 		}
 		if speed, err := b.runIperf3(endpoint, false); err != nil {
 			result.Error = appendIperf3Error(result.Error, "download: "+err.Error())
+			setIperf3ServerResultError(&result, err)
 		} else {
 			result.DownloadMbps = speed
 		}
 		if speed, err := b.runIperf3(endpoint, true); err != nil {
 			result.Error = appendIperf3Error(result.Error, "upload: "+err.Error())
+			setIperf3ServerResultError(&result, err)
 		} else {
 			result.UploadMbps = speed
 		}
@@ -332,7 +346,7 @@ func (b *Iperf3NetworkBackend) runIperf3(endpoint iperf3Endpoint, reverse bool) 
 
 	output, err := b.runner.Run(ctx, "iperf3", b.commandArgs(endpoint, reverse)...)
 	if err != nil {
-		return 0, newBenchmarkError(BenchmarkErrorCommandFailed, "iperf3_matrix_run", "确认 iperf3 节点可达、端口开放，并检查服务端是否允许测试。", err)
+		return 0, classifyExternalCommandError("iperf3_matrix_run", output, err, "确认 iperf3 节点可达、端口开放，并检查服务端是否允许测试。")
 	}
 	speed, err := parseIperf3Mbps(output)
 	if err != nil {
@@ -343,7 +357,7 @@ func (b *Iperf3NetworkBackend) runIperf3(endpoint iperf3Endpoint, reverse bool) 
 
 func (b *Iperf3NetworkBackend) validateReady(servers []string) (iperf3Endpoint, error) {
 	if len(servers) == 0 {
-		return iperf3Endpoint{}, newBenchmarkError(BenchmarkErrorInvalidConfig, "iperf3_config", "提供可访问的 --iperf3-server、--iperf3-servers 或 --iperf3-server-file。", fmt.Errorf("iperf3 server is required; example: --network-backend iperf3 --iperf3-server 1.2.3.4:5201"))
+		return iperf3Endpoint{}, newBenchmarkError(BenchmarkErrorInvalidConfig, "iperf3_config", "提供自有或授权的 --iperf3-server、--iperf3-servers 或 --iperf3-server-file；推荐使用节点文件声明 auth=owned 或 auth=authorized。", fmt.Errorf("iperf3 server is required; example: --network-backend iperf3 --iperf3-server 192.0.2.10:5201 (documentation-only address, replace with your owned or authorized node)"))
 	}
 	endpoint, err := parseIperf3Endpoint(servers[0])
 	if err != nil {
@@ -369,7 +383,7 @@ func (b *Iperf3NetworkBackend) commandArgs(endpoint iperf3Endpoint, reverse bool
 func parseIperf3Endpoint(server string) (iperf3Endpoint, error) {
 	server = strings.TrimSpace(server)
 	if server == "" {
-		return iperf3Endpoint{}, fmt.Errorf("iperf3 server is required; example: --network-backend iperf3 --iperf3-server 1.2.3.4:5201")
+		return iperf3Endpoint{}, fmt.Errorf("iperf3 server is required; example: --network-backend iperf3 --iperf3-server 192.0.2.10:5201 (documentation-only address, replace with your owned or authorized node)")
 	}
 
 	host, port, err := net.SplitHostPort(server)
@@ -562,6 +576,19 @@ func appendIperf3Error(current string, next string) string {
 		return next
 	}
 	return current + "; " + next
+}
+
+func setIperf3ServerResultError(result *iperf3ServerResult, err error) {
+	if result == nil || err == nil || result.ErrorCategory != "" {
+		return
+	}
+	category, stage, hint, ok := benchmarkErrorFields(err)
+	if !ok {
+		return
+	}
+	result.ErrorCategory = category
+	result.ErrorStage = stage
+	result.ErrorHint = hint
 }
 
 func countSuccessfulIperf3Results(results []iperf3ServerResult) int {

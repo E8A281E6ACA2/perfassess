@@ -367,9 +367,13 @@ func TestIperf3NetworkBackendRequiresServer(t *testing.T) {
 	}
 	if _, err := backend.MeasureDownload(); err == nil {
 		t.Fatal("expected iperf3 download measurement to require server")
+	} else if !strings.Contains(err.Error(), "owned or authorized") {
+		t.Fatalf("expected authorization guidance in error, got %v", err)
 	}
 	if _, _, err := backend.MeasureUpload(100); err == nil {
 		t.Fatal("expected iperf3 upload measurement to require server")
+	} else if !strings.Contains(err.Error(), "owned or authorized") {
+		t.Fatalf("expected authorization guidance in error, got %v", err)
 	}
 }
 
@@ -388,6 +392,54 @@ func TestIperf3NetworkBackendReportsMissingBinary(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "sudo apt install iperf3") {
 		t.Fatalf("expected install hint in error, got %v", err)
+	}
+}
+
+func TestIperf3NetworkBackendClassifiesDownloadNetworkFailure(t *testing.T) {
+	runner := &fakeCommandRunner{
+		output:     []byte("iperf3: error - unable to connect to server: Connection refused"),
+		err:        fmt.Errorf("exit status 1"),
+		lookPathOK: true,
+	}
+	backend := NewIperf3NetworkBackend(Iperf3Config{
+		Server: "127.0.0.1:5201",
+		Runner: runner,
+	})
+
+	_, err := backend.MeasureDownload()
+	if err == nil {
+		t.Fatal("expected iperf3 download command failure")
+	}
+	category, stage, hint, ok := benchmarkErrorFields(err)
+	if !ok {
+		t.Fatalf("expected benchmark error fields, got %T", err)
+	}
+	if category != BenchmarkErrorNetwork || stage != "iperf3_download_run" || !strings.Contains(hint, "网络不可达") {
+		t.Fatalf("unexpected benchmark error fields: %q %q %q", category, stage, hint)
+	}
+}
+
+func TestIperf3NetworkBackendClassifiesUploadResourceFailure(t *testing.T) {
+	runner := &fakeCommandRunner{
+		output:     []byte("iperf3: error - unable to allocate memory"),
+		err:        fmt.Errorf("exit status 1"),
+		lookPathOK: true,
+	}
+	backend := NewIperf3NetworkBackend(Iperf3Config{
+		Server: "127.0.0.1:5201",
+		Runner: runner,
+	})
+
+	_, _, err := backend.MeasureUpload(100)
+	if err == nil {
+		t.Fatal("expected iperf3 upload command failure")
+	}
+	category, stage, hint, ok := benchmarkErrorFields(err)
+	if !ok {
+		t.Fatalf("expected benchmark error fields, got %T", err)
+	}
+	if category != BenchmarkErrorResource || stage != "iperf3_upload_run" || !strings.Contains(hint, "资源不足") {
+		t.Fatalf("unexpected benchmark error fields: %q %q %q", category, stage, hint)
 	}
 }
 
@@ -566,6 +618,43 @@ func TestIperf3NetworkBackendRunsMultiServerMatrixAndCachesResult(t *testing.T) 
 	assertMetricFloat(t, metrics, "iperf3_matrix_2_latency_ms", 20)
 }
 
+func TestIperf3NetworkBackendClassifiesMatrixNetworkFailure(t *testing.T) {
+	runner := &recordingCommandRunner{
+		outputs: [][]byte{
+			[]byte("iperf3: error - network is unreachable"),
+			[]byte("iperf3: error - connection timed out"),
+		},
+		err: fmt.Errorf("exit status 1"),
+	}
+	backend := NewIperf3NetworkBackend(Iperf3Config{
+		Servers: []string{"node-a:5201", "node-b:5201"},
+		Runner:  runner,
+		LatencyFn: func(hosts []string) (float64, error) {
+			return 0, nil
+		},
+	})
+
+	_, err := backend.MeasureDownload()
+	if err == nil {
+		t.Fatal("expected iperf3 matrix command failure")
+	}
+	category, stage, _, ok := benchmarkErrorFields(err)
+	if !ok {
+		t.Fatalf("expected benchmark error fields, got %T", err)
+	}
+	if category != BenchmarkErrorRuntime || stage != "iperf3_matrix_run" {
+		t.Fatalf("expected aggregate matrix runtime error, got %q %q", category, stage)
+	}
+
+	metrics := map[string]interface{}{}
+	backend.AppendMetrics(metrics)
+	assertMetricString(t, metrics, "iperf3_matrix_1_error_category", BenchmarkErrorNetwork)
+	assertMetricString(t, metrics, "iperf3_matrix_1_error_stage", "iperf3_matrix_run")
+	if metrics["iperf3_matrix_1_error_hint"] == "" {
+		t.Fatalf("expected matrix node error hint, got %#v", metrics)
+	}
+}
+
 func TestLoadIperf3ServersFileParsesCommentsAndInlineComments(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "iperf3-servers.txt")
 	content := `
@@ -724,6 +813,50 @@ func TestSpeedtestNetworkBackendClassifiesNetworkFailure(t *testing.T) {
 	_, err := backend.MeasureDownload()
 	if err == nil {
 		t.Fatal("expected speedtest command failure")
+	}
+	category, stage, hint, ok := benchmarkErrorFields(err)
+	if !ok {
+		t.Fatalf("expected benchmark error fields, got %T", err)
+	}
+	if category != BenchmarkErrorNetwork || stage != "speedtest_run" || !strings.Contains(hint, "网络不可达") {
+		t.Fatalf("unexpected benchmark error fields: %q %q %q", category, stage, hint)
+	}
+}
+
+func TestSpeedtestNetworkBackendClassifiesLicenseFailure(t *testing.T) {
+	backend := NewSpeedtestNetworkBackend(SpeedtestConfig{
+		Runner: &fakeCommandRunner{
+			output:     []byte("Please accept the license agreement before running this tool"),
+			err:        fmt.Errorf("exit status 1"),
+			lookPathOK: true,
+		},
+	})
+
+	_, err := backend.MeasureDownload()
+	if err == nil {
+		t.Fatal("expected speedtest license failure")
+	}
+	category, stage, hint, ok := benchmarkErrorFields(err)
+	if !ok {
+		t.Fatalf("expected benchmark error fields, got %T", err)
+	}
+	if category != BenchmarkErrorInvalidConfig || stage != "speedtest_run" || !strings.Contains(hint, "许可") {
+		t.Fatalf("unexpected benchmark error fields: %q %q %q", category, stage, hint)
+	}
+}
+
+func TestSpeedtestNetworkBackendClassifiesRateLimitFailure(t *testing.T) {
+	backend := NewSpeedtestNetworkBackend(SpeedtestConfig{
+		Runner: &fakeCommandRunner{
+			output:     []byte("Too many requests: rate limit exceeded"),
+			err:        fmt.Errorf("exit status 1"),
+			lookPathOK: true,
+		},
+	})
+
+	_, err := backend.MeasureDownload()
+	if err == nil {
+		t.Fatal("expected speedtest rate limit failure")
 	}
 	category, stage, hint, ok := benchmarkErrorFields(err)
 	if !ok {

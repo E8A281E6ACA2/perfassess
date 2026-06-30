@@ -73,6 +73,28 @@ func TestFioDiskBackendClassifiesResourceFailure(t *testing.T) {
 	}
 }
 
+func TestFioDiskBackendClassifiesUnsupportedDirectIO(t *testing.T) {
+	backend := NewFioDiskBackend(FioConfig{
+		Runner: &fakeCommandRunner{
+			output:     []byte("fio: direct IO is not supported by this filesystem"),
+			err:        fmt.Errorf("exit status 1"),
+			lookPathOK: true,
+		},
+	})
+
+	_, err := backend.MeasureSequentialRead(100)
+	if err == nil {
+		t.Fatal("expected fio unsupported direct I/O failure")
+	}
+	category, stage, hint, ok := benchmarkErrorFields(err)
+	if !ok {
+		t.Fatalf("expected benchmark error fields, got %T", err)
+	}
+	if category != BenchmarkErrorInvalidConfig || stage != "fio_read_run" || !strings.Contains(hint, "不兼容") {
+		t.Fatalf("unexpected benchmark error fields: %q %q %q", category, stage, hint)
+	}
+}
+
 func TestDiskTestAddsBenchmarkErrorMetrics(t *testing.T) {
 	diskTest := NewDiskTestWithBackend(newTestLogger(t), NewFioDiskBackend(FioConfig{
 		Runner: &fakeCommandRunner{lookPathErr: fmt.Errorf("not found")},

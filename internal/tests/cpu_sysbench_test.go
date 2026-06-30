@@ -56,6 +56,28 @@ func TestSysbenchCPUBackendClassifiesPermissionFailure(t *testing.T) {
 	}
 }
 
+func TestSysbenchCPUBackendClassifiesInvalidOptionFailure(t *testing.T) {
+	backend := NewSysbenchCPUBackend(SysbenchCPUConfig{
+		Runner: &fakeCommandRunner{
+			output:     []byte("sysbench: unrecognized option '--time'"),
+			err:        fmt.Errorf("exit status 1"),
+			lookPathOK: true,
+		},
+	})
+
+	_, err := backend.MeasureSingleCore()
+	if err == nil {
+		t.Fatal("expected sysbench invalid option failure")
+	}
+	category, stage, hint, ok := benchmarkErrorFields(err)
+	if !ok {
+		t.Fatalf("expected benchmark error fields, got %T", err)
+	}
+	if category != BenchmarkErrorInvalidConfig || stage != "cpu_sysbench_run" || !strings.Contains(hint, "不兼容") {
+		t.Fatalf("unexpected benchmark error fields: %q %q %q", category, stage, hint)
+	}
+}
+
 func TestParseSysbenchEventsPerSecondRejectsMissingValue(t *testing.T) {
 	if _, err := parseSysbenchEventsPerSecond([]byte("no events here")); err == nil {
 		t.Fatal("expected missing events per second to fail")
