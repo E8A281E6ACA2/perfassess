@@ -351,19 +351,78 @@ def report_line(filename):
         return None
     summary = report.get("summary", {})
     confidence = summary.get("confidence_level", {})
+    readiness = calibration_readiness(filename, report)
     reasons = confidence.get("reasons") or []
     reason_text = "; ".join(str(item) for item in reasons) if reasons else "none"
+    blockers = readiness.get("blockers") or []
+    blocker_text = "; ".join(str(item) for item in blockers) if blockers else "none"
     return (
         f"- {filename}: score={summary.get('total_score')} | grade={summary.get('grade')} | "
         f"success={summary.get('tests_success')} | failed={summary.get('tests_failed')} | "
         f"skipped={summary.get('tests_skipped')} | confidence={confidence.get('level')} | "
-        f"reasons={reason_text}"
+        f"reasons={reason_text} | sample_policy={readiness.get('level')} | sample_blockers={blocker_text}"
     )
 
 quick = load("quick")
 network = load("network")
 cpu = load("cpu")
+confidence_rank = {"low": 0, "medium": 1, "high": 2}
+
+def calibration_readiness(filename, report):
+    summary = report.get("summary", {}) if isinstance(report, dict) else {}
+    confidence = summary.get("confidence_level", {}) if isinstance(summary.get("confidence_level"), dict) else {}
+    benchmark = summary.get("benchmark_profile", {}) if isinstance(summary.get("benchmark_profile"), dict) else {}
+    modules = summary.get("module_assessments", {}) if isinstance(summary.get("module_assessments"), dict) else {}
+    blockers = []
+    warnings = []
+    level = str(confidence.get("level") or "low")
+    rank = confidence_rank.get(level, 0)
+    mainstream_count = int(benchmark.get("mainstream_count") or 0)
+    core_modules = ["cpu", "memory", "disk", "network"]
+    incomplete_core = [
+        key for key in core_modules
+        if not isinstance(modules.get(key), dict) or modules.get(key, {}).get("status") != "success"
+    ]
+    if summary.get("score_calibration", {}).get("version") != "2026-06-v1":
+        blockers.append("score_calibration.version 不匹配")
+    if summary.get("tests_success", 0) < 4:
+        blockers.append("核心测试成功数不足 4")
+    if incomplete_core:
+        blockers.append("核心模块未全部成功: " + ",".join(incomplete_core))
+    if rank < confidence_rank["medium"]:
+        blockers.append("置信度低于 candidate 要求 medium")
+    if mainstream_count < 3:
+        blockers.append(f"mainstream_count={mainstream_count} 低于 candidate 要求 3")
+    if rank < confidence_rank["high"]:
+        warnings.append("formal 要求 confidence_level=high")
+    if mainstream_count < 4:
+        warnings.append(f"formal 要求 mainstream_count=4，当前 {mainstream_count}")
+
+    candidate_eligible = not blockers
+    formal_eligible = candidate_eligible and rank >= confidence_rank["high"] and mainstream_count >= 4
+    if formal_eligible:
+        policy = "formal_eligible"
+    elif candidate_eligible:
+        policy = "candidate_eligible"
+    else:
+        policy = "exploratory_only"
+
+    return {
+        "file": filename,
+        "level": policy,
+        "candidate_eligible": candidate_eligible,
+        "formal_eligible": formal_eligible,
+        "score_profile": summary.get("score_profile"),
+        "calibration_version": summary.get("score_calibration", {}).get("version"),
+        "confidence": level,
+        "mainstream_count": mainstream_count,
+        "tests_success": summary.get("tests_success"),
+        "blockers": blockers,
+        "warnings": warnings,
+    }
+
 report_lines = [line for name in generated_reports for line in [report_line(name)] if line]
+calibration_readiness_items = []
 report_coverage = []
 for filename in generated_reports:
     path = out / filename
@@ -375,6 +434,8 @@ for filename in generated_reports:
         continue
     summary = report.get("summary", {})
     confidence = summary.get("confidence_level", {})
+    readiness = calibration_readiness(filename, report)
+    calibration_readiness_items.append(readiness)
     report_coverage.append({
         "file": filename,
         "total_score": summary.get("total_score"),
@@ -384,7 +445,13 @@ for filename in generated_reports:
         "tests_skipped": summary.get("tests_skipped"),
         "confidence": confidence.get("level"),
         "confidence_reasons": confidence.get("reasons") or [],
+        "calibration_readiness": readiness,
     })
+
+calibration_readiness_counts = {}
+for item in calibration_readiness_items:
+    level = item.get("level") or "unknown"
+    calibration_readiness_counts[level] = calibration_readiness_counts.get(level, 0) + 1
 
 summary_json = {
     "binary_version": (out / "version.txt").read_text(encoding="utf-8").strip(),
@@ -402,6 +469,8 @@ summary_json = {
     "skipped_reports": skipped_reports,
     "required_reports": ["quick.json", "network.json", "cpu.json", "compare.json", "compare-dir.json"],
     "report_coverage": report_coverage,
+    "calibration_readiness": calibration_readiness_items,
+    "calibration_readiness_counts": calibration_readiness_counts,
 }
 (out / "summary.json").write_text(json.dumps(summary_json, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
@@ -433,6 +502,14 @@ lines = [
     "## Report Coverage",
     "",
     *report_lines,
+    "",
+    "## Calibration Readiness",
+    "",
+    f"- formal_eligible: {calibration_readiness_counts.get('formal_eligible', 0)}",
+    f"- candidate_eligible: {calibration_readiness_counts.get('candidate_eligible', 0)}",
+    f"- exploratory_only: {calibration_readiness_counts.get('exploratory_only', 0)}",
+    "",
+    "说明：这里判断的是单份报告是否适合作为校准样本候选；正式调整评分阈值仍需满足数据集数量、分布和脱敏政策。",
 ]
 (out / "summary.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
 PY
@@ -446,7 +523,9 @@ for required_summary_fragment in \
   "failed=" \
   "skipped=" \
   "confidence=" \
-  "reasons="
+  "reasons=" \
+  "sample_policy=" \
+  "## Calibration Readiness"
 do
   grep -q "$required_summary_fragment" "$output_dir/summary.md" || {
     echo "VPS acceptance failed: summary.md missing fragment: $required_summary_fragment" >&2
@@ -461,7 +540,9 @@ for required_summary_json_fragment in \
   '"optional_reports"' \
   '"skipped_reports"' \
   '"report_coverage"' \
-  '"confidence_reasons"'
+  '"confidence_reasons"' \
+  '"calibration_readiness"' \
+  '"calibration_readiness_counts"'
 do
   grep -q "$required_summary_json_fragment" "$output_dir/summary.json" || {
     echo "VPS acceptance failed: summary.json missing fragment: $required_summary_json_fragment" >&2

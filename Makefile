@@ -23,7 +23,7 @@ BINARY_LINUX=$(APP_NAME)_linux
 BINARY_DARWIN=$(APP_NAME)_darwin
 BINARY_WINDOWS=$(APP_NAME).exe
 
-.PHONY: all build build-all build-linux build-darwin build-windows release-checksums clean test test-coverage deps install run run-verbose run-cpu run-all bootstrap auto fmt fmt-check lint schema-check cli-smoke json-smoke project-invariants-smoke remote-runbook-smoke release-runbook-smoke release-workflow-smoke report-contract-smoke calibration-summary-smoke redact-report-smoke auto-running-summary-smoke bootstrap-prebuilt-smoke artifact-verify-smoke vps-acceptance-strict-preflight-smoke release-smoke release-checksums-smoke verify-release-assets-smoke vps-acceptance vps-acceptance-low-standard validate pre-commit release-check help
+.PHONY: all build build-all build-linux build-darwin build-windows release-checksums clean test test-coverage deps install run run-verbose run-cpu run-all bootstrap auto fmt fmt-check lint schema-check cli-smoke json-smoke project-invariants-smoke candidate-baseline-split-smoke remote-runbook-smoke release-runbook-smoke release-workflow-smoke report-contract-smoke calibration-summary-smoke calibration-collect-smoke redact-report-smoke auto-running-summary-smoke bootstrap-prebuilt-smoke artifact-verify-smoke vps-acceptance-summary-smoke vps-acceptance-strict-preflight-smoke release-smoke release-checksums-smoke verify-release-assets-smoke vps-acceptance vps-acceptance-low-standard validate pre-commit release-check help
 
 # 默认目标
 all: clean deps build
@@ -170,6 +170,11 @@ project-invariants-smoke:
 	@echo "运行项目级不变量检查..."
 	@bash scripts/project-invariants-smoke.sh
 
+# 校验候选基线拆分提交计划
+candidate-baseline-split-smoke:
+	@echo "运行候选基线拆分计划冒烟测试..."
+	@bash scripts/candidate-baseline-split-smoke.sh
+
 # 校验远程服务器测试手册，防止 bootstrap 使用文档漂移
 remote-runbook-smoke:
 	@echo "运行远程测试手册冒烟测试..."
@@ -195,6 +200,11 @@ calibration-summary-smoke: build
 	@echo "运行校准样本汇总冒烟测试..."
 	@scripts/calibration-summary-smoke.sh $(BUILD_DIR)/$(APP_NAME)
 
+# 校验脱敏校准样本收集助手
+calibration-collect-smoke: build
+	@echo "运行校准样本收集冒烟测试..."
+	@scripts/calibration-collect-smoke.sh $(BUILD_DIR)/$(APP_NAME)
+
 # 校验 JSON 报告脱敏工具
 redact-report-smoke:
 	@echo "运行报告脱敏工具冒烟测试..."
@@ -214,6 +224,11 @@ bootstrap-prebuilt-smoke:
 artifact-verify-smoke: build
 	@echo "运行报告产物清单校验冒烟测试..."
 	@bash scripts/artifact-verify-smoke.sh $(BUILD_DIR)/$(APP_NAME)
+
+# 校验 VPS 验收摘要包含报告覆盖和校准适用性
+vps-acceptance-summary-smoke: build
+	@echo "运行 VPS 验收摘要冒烟测试..."
+	@bash scripts/vps-acceptance-summary-smoke.sh $(BUILD_DIR)/$(APP_NAME)
 
 # 校验严格 VPS 验收的资源预检会在报告生成前失败
 vps-acceptance-strict-preflight-smoke: build
@@ -246,7 +261,7 @@ vps-acceptance-low-standard: build
 	@PERFASSESS_ACCEPTANCE_MATRIX=low,standard scripts/vps-acceptance.sh
 
 # 日常验证入口
-validate: fmt-check schema-check project-invariants-smoke remote-runbook-smoke release-runbook-smoke release-workflow-smoke test build cli-smoke report-contract-smoke calibration-summary-smoke redact-report-smoke auto-running-summary-smoke bootstrap-prebuilt-smoke verify-release-assets-smoke artifact-verify-smoke vps-acceptance-strict-preflight-smoke
+validate: fmt-check schema-check project-invariants-smoke candidate-baseline-split-smoke remote-runbook-smoke release-runbook-smoke release-workflow-smoke test build cli-smoke report-contract-smoke calibration-summary-smoke calibration-collect-smoke redact-report-smoke auto-running-summary-smoke bootstrap-prebuilt-smoke verify-release-assets-smoke artifact-verify-smoke vps-acceptance-summary-smoke vps-acceptance-strict-preflight-smoke
 	@echo "日常验证通过"
 
 # 提交前验证入口
@@ -290,15 +305,18 @@ help:
 	@echo "  make cli-smoke      - 运行 CLI 基础冒烟测试"
 	@echo "  make json-smoke     - 生成快速 JSON 报告并校验格式"
 	@echo "  make project-invariants-smoke - 校验项目级不变量"
+	@echo "  make candidate-baseline-split-smoke - 校验候选基线拆分提交计划"
 	@echo "  make remote-runbook-smoke - 校验远程测试手册"
 	@echo "  make release-runbook-smoke - 校验 GitHub Release 发布手册"
 	@echo "  make release-workflow-smoke - 校验 GitHub Release workflow"
 	@echo "  make report-contract-smoke - 校验报告语义和 Web 渲染契约"
 	@echo "  make calibration-summary-smoke - 校验脱敏校准样本汇总工具"
+	@echo "  make calibration-collect-smoke - 校验脱敏校准样本收集助手"
 	@echo "  make redact-report-smoke - 校验 JSON 报告脱敏工具"
 	@echo "  make auto-running-summary-smoke - 校验自动测评运行中摘要"
 	@echo "  make bootstrap-prebuilt-smoke - 校验 bootstrap 预构建二进制路径"
 	@echo "  make artifact-verify-smoke - 校验自动测评报告产物清单"
+	@echo "  make vps-acceptance-summary-smoke - 校验 VPS 验收摘要和校准适用性"
 	@echo "  make vps-acceptance-strict-preflight-smoke - 校验严格 VPS 验收资源预检"
 	@echo "  make release-smoke  - 使用发布二进制执行端到端冒烟测试"
 	@echo "  make release-checksums-smoke - 校验发布产物 SHA256 清单"

@@ -120,10 +120,10 @@ scripts/vps-acceptance.sh
 
 `iperf3` 不内置公共节点。请只使用自有或授权节点。
 
-单节点：
+单节点。`192.0.2.10:5201` 是文档保留地址，只表示格式，运行前必须替换为自有或授权节点：
 
 ```bash
-PERFASSESS_IPERF3_SERVER=1.2.3.4:5201 scripts/vps-acceptance.sh
+PERFASSESS_IPERF3_SERVER=192.0.2.10:5201 scripts/vps-acceptance.sh
 ```
 
 节点文件：
@@ -184,12 +184,55 @@ PERFASSESS_IPERF3_SERVER_FILE=/path/to/iperf3-servers.txt scripts/vps-acceptance
 - `summary.md` 能看到二进制版本、输出目录、总分、等级、置信度、评分基准和校准版本
 - `summary.md` 能看到本次验收矩阵、已生成报告、可选报告和跳过报告
 - `summary.md` 的 `Report Coverage` 能看到每份 JSON 报告的成功、失败、跳过数量、置信度和置信原因
-- 验收脚本会自检 `summary.md` 是否保留 `Report Coverage`、核心报告名和 `success/failed/skipped/confidence/reasons` 字段；缺失会直接失败
-- `summary.json` 能被 `python3 -m json.tool` 解析，并包含 `acceptance_matrix`、`generated_reports`、`optional_reports`、`skipped_reports`、`report_coverage` 和 `confidence_reasons`，方便 CI 或外部平台消费
+- `summary.md` 的 `Report Coverage` 会额外展示 `sample_policy`，用于判断单份报告适合 `exploratory_only`、`candidate_eligible` 还是 `formal_eligible`
+- `summary.md` 的 `Calibration Readiness` 会汇总正式候选、候选校准和探索样本数量
+- 验收脚本会自检 `summary.md` 是否保留 `Report Coverage`、核心报告名和 `success/failed/skipped/confidence/reasons/sample_policy` 字段；缺失会直接失败
+- `summary.json` 能被 `python3 -m json.tool` 解析，并包含 `acceptance_matrix`、`generated_reports`、`optional_reports`、`skipped_reports`、`report_coverage`、`confidence_reasons`、`calibration_readiness` 和 `calibration_readiness_counts`，方便 CI 或外部平台消费
 - 可选依赖缺失时不应导致核心验收失败
 - 已安装可选依赖时，对应后端报告应生成并通过 JSON 与报告契约校验；资源不足导致的可解释跳过必须写入 `skipped_reports`
 - 非严格模式下，低内存机器允许内存测试跳过，但报告必须明确标记未完成、低置信和跳过原因
 - 严格模式下，矩阵报告必须完成 CPU、内存、磁盘、网络四项核心测试
+
+## 校准样本闭环
+
+`scripts/vps-acceptance.sh` 直接运行二进制并校验多份 JSON 报告，重点是判断真实机器上的报告质量、失败解释和校准适用性。它不会自己生成 `calibration_sample.json`。
+
+真正的脱敏校准样本由自动测评脚本生成：
+
+```bash
+scripts/perfassess-auto.sh
+cat /tmp/perfassess-auto/summary.md
+```
+
+自动测评完成后会生成 `/tmp/perfassess-auto/calibration_sample.json`。该样本已标记 `redacted=true`，不包含公网 IP、ISP、ASN、精确地理位置、路由 hop 或原始日志。收集多台机器样本后，用以下命令判断数据集等级：
+
+```bash
+python3 scripts/calibration-summary.py /path/to/samples --require-policy candidate
+python3 scripts/calibration-summary.py /path/to/samples --require-policy formal
+```
+
+推荐用收集助手归档样本，避免误复制原始报告、日志或完整压缩包：
+
+```bash
+scripts/calibration-collect.sh /tmp/perfassess-auto/calibration_sample.json /path/to/samples
+scripts/calibration-collect.sh /tmp/perfassess-auto /path/to/samples
+```
+
+该脚本只接受已脱敏的 `calibration_sample.json`，会把样本放入独立子目录，并在样本集目录生成：
+
+- 每个样本子目录的 `manifest.json`：记录样本标签、归档时间和 `calibration_sample.json` 的 SHA256
+- `summary.md`：人工阅读的校准汇总和下一批采样计划
+- `summary.json`：机器可读汇总
+- `samples.jsonl`：每份样本的一行摘要，便于外部系统导入
+
+如需给样本指定不含隐私的标签，可以设置：
+
+```bash
+PERFASSESS_CALIBRATION_LABEL=vps-low-001 \
+scripts/calibration-collect.sh /tmp/perfassess-auto /path/to/samples
+```
+
+`vps-acceptance` 的 `sample_policy` 只判断单份报告是否具备进入候选样本的条件；正式调分仍必须满足 [校准样本最小数据集规范](calibration-dataset-policy.md) 中的数据量、分布、置信度和脱敏要求。
 
 ## 失败处理
 
