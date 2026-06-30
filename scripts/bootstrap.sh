@@ -76,7 +76,7 @@ Environment:
   PERFASSESS_AUTO_STRESS=1          Include stress test when profile is standard.
   PERFASSESS_AUTO_OPTIONAL=auto  Let acceptance run optional checks when dependencies exist.
   PERFASSESS_AUTO_ACCEPTANCE=0    Skip post-benchmark acceptance checks.
-  PERFASSESS_IPERF3_SERVER=1.2.3.4:5201  Use iperf3 network backend with this server.
+  PERFASSESS_IPERF3_SERVER=192.0.2.10:5201  Use your owned/authorized iperf3 server; this address is documentation-only.
 EOF
 }
 
