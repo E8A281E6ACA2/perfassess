@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import argparse
+import hashlib
 import ipaddress
 import json
 import re
@@ -146,6 +147,34 @@ def load_sample(path: Path) -> dict[str, Any]:
     validate_sample_privacy(sample, path)
     sample["_path"] = str(path)
     return sample
+
+
+def validate_sample_manifest(path: Path) -> None:
+    manifest_path = path.parent / "manifest.json"
+    if not manifest_path.is_file():
+        raise SystemExit(f"{path}: manifest.json is required but missing")
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise SystemExit(f"{path}: failed to read sample manifest: {exc}") from exc
+    if not isinstance(manifest, dict) or manifest.get("schema_version") != "perfassess-calibration-sample-manifest-v1":
+        raise SystemExit(f"{path}: unsupported sample manifest schema")
+    files = manifest.get("files")
+    if not isinstance(files, list):
+        raise SystemExit(f"{path}: sample manifest files must be a list")
+    sample_entry = None
+    for item in files:
+        if isinstance(item, dict) and item.get("path") == "calibration_sample.json":
+            sample_entry = item
+            break
+    if not sample_entry:
+        raise SystemExit(f"{path}: sample manifest does not reference calibration_sample.json")
+    expected = sample_entry.get("sha256")
+    if not isinstance(expected, str) or not re.fullmatch(r"[0-9a-fA-F]{64}", expected):
+        raise SystemExit(f"{path}: sample manifest has invalid calibration_sample.json sha256")
+    actual = hashlib.sha256(path.read_bytes()).hexdigest()
+    if actual.lower() != expected.lower():
+        raise SystemExit(f"{path}: calibration_sample.json sha256 does not match manifest")
 
 
 def validate_sample_privacy(sample: dict[str, Any], path: Path) -> None:
@@ -315,7 +344,11 @@ def summarize_group(samples: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
-def summarize(samples: list[dict[str, Any]], filter_info: dict[str, Any] | None = None) -> dict[str, Any]:
+def summarize(
+    samples: list[dict[str, Any]],
+    filter_info: dict[str, Any] | None = None,
+    manifest_policy: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     by_profile: dict[str, list[dict[str, Any]]] = {}
     by_calibration: dict[str, list[dict[str, Any]]] = {}
     for sample in samples:
@@ -326,9 +359,11 @@ def summarize(samples: list[dict[str, Any]], filter_info: dict[str, Any] | None 
         "schema_version": "perfassess-calibration-summary-v1",
         "sample_count": len(samples),
         "filter_info": filter_info or {"input_count": len(samples), "kept_count": len(samples), "rejected": {}},
+        "manifest_policy": manifest_policy or {"required": False, "checked_count": 0},
         "samples": [sample_row(sample) for sample in samples],
         "overall": summarize_group(samples),
         "by_score_profile": {key: summarize_group(value) for key, value in sorted(by_profile.items())},
+        "profile_policies": {key: dataset_policy(value) for key, value in sorted(by_profile.items())},
         "by_calibration_version": {key: summarize_group(value) for key, value in sorted(by_calibration.items())},
         "recommendations": calibration_recommendations(by_profile),
         "policy": dataset_policy(samples),
@@ -351,10 +386,27 @@ def dataset_policy(samples: list[dict[str, Any]]) -> dict[str, Any]:
     total = len(samples)
     blockers: list[str] = []
     warnings: list[str] = []
+    plan: list[dict[str, Any]] = []
     if total < 8:
+        missing = 8 - total
         blockers.append(f"样本数 {total} 小于候选校准最低要求 8。")
+        plan.append({
+            "target": "candidate",
+            "priority": "high",
+            "action": "collect_more_samples",
+            "missing": missing,
+            "detail": f"至少还需要 {missing} 份满足 candidate 质量门槛的脱敏样本。",
+        })
     elif total < 20:
+        missing = 20 - total
         warnings.append(f"样本数 {total} 小于正式校准建议 20，只适合作为候选校准观察。")
+        plan.append({
+            "target": "formal",
+            "priority": "medium",
+            "action": "collect_more_samples",
+            "missing": missing,
+            "detail": f"正式校准建议至少再补 {missing} 份同口径高置信样本。",
+        })
 
     calibration_versions = count_by(samples, lambda sample: sample_scores(sample).get("calibration_version"))
     if len(calibration_versions) > 1:
@@ -365,8 +417,22 @@ def dataset_policy(samples: list[dict[str, Any]]) -> dict[str, Any]:
     medium_plus = high_count + confidence_counts.get("medium", 0)
     if high_count < total:
         warnings.append("正式校准要求全部样本 confidence_level=high。")
+        plan.append({
+            "target": "formal",
+            "priority": "medium",
+            "action": "raise_confidence",
+            "missing": total - high_count,
+            "detail": f"仍有 {total - high_count} 份样本低于 high，正式校准前应使用主流后端或补测提升置信度。",
+        })
     if medium_plus < total:
         blockers.append("候选校准要求全部样本 confidence_level 至少为 medium。")
+        plan.append({
+            "target": "candidate",
+            "priority": "high",
+            "action": "raise_confidence",
+            "missing": total - medium_plus,
+            "detail": f"仍有 {total - medium_plus} 份样本低于 medium，应重新采集或排除。",
+        })
 
     mainstream_counts = [
         int(number(sample_benchmark_profile(sample).get("mainstream_count")) or 0)
@@ -376,8 +442,22 @@ def dataset_policy(samples: list[dict[str, Any]]) -> dict[str, Any]:
     mainstream_three = sum(1 for value in mainstream_counts if value >= 3)
     if mainstream_all < total:
         warnings.append("正式校准要求全部样本 mainstream_count=4。")
+        plan.append({
+            "target": "formal",
+            "priority": "medium",
+            "action": "increase_mainstream_coverage",
+            "missing": total - mainstream_all,
+            "detail": f"仍有 {total - mainstream_all} 份样本未覆盖四项主流后端。",
+        })
     if mainstream_three < total:
         blockers.append("候选校准要求全部样本 mainstream_count 至少为 3。")
+        plan.append({
+            "target": "candidate",
+            "priority": "high",
+            "action": "increase_mainstream_coverage",
+            "missing": total - mainstream_three,
+            "detail": f"仍有 {total - mainstream_three} 份样本 mainstream_count 低于 3，应优先补 sysbench/fio/speedtest 或授权 iperf3。",
+        })
 
     virtualization_counts = count_by(samples, lambda sample: (sample.get("environment") or {}).get("virtualization") if isinstance(sample.get("environment"), dict) else None)
     cpu_counts = count_by(samples, lambda sample: (sample.get("environment") or {}).get("cpu_model") if isinstance(sample.get("environment"), dict) else None)
@@ -386,10 +466,24 @@ def dataset_policy(samples: list[dict[str, Any]]) -> dict[str, Any]:
         top_virtualization, top_count = max(virtualization_counts.items(), key=lambda item: item[1])
         if share(top_count, total) > 0.70:
             warnings.append(f"虚拟化类型 {top_virtualization} 占比超过 70%。")
+            plan.append({
+                "target": "formal",
+                "priority": "medium",
+                "action": "diversify_virtualization",
+                "missing": 0,
+                "detail": f"虚拟化类型 {top_virtualization} 过于集中，应补充其他虚拟化或云厂商样本。",
+            })
     if cpu_counts:
         top_cpu, top_count = max(cpu_counts.items(), key=lambda item: item[1])
         if share(top_count, total) > 0.40:
             warnings.append(f"CPU 型号 {top_cpu} 占比超过 40%。")
+            plan.append({
+                "target": "formal",
+                "priority": "medium",
+                "action": "diversify_cpu_model",
+                "missing": 0,
+                "detail": f"CPU 型号 {top_cpu} 过于集中，应补充不同代际、架构或供应商样本。",
+            })
 
     if blockers:
         level = "exploratory"
@@ -412,6 +506,7 @@ def dataset_policy(samples: list[dict[str, Any]]) -> dict[str, Any]:
             "all_four": mainstream_all,
             "at_least_three": mainstream_three,
         },
+        "collection_plan": plan,
         "coverage": {
             "virtualization": virtualization_counts,
             "cpu_model": cpu_counts,
@@ -528,6 +623,8 @@ def render_markdown(result: dict[str, Any]) -> str:
         f"- sample_count: {result.get('sample_count', 0)}",
         f"- input_count: {filter_info.get('input_count', result.get('sample_count', 0))}",
         f"- rejected_count: {sum(rejected.values()) if rejected else 0}",
+        f"- manifest_required: {text(data_get(result, 'manifest_policy', 'required'))}",
+        f"- manifest_checked_count: {text(data_get(result, 'manifest_policy', 'checked_count'))}",
         f"- policy_level: {text(data_get(result, 'policy', 'level'))}",
         f"- formal_ready: {text(data_get(result, 'policy', 'formal_ready'))}",
         "",
@@ -547,6 +644,21 @@ def render_markdown(result: dict[str, Any]) -> str:
         lines.append("")
     if not blockers and not warnings:
         lines.extend(["- 数据集满足正式校准最低规则。", ""])
+    plan = policy.get("collection_plan") if isinstance(policy.get("collection_plan"), list) else []
+    if plan:
+        lines.extend([
+            "### Collection Plan",
+            "",
+            "| target | priority | action | missing | detail |",
+            "|--------|----------|--------|---------|--------|",
+        ])
+        for item in plan:
+            if not isinstance(item, dict):
+                continue
+            lines.append(
+                f"| {text(item.get('target'))} | {text(item.get('priority'))} | {text(item.get('action'))} | {text(item.get('missing'))} | {text(item.get('detail'))} |"
+            )
+        lines.append("")
     lines.extend([
         "## Samples",
         "",
@@ -570,6 +682,28 @@ def render_markdown(result: dict[str, Any]) -> str:
     for profile, summary in result.get("by_score_profile", {}).items():
         total = summary.get("metrics", {}).get("overall", {}).get("total_score", {})
         lines.append(f"- {profile}: count {summary.get('count', 0)}, total_score p50 {fmt(total.get('p50'))}, p75 {fmt(total.get('p75'))}, p90 {fmt(total.get('p90'))}")
+    profile_policies = result.get("profile_policies") if isinstance(result.get("profile_policies"), dict) else {}
+    if profile_policies:
+        lines.extend([
+            "",
+            "## Score Profile Policies",
+            "",
+            "| score_profile | level | formal_ready | blockers | warnings | next_actions |",
+            "|---------------|-------|--------------|----------|----------|--------------|",
+        ])
+        for profile, policy in profile_policies.items():
+            if not isinstance(policy, dict):
+                continue
+            blockers = policy.get("blockers") if isinstance(policy.get("blockers"), list) else []
+            warnings = policy.get("warnings") if isinstance(policy.get("warnings"), list) else []
+            plan = policy.get("collection_plan") if isinstance(policy.get("collection_plan"), list) else []
+            actions = []
+            for item in plan:
+                if isinstance(item, dict) and item.get("action"):
+                    actions.append(text(item.get("action")))
+            lines.append(
+                f"| {text(profile)} | {text(policy.get('level'))} | {text(policy.get('formal_ready'))} | {len(blockers)} | {len(warnings)} | {', '.join(actions[:4]) if actions else '-'} |"
+            )
     lines.extend(["", "## Calibration Recommendations", ""])
     action_label = {
         "keep": "保持",
@@ -609,7 +743,27 @@ def policy_satisfies(result: dict[str, Any], required: str) -> bool:
     if not required:
         return True
     current = policy_level(result)
-    return POLICY_RANK.get(current, -1) >= POLICY_RANK.get(required, 0)
+    required_rank = POLICY_RANK.get(required, 0)
+    if POLICY_RANK.get(current, -1) < required_rank:
+        return False
+    profile_policies = result.get("profile_policies")
+    if isinstance(profile_policies, dict):
+        for policy in profile_policies.values():
+            if not isinstance(policy, dict):
+                return False
+            level = text(policy.get("level"), "exploratory")
+            if POLICY_RANK.get(level, -1) < required_rank:
+                return False
+    return True
+
+
+def required_profiles_present(result: dict[str, Any], required_profiles: list[str]) -> tuple[bool, list[str]]:
+    if not required_profiles:
+        return True, []
+    profile_policies = result.get("profile_policies")
+    available = set(profile_policies.keys()) if isinstance(profile_policies, dict) else set()
+    missing = [profile for profile in required_profiles if profile not in available]
+    return not missing, missing
 
 
 def policy_failure_message(result: dict[str, Any], required: str) -> str:
@@ -618,9 +772,26 @@ def policy_failure_message(result: dict[str, Any], required: str) -> str:
     blockers = policy.get("blockers") if isinstance(policy.get("blockers"), list) else []
     warnings = policy.get("warnings") if isinstance(policy.get("warnings"), list) else []
     details = blockers if blockers else warnings
+    profile_failures = []
+    required_rank = POLICY_RANK.get(required, 0)
+    profile_policies = result.get("profile_policies")
+    if isinstance(profile_policies, dict):
+        for profile, profile_policy in sorted(profile_policies.items()):
+            if not isinstance(profile_policy, dict):
+                profile_failures.append(f"{profile}: invalid policy")
+                continue
+            level = text(profile_policy.get("level"), "exploratory")
+            if POLICY_RANK.get(level, -1) < required_rank:
+                profile_blockers = profile_policy.get("blockers") if isinstance(profile_policy.get("blockers"), list) else []
+                profile_warnings = profile_policy.get("warnings") if isinstance(profile_policy.get("warnings"), list) else []
+                profile_details = profile_blockers if profile_blockers else profile_warnings
+                detail = text(profile_details[0]) if profile_details else f"policy={level}"
+                profile_failures.append(f"{profile}: {detail}")
     suffix = ""
     if details:
         suffix = "；" + "；".join(text(item) for item in details[:3])
+    if profile_failures:
+        suffix += "；profile policies: " + "；".join(profile_failures[:3])
     return f"dataset policy {current} does not satisfy required level {required}{suffix}"
 
 
@@ -633,12 +804,21 @@ def main() -> int:
     parser.add_argument("--require-mainstream", action="store_true", help="Only include samples where all four core backends are mainstream.")
     parser.add_argument("--min-mainstream-count", type=int, default=None, help="Only include samples with at least this many mainstream core backends.")
     parser.add_argument("--require-policy", choices=["exploratory", "candidate", "formal"], default="", help="Exit non-zero unless the filtered dataset reaches this policy level.")
+    parser.add_argument("--require-score-profiles", default="", help="Comma-separated score profiles that must be present, for example: vps,server,workstation.")
+    parser.add_argument("--require-manifest", action="store_true", help="Require each sample directory to include manifest.json with a matching SHA256.")
     parser.add_argument("-o", "--output", default="", help="Output file path. Defaults to stdout.")
     args = parser.parse_args()
+    required_score_profiles = [item.strip() for item in args.require_score_profiles.split(",") if item.strip()]
+    invalid_profiles = [profile for profile in required_score_profiles if profile not in {"vps", "server", "workstation"}]
+    if invalid_profiles:
+        raise SystemExit(f"unsupported required score profiles: {', '.join(invalid_profiles)}")
 
     paths = find_sample_paths(args.inputs)
     if not paths:
         raise SystemExit("no calibration_sample.json files found")
+    if args.require_manifest:
+        for path in paths:
+            validate_sample_manifest(path)
     samples = [load_sample(path) for path in paths]
     filtered_samples, filter_info = filter_samples(
         samples,
@@ -649,7 +829,11 @@ def main() -> int:
     )
     if not filtered_samples:
         raise SystemExit("no calibration samples matched filters")
-    result = summarize(filtered_samples, filter_info)
+    manifest_policy = {
+        "required": bool(args.require_manifest),
+        "checked_count": len(paths) if args.require_manifest else 0,
+    }
+    result = summarize(filtered_samples, filter_info, manifest_policy)
 
     if args.format == "json":
         output = json.dumps(result, ensure_ascii=False, indent=2) + "\n"
@@ -662,6 +846,11 @@ def main() -> int:
         Path(args.output).write_text(output, encoding="utf-8")
     else:
         sys.stdout.write(output)
+
+    profiles_ok, missing_profiles = required_profiles_present(result, required_score_profiles)
+    if not profiles_ok:
+        print(f"dataset missing required score profiles: {', '.join(missing_profiles)}", file=sys.stderr)
+        return 2
 
     if args.require_policy and not policy_satisfies(result, args.require_policy):
         print(policy_failure_message(result, args.require_policy), file=sys.stderr)

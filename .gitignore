@@ -38,6 +38,9 @@ Thumbs.db
 # 日志文件
 *.log
 
+# 本地校准样本集，可能来自真实 VPS
+calibration-samples/
+
 # 配置文件（可能包含敏感信息）
 config.yaml
 config.json
