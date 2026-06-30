@@ -125,6 +125,7 @@ func (s *IPQualityScanner) Run(systemInfo *models.SystemInfo) *models.IPQualityR
 	report.RiskScore, report.RiskLevel = calculateIPRisk(report)
 	report.Verdict = buildIPQualityVerdict(report)
 	report.Evidence = buildIPQualityEvidence(report)
+	report.EvidenceSummary = buildIPQualityEvidenceSummary(report)
 	report.Recommendations = buildIPQualityRecommendations(report)
 
 	if report.IPVersion == "IPv6" {
@@ -208,6 +209,145 @@ func buildIPQualityEvidence(report *models.IPQualityReport) []*models.IPQualityE
 		})
 	}
 	return evidence
+}
+
+func buildIPQualityEvidenceSummary(report *models.IPQualityReport) []*models.EvidenceSummary {
+	if report == nil {
+		return nil
+	}
+	items := []*models.EvidenceSummary{}
+
+	identityStatus := "partial"
+	identityConfidence := "low"
+	identityDetail := "公网 IP 已采集，ASN 或反向 DNS 信息不完整。"
+	if strings.TrimSpace(report.ASN) != "" && strings.TrimSpace(report.Organization) != "" {
+		identityStatus = "success"
+		identityConfidence = "medium"
+		identityDetail = "ASN 和组织名称可用，可辅助判断云厂商、运营商或托管线索。"
+	}
+	if len(report.ReverseDNS) > 0 {
+		identityConfidence = "medium"
+		if identityStatus == "partial" {
+			identityDetail = "反向 DNS 可用，但 ASN 信息不完整。"
+		}
+	}
+	items = append(items, &models.EvidenceSummary{
+		Category:   "identity",
+		Label:      "IP 身份信息",
+		Status:     identityStatus,
+		Confidence: identityConfidence,
+		Impact:     "影响 IP 类型推断和云服务器/住宅运营商判断。",
+		Detail:     identityDetail,
+		Limitation: "ASN、ISP 和 rDNS 只能说明网络归属线索，不能单独证明真实用户属性。",
+	})
+
+	dnsblStatus := "skipped"
+	dnsblConfidence := "low"
+	dnsblDetail := "DNSBL 未执行或没有可用结果。"
+	if report.BlacklistSummary != nil {
+		dnsblStatus = "success"
+		dnsblConfidence = "high"
+		dnsblDetail = fmt.Sprintf("查询 %d 个 DNSBL，命中 %d，正常 %d，超时 %d，跳过 %d。",
+			report.BlacklistSummary.Total,
+			report.BlacklistSummary.Listed,
+			report.BlacklistSummary.Clean,
+			report.BlacklistSummary.Timeout,
+			report.BlacklistSummary.Skipped,
+		)
+		switch {
+		case report.BlacklistSummary.Listed > 0:
+			dnsblStatus = "warning"
+		case report.BlacklistSummary.Total == report.BlacklistSummary.Skipped:
+			dnsblStatus = "skipped"
+			dnsblConfidence = "low"
+		case report.BlacklistSummary.Timeout > 0 || report.BlacklistSummary.Other > 0:
+			dnsblStatus = "partial"
+			dnsblConfidence = "medium"
+		}
+	}
+	items = append(items, &models.EvidenceSummary{
+		Category:   "dnsbl",
+		Label:      "DNSBL 黑名单",
+		Status:     dnsblStatus,
+		Confidence: dnsblConfidence,
+		Impact:     "影响邮件投递、反滥用和部分风控场景判断。",
+		Detail:     dnsblDetail,
+		Limitation: "公开 DNSBL 覆盖范围有限，未命中不代表没有商业风控风险。",
+	})
+
+	mailStatus := "skipped"
+	mailConfidence := "low"
+	mailDetail := "邮件端口连通性未执行。"
+	if report.MailSummary != nil && report.MailSummary.Total > 0 {
+		mailStatus = "success"
+		mailConfidence = "medium"
+		if report.MailSummary.ProviderOpen == 0 {
+			mailStatus = "warning"
+		} else if report.MailSummary.ProviderOpen < report.MailSummary.Providers {
+			mailStatus = "partial"
+		}
+		mailDetail = fmt.Sprintf("检测 %d 个服务商、%d 个端口，可连服务商 %d，可连端口 %d，阻断 %d，超时 %d。",
+			report.MailSummary.Providers,
+			report.MailSummary.Total,
+			report.MailSummary.ProviderOpen,
+			report.MailSummary.Reachable,
+			report.MailSummary.Blocked,
+			report.MailSummary.Timeout,
+		)
+	}
+	items = append(items, &models.EvidenceSummary{
+		Category:   "mail",
+		Label:      "邮件出站连通",
+		Status:     mailStatus,
+		Confidence: mailConfidence,
+		Impact:     "影响是否适合直接运行 SMTP 发信或邮件相关服务。",
+		Detail:     mailDetail,
+		Limitation: "这里只测试 TCP 出站连通，不代表收信信誉、SPF/DKIM/DMARC 或真实投递率。",
+	})
+
+	heuristicStatus := "success"
+	heuristicConfidence := "low"
+	heuristicDetail := "未发现代理、VPN、Tor、滥用或机房关键词。"
+	if hasDetectedIPRiskFactor(report.RiskFactors) {
+		heuristicStatus = "warning"
+		heuristicConfidence = "medium"
+		heuristicDetail = detectedIPRiskFactorSummary(report.RiskFactors)
+	}
+	items = append(items, &models.EvidenceSummary{
+		Category:   "heuristic",
+		Label:      "本地启发式线索",
+		Status:     heuristicStatus,
+		Confidence: heuristicConfidence,
+		Impact:     "影响代理/VPN/Tor/机房等标签和风险解释。",
+		Detail:     heuristicDetail,
+		Limitation: "关键词启发式只能作为弱证据，不能替代商业风险库或目标业务实测。",
+	})
+
+	items = append(items, &models.EvidenceSummary{
+		Category:   "external_api",
+		Label:      "商业风险 API",
+		Status:     "skipped",
+		Confidence: "low",
+		Impact:     "默认不影响本次评分，只作为隐私边界说明。",
+		Detail:     "未调用需要 API Key 的第三方商业风险数据库。",
+		Limitation: "报告不会给出商业风控数据库级别的强结论；如需此类结论，应显式接入自有授权来源。",
+	})
+
+	return items
+}
+
+func detectedIPRiskFactorSummary(factors []*models.IPRiskFactor) string {
+	names := []string{}
+	for _, factor := range factors {
+		if factor == nil || !factor.Detected {
+			continue
+		}
+		names = append(names, factor.Name)
+	}
+	if len(names) == 0 {
+		return "未发现代理、VPN、Tor、滥用或机房关键词。"
+	}
+	return "命中风险线索: " + strings.Join(names, ", ")
 }
 
 func buildIPQualityRecommendations(report *models.IPQualityReport) []string {

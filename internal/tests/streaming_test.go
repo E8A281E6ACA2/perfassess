@@ -75,6 +75,15 @@ func TestStreamingResultIncludesReportMetadata(t *testing.T) {
 	if result.Protocol != "ipv4" {
 		t.Fatalf("expected protocol metadata, got %q", result.Protocol)
 	}
+	if len(result.EvidenceSummary) != 3 {
+		t.Fatalf("expected streaming evidence summary, got %#v", result.EvidenceSummary)
+	}
+	if result.EvidenceSummary[0].Category != "availability" || result.EvidenceSummary[0].Status != "success" {
+		t.Fatalf("unexpected availability evidence summary: %#v", result.EvidenceSummary[0])
+	}
+	if result.EvidenceSummary[1].Category != "region" || result.EvidenceSummary[1].Status != "partial" {
+		t.Fatalf("unexpected region evidence summary: %#v", result.EvidenceSummary[1])
+	}
 }
 
 func TestStreamingUnlockTypeLabels(t *testing.T) {

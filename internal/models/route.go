@@ -61,6 +61,9 @@ type TraceResult struct {
 	// Evidence 支持路由质量结论的证据项
 	Evidence []*RouteEvidence `json:"evidence,omitempty"`
 
+	// EvidenceSummary 说明路由结论的证据可信度和边界
+	EvidenceSummary []*EvidenceSummary `json:"evidence_summary,omitempty"`
+
 	// Recommendations 路由相关建议
 	Recommendations []string `json:"recommendations,omitempty"`
 }

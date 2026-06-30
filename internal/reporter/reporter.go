@@ -810,6 +810,12 @@ func (rg *ReportGenerator) buildRouteModuleAssessment(report *models.Report) map
 	if len(failedTargets) > 0 {
 		evidence = append(evidence, moduleEvidence("failed_targets", "失败目标", strings.Join(failedTargets, ", "), "failed", "失败目标可能由依赖缺失、ICMP/UDP 策略或目标网络限制导致。"))
 	}
+	for _, result := range results {
+		if result == nil {
+			continue
+		}
+		appendEvidenceSummaryRows(&evidence, result.Target, result.EvidenceSummary)
+	}
 
 	if len(recommendations) == 0 {
 		recommendations = append(recommendations, "结合业务目标地区的真实访问延迟和丢包继续验证。")
@@ -878,6 +884,18 @@ func (rg *ReportGenerator) buildIPQualityModuleAssessment(report *models.Report)
 		}
 		evidence = append(evidence, moduleEvidence("source", item.Name, item.Value, normalizeEvidenceStatus(item.Status), item.Detail))
 	}
+	for _, item := range ipReport.EvidenceSummary {
+		if item == nil {
+			continue
+		}
+		evidence = append(evidence, moduleEvidence(
+			item.Category,
+			item.Label,
+			fmt.Sprintf("%s / 置信度 %s", ipQualityEvidenceSummaryStatusText(item.Status), item.Confidence),
+			normalizeEvidenceStatus(item.Status),
+			strings.TrimSpace(item.Detail+" "+item.Limitation),
+		))
+	}
 
 	recommendations := append([]string{}, ipReport.Recommendations...)
 	if len(recommendations) == 0 {
@@ -920,6 +938,12 @@ func (rg *ReportGenerator) buildStreamingModuleAssessment(report *models.Report)
 	if partial > 0 {
 		evidence = append(evidence, moduleEvidence("partial", "部分解锁", fmt.Sprintf("%d 个平台", partial), "warning", "部分解锁通常表示区域或内容库受限。"))
 	}
+	for _, pair := range sortedStreamingResultsForText(results) {
+		if pair.result == nil {
+			continue
+		}
+		appendEvidenceSummaryRows(&evidence, pair.key, pair.result.EvidenceSummary)
+	}
 	assessment["status"] = status
 	assessment["confidence"] = confidence
 	assessment["summary"] = fmt.Sprintf("检测 %d 个流媒体平台，可用 %d 个，部分解锁 %d 个。", total, available, partial)
@@ -954,6 +978,12 @@ func (rg *ReportGenerator) buildAIModuleAssessment(report *models.Report) map[st
 	if restricted > 0 {
 		evidence = append(evidence, moduleEvidence("restricted", "受限服务", fmt.Sprintf("%d 个服务", restricted), "warning", "受限、需验证或限流并不等同于完全不可用。"))
 	}
+	for _, pair := range sortedAIResultsForText(results) {
+		if pair.result == nil {
+			continue
+		}
+		appendEvidenceSummaryRows(&evidence, pair.key, pair.result.EvidenceSummary)
+	}
 	assessment["status"] = status
 	assessment["confidence"] = confidence
 	assessment["summary"] = fmt.Sprintf("检测 %d 个 AI 服务，可访问 %d 个，受限 %d 个。", total, available, restricted)
@@ -983,6 +1013,24 @@ func moduleEvidence(category string, label string, value string, status string, 
 		"value":    value,
 		"status":   status,
 		"detail":   detail,
+	}
+}
+
+func appendEvidenceSummaryRows(evidence *[]map[string]interface{}, prefix string, summaries []*models.EvidenceSummary) {
+	if evidence == nil {
+		return
+	}
+	for _, item := range summaries {
+		if item == nil {
+			continue
+		}
+		*evidence = append(*evidence, moduleEvidence(
+			item.Category,
+			fmt.Sprintf("%s / %s", prefix, item.Label),
+			fmt.Sprintf("%s / 置信度 %s", evidenceSummaryStatusText(item.Status), item.Confidence),
+			normalizeEvidenceStatus(item.Status),
+			strings.TrimSpace(item.Detail+" "+item.Limitation),
+		))
 	}
 }
 
@@ -1883,6 +1931,20 @@ func (rg *ReportGenerator) FormatReport(report *models.Report) string {
 				} else {
 					sb.WriteString(fmt.Sprintf("状态: 失败 - %s\n", result.ErrorMessage))
 				}
+				if len(result.EvidenceSummary) > 0 {
+					sb.WriteString("证据可信度:\n")
+					for _, item := range result.EvidenceSummary {
+						if item == nil {
+							continue
+						}
+						sb.WriteString(fmt.Sprintf("  - %s / %s / 置信度 %s；%s\n",
+							item.Label,
+							evidenceSummaryStatusText(item.Status),
+							item.Confidence,
+							item.Limitation,
+						))
+					}
+				}
 				if len(result.Recommendations) > 0 {
 					sb.WriteString("建议:\n")
 					for _, recommendation := range result.Recommendations {
@@ -1912,6 +1974,17 @@ func (rg *ReportGenerator) FormatReport(report *models.Report) string {
 					streamingTextUnlockType(result),
 					streamingTextMessage(result),
 				))
+				for _, item := range result.EvidenceSummary {
+					if item == nil {
+						continue
+					}
+					sb.WriteString(fmt.Sprintf("    证据: %s / %s / 置信度 %s；%s\n",
+						item.Label,
+						evidenceSummaryStatusText(item.Status),
+						item.Confidence,
+						item.Limitation,
+					))
+				}
 			}
 			sb.WriteString("\n")
 		}
@@ -1932,6 +2005,17 @@ func (rg *ReportGenerator) FormatReport(report *models.Report) string {
 					aiTextAccessType(result),
 					aiTextMessage(result),
 				))
+				for _, item := range result.EvidenceSummary {
+					if item == nil {
+						continue
+					}
+					sb.WriteString(fmt.Sprintf("    证据: %s / %s / 置信度 %s；%s\n",
+						item.Label,
+						evidenceSummaryStatusText(item.Status),
+						item.Confidence,
+						item.Limitation,
+					))
+				}
 			}
 			sb.WriteString("\n")
 		}
@@ -1980,6 +2064,24 @@ func (rg *ReportGenerator) FormatReport(report *models.Report) string {
 						sb.WriteString(fmt.Sprintf(" - %s", source.Signal))
 					}
 					sb.WriteString("\n")
+				}
+				sb.WriteString("\n")
+			}
+			if len(ipQualityReport.EvidenceSummary) > 0 {
+				sb.WriteString("证据可信度:\n")
+				for _, item := range ipQualityReport.EvidenceSummary {
+					if item == nil {
+						continue
+					}
+					sb.WriteString(fmt.Sprintf("  - %-12s %-6s 置信度 %-6s %s\n",
+						item.Label,
+						ipQualityEvidenceSummaryStatusText(item.Status),
+						item.Confidence,
+						item.Detail,
+					))
+					if item.Limitation != "" {
+						sb.WriteString(fmt.Sprintf("    限制: %s\n", item.Limitation))
+					}
 				}
 				sb.WriteString("\n")
 			}
@@ -2318,6 +2420,25 @@ func ipRiskSourceStatusLabel(source *models.IPRiskSource) string {
 	default:
 		return source.Status
 	}
+}
+
+func evidenceSummaryStatusText(status string) string {
+	switch status {
+	case "success":
+		return "可用"
+	case "partial":
+		return "部分"
+	case "warning":
+		return "注意"
+	case "skipped":
+		return "未执行"
+	default:
+		return status
+	}
+}
+
+func ipQualityEvidenceSummaryStatusText(status string) string {
+	return evidenceSummaryStatusText(status)
 }
 
 type streamingTextResultPair struct {

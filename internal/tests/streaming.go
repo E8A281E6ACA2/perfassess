@@ -497,6 +497,7 @@ func (sd *StreamingDetector) CheckPlatform(platformName string) (*models.Streami
 		Protocol:     fallbackStreamingValue(platform.Protocol, "default"),
 		RegionSource: streamingRegionSource(region, platform.RegionHint),
 	}
+	result.EvidenceSummary = buildStreamingEvidenceSummary(result)
 
 	sd.logger.Info(fmt.Sprintf("检测 %s 完成: %s", platformName, message))
 
@@ -534,6 +535,72 @@ func streamingUnlockType(available bool, message string) string {
 		return "full"
 	default:
 		return "available"
+	}
+}
+
+func buildStreamingEvidenceSummary(result *models.StreamingResult) []*models.EvidenceSummary {
+	if result == nil {
+		return nil
+	}
+	availabilityStatus := "warning"
+	availabilityConfidence := "medium"
+	availabilityDetail := "平台响应显示当前不可用或受限。"
+	if result.Available {
+		availabilityStatus = "success"
+		availabilityDetail = "平台响应显示当前可访问。"
+	}
+	if result.UnlockType == "partial" || result.UnlockType == "login_required" || result.UnlockType == "limited" {
+		availabilityStatus = "partial"
+		availabilityDetail = "平台响应显示可访问，但存在内容库、登录或区域限制。"
+	}
+	if strings.Contains(strings.ToLower(result.Message), "请求失败") || strings.Contains(strings.ToLower(result.Message), "读取响应失败") {
+		availabilityStatus = "warning"
+		availabilityConfidence = "low"
+		availabilityDetail = "检测请求失败，结果只表示本次网络访问失败。"
+	}
+
+	regionStatus := "partial"
+	regionConfidence := "low"
+	regionDetail := "未能从响应确认区域。"
+	switch result.RegionSource {
+	case "response":
+		regionStatus = "success"
+		regionConfidence = "medium"
+		regionDetail = "区域来自平台响应或跳转信息。"
+	case "platform_hint":
+		regionStatus = "partial"
+		regionConfidence = "low"
+		regionDetail = "区域来自平台预设服务区域提示，不是实时响应确认。"
+	}
+
+	return []*models.EvidenceSummary{
+		{
+			Category:   "availability",
+			Label:      "平台访问响应",
+			Status:     availabilityStatus,
+			Confidence: availabilityConfidence,
+			Impact:     "影响该平台是否可访问、完整解锁或部分受限的判断。",
+			Detail:     availabilityDetail,
+			Limitation: "流媒体平台策略和页面结构经常变化，单次 HTTP 响应不能证明长期稳定解锁。",
+		},
+		{
+			Category:   "region",
+			Label:      "区域判定",
+			Status:     regionStatus,
+			Confidence: regionConfidence,
+			Impact:     "影响内容库区域、地区限制和可分享结论。",
+			Detail:     regionDetail,
+			Limitation: "区域提示可能来自登录前页面、跳转或静态配置，不能替代账号内真实播放验证。",
+		},
+		{
+			Category:   "account",
+			Label:      "账号与播放验证",
+			Status:     "skipped",
+			Confidence: "low",
+			Impact:     "默认不影响本次可达性结果，只说明验证边界。",
+			Detail:     "未使用用户账号登录，也未执行真实播放或 DRM 验证。",
+			Limitation: "需要会员账号、支付方式或设备 DRM 的平台，仍需在真实使用路径下复测。",
+		},
 	}
 }
 

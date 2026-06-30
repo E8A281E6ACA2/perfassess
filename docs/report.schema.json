@@ -676,7 +676,7 @@
                 }
               },
               "patternProperties": {
-                "^iperf3_matrix_[0-9]+_(server|name|region|provider|authorization|host|protocol|port|error)$": {
+                "^iperf3_matrix_[0-9]+_(server|name|region|provider|authorization|host|protocol|port|error|error_category|error_stage|error_hint)$": {
                   "type": "string"
                 },
                 "^network_error_[a-z]+_(category|stage|hint)$": {
@@ -749,6 +749,35 @@
           "type": "array",
           "items": {
             "type": "string"
+          }
+        },
+        "ip_quality_report": {
+          "type": "object",
+          "properties": {
+            "evidence_summary": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/evidence_summary"
+              }
+            }
+          }
+        },
+        "route_trace_results": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/route_trace_result"
+          }
+        },
+        "streaming_results": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/streaming_result"
+          }
+        },
+        "ai_results": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/ai_service_result"
           }
         },
         "assessment_conclusion": {
@@ -1338,6 +1367,194 @@
         },
         "detail": {
           "type": "string"
+        }
+      }
+    },
+    "evidence_summary": {
+      "type": "object",
+      "required": [
+        "category",
+        "label",
+        "status",
+        "confidence",
+        "impact",
+        "detail",
+        "limitation"
+      ],
+      "properties": {
+        "category": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "success",
+            "partial",
+            "warning",
+            "skipped"
+          ]
+        },
+        "confidence": {
+          "type": "string",
+          "enum": [
+            "high",
+            "medium",
+            "low"
+          ]
+        },
+        "impact": {
+          "type": "string"
+        },
+        "detail": {
+          "type": "string"
+        },
+        "limitation": {
+          "type": "string"
+        }
+      }
+    },
+    "route_trace_result": {
+      "type": "object",
+      "required": [
+        "target",
+        "hops",
+        "total_hops",
+        "success",
+        "is_real_return_route"
+      ],
+      "properties": {
+        "target": {
+          "type": "string"
+        },
+        "hops": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "number": {
+                "type": "number"
+              },
+              "ip": {
+                "type": "string"
+              },
+              "hostname": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "total_hops": {
+          "type": "number"
+        },
+        "success": {
+          "type": "boolean"
+        },
+        "error_message": {
+          "type": "string"
+        },
+        "direction_group": {
+          "type": "string"
+        },
+        "is_real_return_route": {
+          "type": "boolean"
+        },
+        "last_visible_hop": {
+          "type": "string"
+        },
+        "timeout_hops": {
+          "type": "number"
+        },
+        "average_latency_ms": {
+          "type": "number"
+        },
+        "evidence_summary": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/evidence_summary"
+          }
+        },
+        "recommendations": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "streaming_result": {
+      "type": "object",
+      "required": [
+        "platform",
+        "available",
+        "message"
+      ],
+      "properties": {
+        "platform": {
+          "type": "string"
+        },
+        "available": {
+          "type": "boolean"
+        },
+        "region": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "category": {
+          "type": "string"
+        },
+        "unlock_type": {
+          "type": "string"
+        },
+        "protocol": {
+          "type": "string"
+        },
+        "region_source": {
+          "type": "string"
+        },
+        "evidence_summary": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/evidence_summary"
+          }
+        }
+      }
+    },
+    "ai_service_result": {
+      "type": "object",
+      "required": [
+        "service",
+        "available",
+        "message"
+      ],
+      "properties": {
+        "service": {
+          "type": "string"
+        },
+        "available": {
+          "type": "boolean"
+        },
+        "message": {
+          "type": "string"
+        },
+        "category": {
+          "type": "string"
+        },
+        "access_type": {
+          "type": "string"
+        },
+        "region_hint": {
+          "type": "string"
+        },
+        "evidence_summary": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/evidence_summary"
+          }
         }
       }
     },

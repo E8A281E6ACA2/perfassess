@@ -276,6 +276,33 @@ def walk(value, path="$"):
 walk(sample)
 PY
 
+python3 "$repo_root/scripts/calibration-summary.py" "$auto_dir/calibration_sample.json" --format json -o "$tmpdir/calibration-summary.json"
+python3 - "$tmpdir/calibration-summary.json" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as f:
+    summary = json.load(f)
+
+if summary.get("schema_version") != "perfassess-calibration-summary-v1":
+    raise SystemExit("calibration summary schema mismatch")
+if summary.get("sample_count") != 1:
+    raise SystemExit(f"expected one calibration sample, got {summary.get('sample_count')}")
+policy = summary.get("policy")
+if not isinstance(policy, dict) or not policy.get("level"):
+    raise SystemExit("calibration summary missing dataset policy")
+if not isinstance(policy.get("collection_plan"), list) or not policy["collection_plan"]:
+    raise SystemExit("calibration summary missing collection plan")
+profiles = summary.get("profile_policies")
+if not isinstance(profiles, dict) or not profiles:
+    raise SystemExit("calibration summary missing score profile policies")
+rows = summary.get("samples")
+if not isinstance(rows, list) or len(rows) != 1:
+    raise SystemExit("calibration summary missing sample row")
+if not rows[0].get("score_profile"):
+    raise SystemExit("calibration sample row missing score profile")
+PY
+
 python3 - "$auto_dir/route_trace.json" <<'PY'
 import json
 import sys

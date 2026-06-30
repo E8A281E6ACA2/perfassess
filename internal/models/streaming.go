@@ -31,4 +31,7 @@ type StreamingResult struct {
 
 	// RegionSource 区域判定来源说明
 	RegionSource string `json:"region_source,omitempty"`
+
+	// EvidenceSummary 说明本次平台判断的依据、置信度和限制
+	EvidenceSummary []*EvidenceSummary `json:"evidence_summary,omitempty"`
 }

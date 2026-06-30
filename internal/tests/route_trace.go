@@ -196,6 +196,7 @@ func (rt *RouteTracer) enrichResult(result *models.TraceResult) *models.TraceRes
 	result.AverageLatencyMs = routeAverageLatencyMs(result)
 	result.Quality = buildRouteQuality(result)
 	result.Evidence = buildRouteEvidence(result)
+	result.EvidenceSummary = buildRouteEvidenceSummary(result)
 	result.Recommendations = buildRouteRecommendations(result)
 	return result
 }
@@ -385,6 +386,91 @@ func buildRouteEvidence(result *models.TraceResult) []*models.RouteEvidence {
 	return evidence
 }
 
+func buildRouteEvidenceSummary(result *models.TraceResult) []*models.EvidenceSummary {
+	if result == nil {
+		return nil
+	}
+
+	directionStatus := "success"
+	directionConfidence := "medium"
+	directionDetail := "目标已按公共目标或国内方向参考分组。"
+	if strings.TrimSpace(result.Target) == "" {
+		directionStatus = "partial"
+		directionConfidence = "low"
+		directionDetail = "目标为空，无法可靠判断方向分组。"
+	}
+
+	visibilityStatus := "success"
+	visibilityConfidence := "medium"
+	visibilityDetail := fmt.Sprintf("共解析 %d 跳，最后可见跳为 %s。", result.TotalHops, fallbackRouteText(result.LastVisibleHop, "-"))
+	if result.TotalHops == 0 {
+		visibilityStatus = "warning"
+		visibilityConfidence = "low"
+		visibilityDetail = "未解析到可见跳点。"
+	} else if result.TimeoutHops > 0 {
+		visibilityStatus = "partial"
+	}
+
+	timeoutStatus := "success"
+	timeoutConfidence := "medium"
+	timeoutDetail := "未发现不可见跳点。"
+	if result.TimeoutHops > 0 {
+		timeoutStatus = "partial"
+		timeoutDetail = fmt.Sprintf("存在 %d 个不可见或超时跳点。", result.TimeoutHops)
+	}
+	if !result.Success {
+		timeoutStatus = "warning"
+		timeoutConfidence = "low"
+		timeoutDetail = fallbackRouteText(result.ErrorMessage, "路由追踪失败。")
+	}
+
+	returnRouteStatus := "warning"
+	returnRouteDetail := "内置 traceroute/tracert 只从本机向目标发起探测。"
+	if result.IsRealReturnRoute {
+		returnRouteStatus = "success"
+		returnRouteDetail = "该结果被标记为真实回程；请确认来源是远端探针或第三方平台。"
+	}
+
+	return []*models.EvidenceSummary{
+		{
+			Category:   "direction",
+			Label:      "路径方向",
+			Status:     directionStatus,
+			Confidence: directionConfidence,
+			Impact:     "影响报告将该路径归类为公共目标或国内方向参考。",
+			Detail:     directionDetail,
+			Limitation: "方向分组基于目标地址和内置规则，只用于报告组织，不代表运营商线路归属的强判定。",
+		},
+		{
+			Category:   "visibility",
+			Label:      "可见跳点",
+			Status:     visibilityStatus,
+			Confidence: visibilityConfidence,
+			Impact:     "影响对路径长度、末跳和中间链路可见性的判断。",
+			Detail:     visibilityDetail,
+			Limitation: "中间网络可能屏蔽 ICMP/UDP 探测，跳点不可见不一定表示链路不可用。",
+		},
+		{
+			Category:   "timeout",
+			Label:      "超时与失败",
+			Status:     timeoutStatus,
+			Confidence: timeoutConfidence,
+			Impact:     "影响路由质量评级和排障优先级。",
+			Detail:     timeoutDetail,
+			Limitation: "traceroute 超时可能来自防火墙、运营商策略或目标限制，需要结合 TCP 连通和业务访问复测。",
+		},
+		{
+			Category:   "return_route_boundary",
+			Label:      "真实回程边界",
+			Status:     returnRouteStatus,
+			Confidence: "high",
+			Impact:     "防止把本机出站路径误读为从目标地区返回本机的真实回程。",
+			Detail:     returnRouteDetail,
+			Limitation: "真实回程需要远端探针、回调服务或第三方平台配合；当前默认不内置这类能力。",
+		},
+	}
+}
+
 func buildRouteRecommendations(result *models.TraceResult) []string {
 	if result == nil {
 		return nil
@@ -409,6 +495,13 @@ func buildRouteRecommendations(result *models.TraceResult) []string {
 		recommendations = append(recommendations, "当前路由追踪未发现明显异常，建议结合目标业务的实际访问体验确认。")
 	}
 	return recommendations
+}
+
+func fallbackRouteText(value string, fallback string) string {
+	if strings.TrimSpace(value) == "" {
+		return fallback
+	}
+	return strings.TrimSpace(value)
 }
 
 func routeDirectionGroup(target string) string {

@@ -21,4 +21,7 @@ type AIServiceResult struct {
 
 	// RegionHint 服务主要区域或区域策略提示
 	RegionHint string `json:"region_hint,omitempty"`
+
+	// EvidenceSummary 说明本次服务判断的依据、置信度和限制
+	EvidenceSummary []*EvidenceSummary `json:"evidence_summary,omitempty"`
 }

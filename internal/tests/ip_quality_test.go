@@ -141,6 +141,24 @@ func TestBuildIPQualityVerdictEvidenceAndRecommendations(t *testing.T) {
 	if len(recommendations) == 0 {
 		t.Fatal("expected recommendations")
 	}
+
+	summary := buildIPQualityEvidenceSummary(report)
+	if len(summary) < 5 {
+		t.Fatalf("expected evidence summary rows, got %#v", summary)
+	}
+	byCategory := map[string]*models.EvidenceSummary{}
+	for _, item := range summary {
+		byCategory[item.Category] = item
+	}
+	if byCategory["dnsbl"].Status != "warning" || byCategory["dnsbl"].Confidence != "high" {
+		t.Fatalf("expected DNSBL warning/high evidence summary, got %#v", byCategory["dnsbl"])
+	}
+	if byCategory["mail"].Status != "warning" {
+		t.Fatalf("expected mail warning evidence summary, got %#v", byCategory["mail"])
+	}
+	if byCategory["external_api"].Status != "skipped" {
+		t.Fatalf("expected external API skipped summary, got %#v", byCategory["external_api"])
+	}
 }
 
 func TestIPQualityDefaultsIncludeExpandedChecks(t *testing.T) {

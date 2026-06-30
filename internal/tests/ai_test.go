@@ -36,6 +36,15 @@ func TestAIServiceResultIncludesReportMetadata(t *testing.T) {
 	if result.RegionHint != "Global" {
 		t.Fatalf("expected region hint metadata, got %q", result.RegionHint)
 	}
+	if len(result.EvidenceSummary) != 3 {
+		t.Fatalf("expected AI evidence summary, got %#v", result.EvidenceSummary)
+	}
+	if result.EvidenceSummary[0].Category != "access" || result.EvidenceSummary[0].Status != "success" {
+		t.Fatalf("unexpected access evidence summary: %#v", result.EvidenceSummary[0])
+	}
+	if result.EvidenceSummary[2].Category != "account" || result.EvidenceSummary[2].Status != "skipped" {
+		t.Fatalf("unexpected account evidence summary: %#v", result.EvidenceSummary[2])
+	}
 }
 
 func TestAIAccessTypeLabels(t *testing.T) {

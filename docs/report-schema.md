@@ -31,6 +31,7 @@
 - `error_hint`: 面向用户的处理建议
 
 网络测试可能在延迟、下载、上传多个阶段分别失败，因此还可能包含 `network_error_<stage>_category`、`network_error_<stage>_stage` 和 `network_error_<stage>_hint`。
+当前分类覆盖 iperf3、speedtest、fio 和 sysbench 的常见失败，包括许可/条款未确认、参数或版本不兼容、权限不足、资源不足、DNS/连接失败、限流、超时、命令失败和解析失败。
 
 ## CPU Metrics
 
@@ -141,6 +142,9 @@
 - `iperf3_matrix_<n>_download_mbps`: 第 n 个 iperf3 服务端下载吞吐
 - `iperf3_matrix_<n>_upload_mbps`: 第 n 个 iperf3 服务端上传吞吐
 - `iperf3_matrix_<n>_error`: 第 n 个 iperf3 服务端失败说明
+- `iperf3_matrix_<n>_error_category`: 第 n 个 iperf3 服务端失败分类，例如 `network_unavailable`、`resource_limited` 或 `permission_denied`
+- `iperf3_matrix_<n>_error_stage`: 第 n 个 iperf3 服务端失败阶段，例如 `iperf3_matrix_run`
+- `iperf3_matrix_<n>_error_hint`: 第 n 个 iperf3 服务端处理建议
 - `score`: 网络评分
 
 ## Summary
@@ -180,7 +184,19 @@
 - `blacklist_summary`、`blacklist_checks`: DNSBL 黑名单汇总和逐项结果
 - `mail_summary`、`mail_checks`: 邮件服务商出站连通性汇总和逐项结果
 - `network_stack`: 当前 IP 质量检测所基于的网络栈视角
+- `evidence_summary`: 证据可信度摘要，按身份信息、DNSBL、邮件连通、本地启发式和商业风险 API 说明每类证据的状态、置信度、影响范围和限制
 - `verdict`、`evidence`、`recommendations`、`notes`: 面向人工阅读的结论、证据、建议和说明
+
+## Route Trace Results
+
+`route_trace_results` 是路由追踪结果数组。每个目标结果包含：
+
+- `target`: 追踪目标
+- `hops`、`total_hops`、`last_visible_hop`、`timeout_hops`、`average_latency_ms`: 跳点、可见性、超时和延迟指标
+- `direction_group`: 路由方向分组，例如 `public` 或 `china_reference`
+- `is_real_return_route`: 是否为真实回程。当前内置 traceroute/tracert 默认为 `false`
+- `quality`、`evidence`、`recommendations`: 面向人工阅读的质量结论、证据和建议
+- `evidence_summary`: 证据可信度摘要，说明路径方向、可见跳点、超时失败和真实回程边界的状态、置信度、影响和限制
 
 ## VPS Benchmark Summary
 
@@ -232,6 +248,7 @@
 - `unlock_type`: 解锁类型，例如 `full`、`partial`、`blocked`、`login_required`、`available`
 - `protocol`: 当前检测视角，默认 `default`
 - `region_source`: 区域来源，例如 `response`、`platform_hint` 或 `unknown`
+- `evidence_summary`: 证据可信度摘要，说明平台访问响应、区域判定、账号与播放验证的状态、置信度、影响和限制
 
 ## AI Results
 
@@ -243,6 +260,7 @@
 - `category`: 服务分组，例如 `chatbot`、`assistant`、`search`、`coding`
 - `access_type`: 访问类型，例如 `full`、`login_required`、`verification_required`、`rate_limited`、`restricted`
 - `region_hint`: 服务主要区域或区域策略提示
+- `evidence_summary`: 证据可信度摘要，说明服务访问响应、区域限制线索、账号/API 验证的状态、置信度、影响和限制
 
 ## Confidence Level
 

@@ -38,6 +38,19 @@ func TestEnrichRouteTraceResultBuildsQualityEvidence(t *testing.T) {
 	if len(result.Evidence) == 0 {
 		t.Fatal("expected route evidence")
 	}
+	if len(result.EvidenceSummary) < 4 {
+		t.Fatalf("expected route evidence summary, got %#v", result.EvidenceSummary)
+	}
+	summaryByCategory := map[string]*models.EvidenceSummary{}
+	for _, item := range result.EvidenceSummary {
+		summaryByCategory[item.Category] = item
+	}
+	if summaryByCategory["return_route_boundary"].Status != "warning" || summaryByCategory["return_route_boundary"].Confidence != "high" {
+		t.Fatalf("expected return route boundary warning/high summary, got %#v", summaryByCategory["return_route_boundary"])
+	}
+	if summaryByCategory["visibility"].Status != "partial" {
+		t.Fatalf("expected visibility partial summary with timeout hop, got %#v", summaryByCategory["visibility"])
+	}
 	if !routeRecommendationsContain(result.Recommendations, "不是真实回程") {
 		t.Fatalf("expected return-route boundary recommendation, got %#v", result.Recommendations)
 	}

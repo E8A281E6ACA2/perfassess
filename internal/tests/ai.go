@@ -172,6 +172,73 @@ func aiAccessType(available bool, message string) string {
 	}
 }
 
+func buildAIEvidenceSummary(result *models.AIServiceResult) []*models.EvidenceSummary {
+	if result == nil {
+		return nil
+	}
+
+	accessStatus := "warning"
+	accessConfidence := "medium"
+	accessDetail := "服务响应显示当前不可访问或受限。"
+	switch result.AccessType {
+	case "full", "available":
+		accessStatus = "success"
+		accessDetail = "服务响应显示当前可访问。"
+	case "login_required", "verification_required", "rate_limited":
+		accessStatus = "partial"
+		accessDetail = "服务响应可达，但需要登录、验证或受到限流。"
+	case "restricted":
+		accessStatus = "warning"
+	}
+	loweredMessage := strings.ToLower(result.Message)
+	if strings.Contains(loweredMessage, "请求失败") || strings.Contains(loweredMessage, "读取响应失败") {
+		accessConfidence = "low"
+		accessDetail = "检测请求失败，结果只表示本次网络访问失败。"
+	}
+
+	regionStatus := "partial"
+	regionConfidence := "low"
+	regionDetail := "未从服务响应确认区域策略。"
+	if strings.TrimSpace(result.RegionHint) != "" {
+		regionDetail = "使用服务预设区域策略提示辅助解释。"
+	}
+	if strings.Contains(result.Message, "地区限制") {
+		regionStatus = "warning"
+		regionConfidence = "medium"
+		regionDetail = "服务响应包含地区限制线索。"
+	}
+
+	return []*models.EvidenceSummary{
+		{
+			Category:   "access",
+			Label:      "服务访问响应",
+			Status:     accessStatus,
+			Confidence: accessConfidence,
+			Impact:     "影响该 AI 服务是否可访问、需要登录验证或受限的判断。",
+			Detail:     accessDetail,
+			Limitation: "访问性检测不能替代账号权限、API 额度、风控策略和长期稳定性验证。",
+		},
+		{
+			Category:   "region",
+			Label:      "区域限制线索",
+			Status:     regionStatus,
+			Confidence: regionConfidence,
+			Impact:     "影响是否适合依赖该 IP 访问目标 AI 服务。",
+			Detail:     regionDetail,
+			Limitation: "区域策略会随账号、产品入口、风控和时间变化，单次网页响应不是强结论。",
+		},
+		{
+			Category:   "account",
+			Label:      "账号/API 验证",
+			Status:     "skipped",
+			Confidence: "low",
+			Impact:     "默认不影响本次可达性结果，只说明验证边界。",
+			Detail:     "未登录账号、未发起真实 API 请求，也未验证付费额度。",
+			Limitation: "生产业务应使用目标账号、目标 API endpoint 和真实请求路径复测。",
+		},
+	}
+}
+
 // CheckService 检测单个 AI 服务
 func (ad *AIServiceDetector) CheckService(name string) (*models.AIServiceResult, error) {
 	service, ok := ad.services[name]
@@ -186,14 +253,16 @@ func (ad *AIServiceDetector) CheckService(name string) (*models.AIServiceResult,
 
 	req, err := http.NewRequestWithContext(ctx, "GET", service.TestURL, nil)
 	if err != nil {
-		return &models.AIServiceResult{
+		result := &models.AIServiceResult{
 			Service:    name,
 			Available:  false,
 			Message:    fmt.Sprintf("创建请求失败: %v", err),
 			Category:   service.Category,
 			AccessType: "restricted",
 			RegionHint: service.RegionHint,
-		}, err
+		}
+		result.EvidenceSummary = buildAIEvidenceSummary(result)
+		return result, err
 	}
 
 	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0 Safari/537.36")
@@ -203,28 +272,32 @@ func (ad *AIServiceDetector) CheckService(name string) (*models.AIServiceResult,
 	resp, err := ad.httpClient.Do(req)
 	if err != nil {
 		ad.logger.Warn(fmt.Sprintf("检测 %s 失败: %v", name, err))
-		return &models.AIServiceResult{
+		result := &models.AIServiceResult{
 			Service:    name,
 			Available:  false,
 			Message:    fmt.Sprintf("请求失败: %v", err),
 			Category:   service.Category,
 			AccessType: "restricted",
 			RegionHint: service.RegionHint,
-		}, nil
+		}
+		result.EvidenceSummary = buildAIEvidenceSummary(result)
+		return result, nil
 	}
 	defer resp.Body.Close()
 
 	limitedBody := io.LimitReader(resp.Body, 512*1024)
 	bodyBytes, err := io.ReadAll(limitedBody)
 	if err != nil {
-		return &models.AIServiceResult{
+		result := &models.AIServiceResult{
 			Service:    name,
 			Available:  false,
 			Message:    fmt.Sprintf("读取响应失败: %v", err),
 			Category:   service.Category,
 			AccessType: "restricted",
 			RegionHint: service.RegionHint,
-		}, nil
+		}
+		result.EvidenceSummary = buildAIEvidenceSummary(result)
+		return result, nil
 	}
 
 	available, message := service.CheckFunc(resp, string(bodyBytes))
@@ -237,6 +310,7 @@ func (ad *AIServiceDetector) CheckService(name string) (*models.AIServiceResult,
 		AccessType: aiAccessType(available, message),
 		RegionHint: service.RegionHint,
 	}
+	result.EvidenceSummary = buildAIEvidenceSummary(result)
 
 	ad.logger.Info(fmt.Sprintf("检测 %s 完成: %s", name, message))
 	return result, nil

@@ -22,6 +22,7 @@ type IPQualityReport struct {
 	NetworkStack     *IPNetworkStack      `json:"network_stack,omitempty"`
 	Verdict          *IPQualityVerdict    `json:"verdict,omitempty"`
 	Evidence         []*IPQualityEvidence `json:"evidence,omitempty"`
+	EvidenceSummary  []*EvidenceSummary   `json:"evidence_summary,omitempty"`
 	Recommendations  []string             `json:"recommendations,omitempty"`
 	Notes            []string             `json:"notes,omitempty"`
 }

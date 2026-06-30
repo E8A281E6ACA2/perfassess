@@ -931,7 +931,33 @@ func (ws *WebServer) routeSection() webReportSection {
 			section.Tables = append(section.Tables, hopTable)
 		}
 	}
+	if evidenceTable := routeEvidenceTable(results); len(evidenceTable.Rows) > 0 {
+		section.Tables = append(section.Tables, evidenceTable)
+	}
 	return section
+}
+
+func routeEvidenceTable(results []*models.TraceResult) webTable {
+	table := webTable{Title: "证据可信度", Headers: []string{"目标", "证据", "状态", "置信度", "影响", "限制"}}
+	for _, result := range results {
+		if result == nil {
+			continue
+		}
+		for _, item := range result.EvidenceSummary {
+			if item == nil {
+				continue
+			}
+			table.Rows = append(table.Rows, []string{
+				result.Target,
+				item.Label,
+				evidenceSummaryStatusText(item.Status),
+				item.Confidence,
+				item.Impact,
+				item.Limitation,
+			})
+		}
+	}
+	return table
 }
 
 func webAvailabilityStatus(available int, total int) string {
@@ -1118,6 +1144,9 @@ func (ws *WebServer) streamingSection() webReportSection {
 		})
 	}
 	section.Tables = append(section.Tables, table)
+	if evidenceTable := streamingEvidenceTable(results); len(evidenceTable.Rows) > 0 {
+		section.Tables = append(section.Tables, evidenceTable)
+	}
 	return section
 }
 
@@ -1215,6 +1244,29 @@ func streamingMessage(result *models.StreamingResult) string {
 	return fallback(result.Message, "-")
 }
 
+func streamingEvidenceTable(results map[string]*models.StreamingResult) webTable {
+	table := webTable{Title: "证据可信度", Headers: []string{"平台", "证据", "状态", "置信度", "影响", "限制"}}
+	for _, pair := range sortedStreamingResults(results) {
+		if pair.result == nil {
+			continue
+		}
+		for _, item := range pair.result.EvidenceSummary {
+			if item == nil {
+				continue
+			}
+			table.Rows = append(table.Rows, []string{
+				pair.key,
+				item.Label,
+				evidenceSummaryStatusText(item.Status),
+				item.Confidence,
+				item.Impact,
+				item.Limitation,
+			})
+		}
+	}
+	return table
+}
+
 func (ws *WebServer) aiSection() webReportSection {
 	hint := "本次未启用 AI 服务检测。使用 --ai-services 启用。"
 	section := optionalModuleBase("ai", "AI 服务检测", "OpenAI、Gemini 等 AI 服务的可访问性。", hint)
@@ -1251,12 +1303,38 @@ func (ws *WebServer) aiSection() webReportSection {
 		})
 	}
 	section.Tables = append(section.Tables, table)
+	if evidenceTable := aiEvidenceTable(results); len(evidenceTable.Rows) > 0 {
+		section.Tables = append(section.Tables, evidenceTable)
+	}
 	return section
 }
 
 type aiResultPair struct {
 	key    string
 	result *models.AIServiceResult
+}
+
+func aiEvidenceTable(results map[string]*models.AIServiceResult) webTable {
+	table := webTable{Title: "证据可信度", Headers: []string{"服务", "证据", "状态", "置信度", "影响", "限制"}}
+	for _, pair := range sortedAIResults(results) {
+		if pair.result == nil {
+			continue
+		}
+		for _, item := range pair.result.EvidenceSummary {
+			if item == nil {
+				continue
+			}
+			table.Rows = append(table.Rows, []string{
+				pair.key,
+				item.Label,
+				evidenceSummaryStatusText(item.Status),
+				item.Confidence,
+				item.Impact,
+				item.Limitation,
+			})
+		}
+	}
+	return table
 }
 
 func sortedAIResults(results map[string]*models.AIServiceResult) []aiResultPair {
@@ -1384,6 +1462,22 @@ func (ws *WebServer) ipQualitySection() webReportSection {
 				ipRiskSourceStatusLabel(source),
 				fallback(source.Signal, "-"),
 				source.Detail,
+			})
+		}
+		section.Tables = append(section.Tables, table)
+	}
+	if len(report.EvidenceSummary) > 0 {
+		table := webTable{Title: "证据可信度", Headers: []string{"证据", "状态", "置信度", "影响", "限制"}}
+		for _, item := range report.EvidenceSummary {
+			if item == nil {
+				continue
+			}
+			table.Rows = append(table.Rows, []string{
+				item.Label,
+				ipQualityEvidenceSummaryStatusText(item.Status),
+				item.Confidence,
+				item.Impact,
+				item.Limitation,
 			})
 		}
 		section.Tables = append(section.Tables, table)

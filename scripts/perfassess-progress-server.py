@@ -362,6 +362,37 @@ def table(title: str, headers: list[str], rows: list[list[Any]]) -> dict[str, An
     return {"title": title, "headers": headers, "rows": [[text(cell) for cell in row] for row in rows]}
 
 
+def evidence_summary_status_label(value: Any) -> str:
+    return {
+        "success": "可用",
+        "partial": "部分",
+        "warning": "注意",
+        "skipped": "未执行",
+        "failed": "风险",
+    }.get(text(value, ""), text(value))
+
+
+def evidence_summary_table(title: str, owner_label: str, rows_source: list[tuple[str, Any]]) -> dict[str, Any] | None:
+    rows: list[list[Any]] = []
+    for owner, source in rows_source:
+        if not isinstance(source, list):
+            continue
+        for item in source:
+            if not isinstance(item, dict):
+                continue
+            rows.append([
+                owner,
+                item.get("label"),
+                evidence_summary_status_label(item.get("status")),
+                item.get("confidence"),
+                item.get("impact"),
+                item.get("limitation"),
+            ])
+    if not rows:
+        return None
+    return table(title, [owner_label, "证据", "状态", "置信度", "影响", "限制"], rows)
+
+
 def render_metrics(metrics: list[dict[str, str]]) -> str:
     if not metrics:
         return ""
@@ -930,6 +961,13 @@ def streaming_section(value: Any, assessment: Any = None) -> dict[str, Any]:
         ]
         for item in sorted(items, key=lambda row: (streaming_category(row.get("category")), text(row.get("platform"))))
     ]
+    tables = module_assessment_tables(assessment) + [table("平台结果", ["分组", "平台", "状态", "区域", "解锁类型", "协议", "说明"], rows)]
+    evidence_table = evidence_summary_table("证据可信度", "平台", [
+        (text(item.get("platform"), "-"), item.get("evidence_summary"))
+        for item in sorted(items, key=lambda row: (streaming_category(row.get("category")), text(row.get("platform"))))
+    ])
+    if evidence_table:
+        tables.append(evidence_table)
     return {
         "id": "streaming",
         "title": "流媒体解锁",
@@ -943,7 +981,7 @@ def streaming_section(value: Any, assessment: Any = None) -> dict[str, Any]:
             metric("不可用", len(items) - available_count, "", "amber" if available_count else "red"),
         ],
         "details": [],
-        "tables": module_assessment_tables(assessment) + [table("平台结果", ["分组", "平台", "状态", "区域", "解锁类型", "协议", "说明"], rows)],
+        "tables": tables,
         "hint": "",
     }
 
@@ -987,6 +1025,13 @@ def ai_section(value: Any, assessment: Any = None) -> dict[str, Any]:
         ]
         for item in sorted(items, key=lambda row: (ai_category(row.get("category")), text(row.get("service"))))
     ]
+    tables = module_assessment_tables(assessment) + [table("服务结果", ["分组", "服务", "状态", "访问类型", "区域提示", "说明"], rows)]
+    evidence_table = evidence_summary_table("证据可信度", "服务", [
+        (text(item.get("service"), "-"), item.get("evidence_summary"))
+        for item in sorted(items, key=lambda row: (ai_category(row.get("category")), text(row.get("service"))))
+    ])
+    if evidence_table:
+        tables.append(evidence_table)
     return {
         "id": "ai",
         "title": "AI 服务检测",
@@ -1000,7 +1045,7 @@ def ai_section(value: Any, assessment: Any = None) -> dict[str, Any]:
             metric("不可用", len(items) - available_count, "", "amber" if available_count else "red"),
         ],
         "details": [],
-        "tables": module_assessment_tables(assessment) + [table("服务结果", ["分组", "服务", "状态", "访问类型", "区域提示", "说明"], rows)],
+        "tables": tables,
         "hint": "",
     }
 
@@ -1143,6 +1188,12 @@ def route_section(value: Any, assessment: Any = None) -> dict[str, Any]:
         ]
         if rows:
             tables.append(table(f"{text(item.get('target'))} 路由跳点", ["跳数", "IP", "主机名", "延迟"], rows))
+    route_evidence = evidence_summary_table("证据可信度", "目标", [
+        (text(item.get("target"), "-"), item.get("evidence_summary"))
+        for item in value if isinstance(item, dict)
+    ])
+    if route_evidence:
+        tables.append(route_evidence)
     return {
         "id": "route",
         "title": "路由追踪",
@@ -1259,6 +1310,7 @@ def ip_quality_section(summary: dict[str, Any], assessment: Any = None) -> dict[
     mail_checks = report.get("mail_checks") if isinstance(report.get("mail_checks"), list) else []
     mail_summary = report.get("mail_summary") if isinstance(report.get("mail_summary"), dict) else {}
     network_stack = report.get("network_stack") if isinstance(report.get("network_stack"), dict) else {}
+    evidence_summary = report.get("evidence_summary") if isinstance(report.get("evidence_summary"), list) else []
     level = text(report.get("risk_level"), "unknown")
     status = "failed" if level == "high" else "warning" if level == "medium" else "success"
     if risk_sources:
@@ -1271,6 +1323,10 @@ def ip_quality_section(summary: dict[str, Any], assessment: Any = None) -> dict[
             [item.get("name"), item.get("value"), item.get("status"), item.get("detail")]
             for item in evidence if isinstance(item, dict)
         ]))
+    if evidence_summary:
+        evidence_table = evidence_summary_table("证据可信度", "模块", [("IP 质量", evidence_summary)])
+        if evidence_table:
+            tables.append(evidence_table)
     if recommendations:
         tables.append(table("建议", ["序号", "建议"], [
             [index + 1, item]

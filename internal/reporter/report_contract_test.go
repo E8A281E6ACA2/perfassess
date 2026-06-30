@@ -47,6 +47,7 @@ func TestReportJSONSampleContract(t *testing.T) {
 			t.Fatalf("sample summary missing key %q", key)
 		}
 	}
+	assertExternalEvidenceSchema(t, schema)
 	if summary["score_profile"] != "server" {
 		t.Fatalf("expected sample score profile server, got %#v", summary["score_profile"])
 	}
@@ -106,6 +107,7 @@ func TestReportJSONSampleContract(t *testing.T) {
 	if networkModule["confidence"] != "high" {
 		t.Fatalf("expected network module confidence high, got %#v", networkModule["confidence"])
 	}
+	assertExternalEvidenceSample(t, summary)
 
 	share := objectAt(t, summary, "share_templates")
 	if _, ok := share["plain_text"].(string); !ok {
@@ -188,6 +190,119 @@ func objectAt(t *testing.T, source map[string]interface{}, key string) map[strin
 		t.Fatalf("expected %q to be object, got %T", key, value)
 	}
 	return object
+}
+
+func assertExternalEvidenceSchema(t *testing.T, schema map[string]interface{}) {
+	t.Helper()
+	properties := objectAt(t, objectAt(t, schema, "properties"), "summary")
+	summaryProperties := objectAt(t, properties, "properties")
+	defs := objectAt(t, schema, "$defs")
+	for _, key := range []string{"evidence_summary", "route_trace_result", "streaming_result", "ai_service_result"} {
+		if _, ok := defs[key]; !ok {
+			t.Fatalf("schema $defs missing %q", key)
+		}
+	}
+
+	route := objectAt(t, summaryProperties, "route_trace_results")
+	routeItems := objectAt(t, route, "items")
+	if routeItems["$ref"] != "#/$defs/route_trace_result" {
+		t.Fatalf("route_trace_results must reference route_trace_result, got %#v", routeItems["$ref"])
+	}
+
+	streaming := objectAt(t, summaryProperties, "streaming_results")
+	streamingAdditional := objectAt(t, streaming, "additionalProperties")
+	if streamingAdditional["$ref"] != "#/$defs/streaming_result" {
+		t.Fatalf("streaming_results must reference streaming_result, got %#v", streamingAdditional["$ref"])
+	}
+
+	ai := objectAt(t, summaryProperties, "ai_results")
+	aiAdditional := objectAt(t, ai, "additionalProperties")
+	if aiAdditional["$ref"] != "#/$defs/ai_service_result" {
+		t.Fatalf("ai_results must reference ai_service_result, got %#v", aiAdditional["$ref"])
+	}
+}
+
+func assertExternalEvidenceSample(t *testing.T, summary map[string]interface{}) {
+	t.Helper()
+
+	routeResults := arrayAt(t, summary, "route_trace_results")
+	if len(routeResults) == 0 {
+		t.Fatalf("expected sample route trace results, got %#v", routeResults)
+	}
+	firstRoute, ok := routeResults[0].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected first route result object, got %T", routeResults[0])
+	}
+	if firstRoute["is_real_return_route"] != false {
+		t.Fatalf("sample built-in route must not be marked as real return route, got %#v", firstRoute["is_real_return_route"])
+	}
+	assertEvidenceCategories(t, firstRoute, "evidence_summary", []string{"direction", "visibility", "timeout", "return_route_boundary"})
+
+	ipQuality := objectAt(t, summary, "ip_quality_report")
+	assertEvidenceCategories(t, ipQuality, "evidence_summary", []string{"identity", "dnsbl", "mail", "heuristic", "external_api"})
+
+	streamingResults := objectAt(t, summary, "streaming_results")
+	netflix := objectAt(t, streamingResults, "Netflix")
+	assertEvidenceCategories(t, netflix, "evidence_summary", []string{"availability", "region", "account"})
+
+	aiResults := objectAt(t, summary, "ai_results")
+	chatgpt := objectAt(t, aiResults, "ChatGPT")
+	assertEvidenceCategories(t, chatgpt, "evidence_summary", []string{"access", "region", "account"})
+
+	modules := objectAt(t, summary, "module_assessments")
+	for _, key := range []string{"route", "ip_quality", "streaming", "ai_services"} {
+		module := objectAt(t, modules, key)
+		if module["status"] == "skipped" {
+			t.Fatalf("sample module %q should exercise completed external evidence, got skipped", key)
+		}
+		evidence := arrayAt(t, module, "evidence")
+		if len(evidence) == 0 {
+			t.Fatalf("sample module %q missing evidence rows", key)
+		}
+	}
+}
+
+func assertEvidenceCategories(t *testing.T, source map[string]interface{}, key string, categories []string) {
+	t.Helper()
+	items := arrayAt(t, source, key)
+	if len(items) == 0 {
+		t.Fatalf("expected %q evidence items, got %#v", key, items)
+	}
+	seen := map[string]bool{}
+	for _, item := range items {
+		object, ok := item.(map[string]interface{})
+		if !ok {
+			t.Fatalf("expected evidence item object, got %T", item)
+		}
+		category, ok := object["category"].(string)
+		if !ok || category == "" {
+			t.Fatalf("expected evidence category string, got %#v", object["category"])
+		}
+		for _, required := range []string{"label", "status", "confidence", "impact", "detail", "limitation"} {
+			if _, ok := object[required].(string); !ok {
+				t.Fatalf("expected evidence %q to contain string %q, got %#v", category, required, object[required])
+			}
+		}
+		seen[category] = true
+	}
+	for _, category := range categories {
+		if !seen[category] {
+			t.Fatalf("expected evidence category %q in %q, got %#v", category, key, seen)
+		}
+	}
+}
+
+func arrayAt(t *testing.T, source map[string]interface{}, key string) []interface{} {
+	t.Helper()
+	value, ok := source[key]
+	if !ok {
+		t.Fatalf("missing array key %q", key)
+	}
+	array, ok := value.([]interface{})
+	if !ok {
+		t.Fatalf("expected %q to be array, got %T", key, value)
+	}
+	return array
 }
 
 func validateJSONSchemaSubset(value interface{}, schema map[string]interface{}, root map[string]interface{}, path string) error {

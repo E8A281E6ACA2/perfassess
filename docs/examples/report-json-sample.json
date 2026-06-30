@@ -74,7 +74,12 @@
         "random_read_latency_p95_ms": 1.25,
         "random_write_latency_p95_ms": 2.5,
         "fio_mixed_profile": "yabs_randrw_50_50",
-        "fio_mixed_block_sizes": ["4k", "64k", "512k", "1m"],
+        "fio_mixed_block_sizes": [
+          "4k",
+          "64k",
+          "512k",
+          "1m"
+        ],
         "fio_mixed_4k_read_mbps": 32,
         "fio_mixed_4k_write_mbps": 30,
         "fio_mixed_4k_total_mbps": 62,
@@ -487,49 +492,166 @@
       "route": {
         "id": "route",
         "title": "路由追踪",
-        "status": "skipped",
-        "confidence": "low",
-        "summary": "路由追踪未执行。",
-        "evidence": [],
-        "limitations": [],
+        "status": "success",
+        "confidence": "medium",
+        "summary": "路由追踪完成 1 个目标；结果为本机出站路径参考，不是真实回程。",
+        "evidence": [
+          {
+            "category": "direction",
+            "label": "路径方向",
+            "value": "success",
+            "status": "success",
+            "detail": "目标已按公共目标分组。"
+          },
+          {
+            "category": "visibility",
+            "label": "可见跳点",
+            "value": "success",
+            "status": "success",
+            "detail": "共解析 3 跳，最后可见跳为 1.1.1.1。"
+          },
+          {
+            "category": "timeout",
+            "label": "超时与失败",
+            "value": "success",
+            "status": "success",
+            "detail": "未发现不可见跳点。"
+          },
+          {
+            "category": "return_route_boundary",
+            "label": "真实回程边界",
+            "value": "warning",
+            "status": "warning",
+            "detail": "内置 traceroute/tracert 只从本机向目标发起探测。"
+          }
+        ],
+        "limitations": [
+          "内置 traceroute/tracert 只能表示本机出站路径，不等同于真实回程。"
+        ],
         "recommendations": [
-          "使用 --route-trace 或 standard/full 自动档位补充路由追踪。"
+          "如需真实回程，应使用远端探针、回调服务或第三方平台配合。"
         ]
       },
       "ip_quality": {
         "id": "ip_quality",
         "title": "IP 质量",
-        "status": "skipped",
-        "confidence": "low",
-        "summary": "IP 质量检测未执行。",
-        "evidence": [],
-        "limitations": [],
+        "status": "warning",
+        "confidence": "medium",
+        "summary": "IP 质量检测完成；示例 IP 为托管网络，DNSBL 未命中，邮件连通部分可用。",
+        "evidence": [
+          {
+            "category": "identity",
+            "label": "IP 身份信息",
+            "value": "success",
+            "status": "success",
+            "detail": "ASN 和组织名称可用，可辅助判断云厂商、运营商或托管线索。"
+          },
+          {
+            "category": "dnsbl",
+            "label": "DNSBL 黑名单",
+            "value": "success",
+            "status": "success",
+            "detail": "查询 3 个 DNSBL，命中 0，正常 3，超时 0，跳过 0。"
+          },
+          {
+            "category": "mail",
+            "label": "邮件出站连通",
+            "value": "partial",
+            "status": "partial",
+            "detail": "检测 2 个服务商、4 个端口，可连服务商 1，可连端口 2，阻断 2，超时 0。"
+          },
+          {
+            "category": "heuristic",
+            "label": "本地启发式线索",
+            "value": "warning",
+            "status": "warning",
+            "detail": "命中风险线索: hosting_datacenter。"
+          },
+          {
+            "category": "external_api",
+            "label": "商业风险 API",
+            "value": "skipped",
+            "status": "partial",
+            "detail": "未调用需要 API Key 的第三方商业风险数据库。"
+          }
+        ],
+        "limitations": [
+          "未调用商业风险 API，风险分不能等同于目标业务风控结论。"
+        ],
         "recommendations": [
-          "使用 --ip-quality 或 standard/full 自动档位补充 IP 质量检测。"
+          "结合目标业务、商业风险库或真实投递/注册路径复测 IP 可用性。"
         ]
       },
       "streaming": {
         "id": "streaming",
         "title": "流媒体解锁",
-        "status": "skipped",
-        "confidence": "low",
-        "summary": "流媒体检测未执行。",
-        "evidence": [],
-        "limitations": [],
+        "status": "success",
+        "confidence": "medium",
+        "summary": "流媒体检测完成 1 个平台；示例平台响应显示可访问。",
+        "evidence": [
+          {
+            "category": "availability",
+            "label": "平台访问响应",
+            "value": "success",
+            "status": "success",
+            "detail": "平台响应显示当前可访问。"
+          },
+          {
+            "category": "region",
+            "label": "区域判定",
+            "value": "success",
+            "status": "success",
+            "detail": "区域来自平台响应或跳转信息。"
+          },
+          {
+            "category": "account",
+            "label": "账号与播放验证",
+            "value": "skipped",
+            "status": "partial",
+            "detail": "未使用用户账号登录，也未执行真实播放或 DRM 验证。"
+          }
+        ],
+        "limitations": [
+          "未登录账号，也未执行真实播放或 DRM 验证。"
+        ],
         "recommendations": [
-          "使用 --streaming 或 standard/full 自动档位补充流媒体检测。"
+          "对关键平台使用目标账号和真实播放路径复测。"
         ]
       },
       "ai_services": {
         "id": "ai_services",
         "title": "AI 服务",
-        "status": "skipped",
-        "confidence": "low",
-        "summary": "AI 服务检测未执行。",
-        "evidence": [],
-        "limitations": [],
+        "status": "warning",
+        "confidence": "medium",
+        "summary": "AI 服务检测完成 1 个服务；示例服务可达但未做账号/API 验证。",
+        "evidence": [
+          {
+            "category": "access",
+            "label": "服务访问响应",
+            "value": "partial",
+            "status": "partial",
+            "detail": "服务响应可达，但需要登录、验证或受到限流。"
+          },
+          {
+            "category": "region",
+            "label": "区域限制线索",
+            "value": "partial",
+            "status": "partial",
+            "detail": "使用服务预设区域策略提示辅助解释。"
+          },
+          {
+            "category": "account",
+            "label": "账号/API 验证",
+            "value": "skipped",
+            "status": "partial",
+            "detail": "未登录账号、未发起真实 API 请求，也未验证付费额度。"
+          }
+        ],
+        "limitations": [
+          "未登录账号、未发起真实 API 请求，也未验证付费额度。"
+        ],
         "recommendations": [
-          "使用 --ai-services 或 standard/full 自动档位补充 AI 服务检测。"
+          "生产业务应使用目标账号、目标 API endpoint 和真实请求路径复测。"
         ]
       }
     },
@@ -751,6 +873,357 @@
         "score_profile": "server",
         "calibration_version": "2026-06-v1",
         "formula": "总分 = 已成功测试分项加权和 / 已成功测试权重和。"
+      }
+    },
+    "network_profile": "full",
+    "streaming_profile": "standard",
+    "route_trace_note": "路由追踪为本机出站路径和国内方向参考，不等同于真实回程；真实回程需要远端探针或第三方平台配合。",
+    "route_trace_results": [
+      {
+        "target": "1.1.1.1",
+        "hops": [
+          {
+            "number": 1,
+            "ip": "192.0.2.1",
+            "hostname": "gateway.example"
+          },
+          {
+            "number": 2,
+            "ip": "198.51.100.1",
+            "hostname": "edge.example"
+          },
+          {
+            "number": 3,
+            "ip": "1.1.1.1",
+            "hostname": "one.one.one.one"
+          }
+        ],
+        "total_hops": 3,
+        "success": true,
+        "direction_group": "public",
+        "is_real_return_route": false,
+        "last_visible_hop": "1.1.1.1",
+        "timeout_hops": 0,
+        "average_latency_ms": 10.4,
+        "evidence_summary": [
+          {
+            "category": "direction",
+            "label": "路径方向",
+            "status": "success",
+            "confidence": "medium",
+            "impact": "影响报告将该路径归类为公共目标或国内方向参考。",
+            "detail": "目标已按公共目标分组。",
+            "limitation": "方向分组基于目标地址和内置规则，只用于报告组织，不代表运营商线路归属的强判定。"
+          },
+          {
+            "category": "visibility",
+            "label": "可见跳点",
+            "status": "success",
+            "confidence": "medium",
+            "impact": "影响对路径长度、末跳和中间链路可见性的判断。",
+            "detail": "共解析 3 跳，最后可见跳为 1.1.1.1。",
+            "limitation": "中间网络可能屏蔽 ICMP/UDP 探测，跳点不可见不一定表示链路不可用。"
+          },
+          {
+            "category": "timeout",
+            "label": "超时与失败",
+            "status": "success",
+            "confidence": "medium",
+            "impact": "影响路由质量评级和排障优先级。",
+            "detail": "未发现不可见跳点。",
+            "limitation": "traceroute 超时可能来自防火墙、运营商策略或目标限制，需要结合 TCP 连通和业务访问复测。"
+          },
+          {
+            "category": "return_route_boundary",
+            "label": "真实回程边界",
+            "status": "warning",
+            "confidence": "high",
+            "impact": "防止把本机出站路径误读为从目标地区返回本机的真实回程。",
+            "detail": "内置 traceroute/tracert 只从本机向目标发起探测。",
+            "limitation": "真实回程需要远端探针、回调服务或第三方平台配合；当前默认不内置这类能力。"
+          }
+        ],
+        "recommendations": [
+          "该结果是本机出站路径参考，不是真实回程；真实回程需要远端探针或第三方平台配合。"
+        ]
+      }
+    ],
+    "ip_quality_report": {
+      "public_ip": "203.0.113.10",
+      "ip_version": "IPv4",
+      "isp": "Example ISP",
+      "country": "US",
+      "city": "Example City",
+      "asn": "AS64500",
+      "organization": "Example Network",
+      "reverse_dns": [
+        "example-host.example.net"
+      ],
+      "ip_type": "hosting",
+      "risk_level": "medium",
+      "risk_score": 45,
+      "risk_factors": [
+        {
+          "name": "hosting_datacenter",
+          "detected": true,
+          "confidence": "medium",
+          "source": "asn_rdns",
+          "detail": "ASN/rDNS 显示托管网络线索。"
+        }
+      ],
+      "risk_sources": [
+        {
+          "name": "local_heuristic",
+          "type": "heuristic",
+          "status": "success",
+          "signal": "hosting_datacenter",
+          "detail": "本地 ASN/rDNS 关键词启发式。",
+          "weight": 25,
+          "enabled": true
+        },
+        {
+          "name": "commercial_risk_api",
+          "type": "external_api",
+          "status": "skipped",
+          "detail": "默认不调用需要 API Key 的商业风险库。",
+          "enabled": false
+        }
+      ],
+      "blacklist_summary": {
+        "total": 3,
+        "clean": 3,
+        "listed": 0,
+        "timeout": 0,
+        "skipped": 0,
+        "other": 0
+      },
+      "blacklist_checks": [
+        {
+          "zone": "zen.spamhaus.org",
+          "listed": false,
+          "status": "clean"
+        },
+        {
+          "zone": "bl.spamcop.net",
+          "listed": false,
+          "status": "clean"
+        },
+        {
+          "zone": "dnsbl.sorbs.net",
+          "listed": false,
+          "status": "clean"
+        }
+      ],
+      "mail_summary": {
+        "total": 4,
+        "reachable": 2,
+        "blocked": 2,
+        "timeout": 0,
+        "providers": 2,
+        "provider_open": 1
+      },
+      "mail_checks": [
+        {
+          "service": "smtp",
+          "provider": "example-mail-a",
+          "target": "smtp.example-a.test",
+          "port": 25,
+          "reachable": false,
+          "status": "blocked"
+        },
+        {
+          "service": "submission",
+          "provider": "example-mail-a",
+          "target": "smtp.example-a.test",
+          "port": 587,
+          "reachable": true,
+          "status": "open"
+        },
+        {
+          "service": "smtp",
+          "provider": "example-mail-b",
+          "target": "smtp.example-b.test",
+          "port": 25,
+          "reachable": false,
+          "status": "blocked"
+        },
+        {
+          "service": "submission",
+          "provider": "example-mail-b",
+          "target": "smtp.example-b.test",
+          "port": 587,
+          "reachable": true,
+          "status": "open"
+        }
+      ],
+      "network_stack": {
+        "detected_version": "ipv4",
+        "ipv4_available": true,
+        "ipv6_available": true,
+        "dual_stack": true,
+        "note": "IPv4/IPv6 均可用。"
+      },
+      "verdict": {
+        "grade": "B",
+        "summary": "示例 IP 为托管网络，DNSBL 未命中，邮件连通部分可用。",
+        "ip_type_label": "机房/托管",
+        "risk_label": "中等风险",
+        "mail_usable": true,
+        "hosting_hint": true,
+        "proxy_hint": false
+      },
+      "evidence": [
+        {
+          "name": "ASN",
+          "value": "AS64500",
+          "status": "success",
+          "detail": "示例网络编号。"
+        },
+        {
+          "name": "DNSBL",
+          "value": "0/3 listed",
+          "status": "success",
+          "detail": "公开 DNSBL 未命中。"
+        },
+        {
+          "name": "Mail",
+          "value": "2/4 reachable",
+          "status": "partial",
+          "detail": "部分邮件端口可连。"
+        }
+      ],
+      "evidence_summary": [
+        {
+          "category": "identity",
+          "label": "IP 身份信息",
+          "status": "success",
+          "confidence": "medium",
+          "impact": "影响 IP 类型推断和云服务器/住宅运营商判断。",
+          "detail": "ASN 和组织名称可用，可辅助判断云厂商、运营商或托管线索。",
+          "limitation": "ASN、ISP 和 rDNS 只能说明网络归属线索，不能单独证明真实用户属性。"
+        },
+        {
+          "category": "dnsbl",
+          "label": "DNSBL 黑名单",
+          "status": "success",
+          "confidence": "high",
+          "impact": "影响邮件投递、反滥用和部分风控场景判断。",
+          "detail": "查询 3 个 DNSBL，命中 0，正常 3，超时 0，跳过 0。",
+          "limitation": "公开 DNSBL 覆盖范围有限，未命中不代表没有商业风控风险。"
+        },
+        {
+          "category": "mail",
+          "label": "邮件出站连通",
+          "status": "partial",
+          "confidence": "medium",
+          "impact": "影响是否适合直接运行 SMTP 发信或邮件相关服务。",
+          "detail": "检测 2 个服务商、4 个端口，可连服务商 1，可连端口 2，阻断 2，超时 0。",
+          "limitation": "这里只测试 TCP 出站连通，不代表收信信誉、SPF/DKIM/DMARC 或真实投递率。"
+        },
+        {
+          "category": "heuristic",
+          "label": "本地启发式线索",
+          "status": "warning",
+          "confidence": "medium",
+          "impact": "影响代理/VPN/Tor/机房等标签和风险解释。",
+          "detail": "命中风险线索: hosting_datacenter。",
+          "limitation": "关键词启发式只能作为弱证据，不能替代商业风险库或目标业务实测。"
+        },
+        {
+          "category": "external_api",
+          "label": "商业风险 API",
+          "status": "skipped",
+          "confidence": "low",
+          "impact": "默认不影响本次评分，只作为隐私边界说明。",
+          "detail": "未调用需要 API Key 的第三方商业风险数据库。",
+          "limitation": "报告不会给出商业风控数据库级别的强结论；如需此类结论，应显式接入自有授权来源。"
+        }
+      ],
+      "recommendations": [
+        "如果用于邮件业务，应继续使用目标收件方做真实投递测试。"
+      ],
+      "notes": [
+        "示例使用 RFC 5737 文档 IP，不代表真实节点。"
+      ]
+    },
+    "streaming_results": {
+      "Netflix": {
+        "platform": "Netflix",
+        "available": true,
+        "region": "US",
+        "message": "示例响应显示可访问。",
+        "category": "global",
+        "unlock_type": "full",
+        "protocol": "default",
+        "region_source": "response",
+        "evidence_summary": [
+          {
+            "category": "availability",
+            "label": "平台访问响应",
+            "status": "success",
+            "confidence": "medium",
+            "impact": "影响该平台是否可访问、完整解锁或部分受限的判断。",
+            "detail": "平台响应显示当前可访问。",
+            "limitation": "流媒体平台策略和页面结构经常变化，单次 HTTP 响应不能证明长期稳定解锁。"
+          },
+          {
+            "category": "region",
+            "label": "区域判定",
+            "status": "success",
+            "confidence": "medium",
+            "impact": "影响内容库区域、地区限制和可分享结论。",
+            "detail": "区域来自平台响应或跳转信息。",
+            "limitation": "区域提示可能来自登录前页面、跳转或静态配置，不能替代账号内真实播放验证。"
+          },
+          {
+            "category": "account",
+            "label": "账号与播放验证",
+            "status": "skipped",
+            "confidence": "low",
+            "impact": "默认不影响本次可达性结果，只说明验证边界。",
+            "detail": "未使用用户账号登录，也未执行真实播放或 DRM 验证。",
+            "limitation": "需要会员账号、支付方式或设备 DRM 的平台，仍需在真实使用路径下复测。"
+          }
+        ]
+      }
+    },
+    "ai_results": {
+      "ChatGPT": {
+        "service": "ChatGPT",
+        "available": true,
+        "message": "示例响应可达，但未登录账号验证。",
+        "category": "chatbot",
+        "access_type": "login_required",
+        "region_hint": "global",
+        "evidence_summary": [
+          {
+            "category": "access",
+            "label": "服务访问响应",
+            "status": "partial",
+            "confidence": "medium",
+            "impact": "影响该 AI 服务是否可访问、需要登录验证或受限的判断。",
+            "detail": "服务响应可达，但需要登录、验证或受到限流。",
+            "limitation": "访问性检测不能替代账号权限、API 额度、风控策略和长期稳定性验证。"
+          },
+          {
+            "category": "region",
+            "label": "区域限制线索",
+            "status": "partial",
+            "confidence": "low",
+            "impact": "影响是否适合依赖该 IP 访问目标 AI 服务。",
+            "detail": "使用服务预设区域策略提示辅助解释。",
+            "limitation": "区域策略会随账号、产品入口、风控和时间变化，单次网页响应不是强结论。"
+          },
+          {
+            "category": "account",
+            "label": "账号/API 验证",
+            "status": "skipped",
+            "confidence": "low",
+            "impact": "默认不影响本次可达性结果，只说明验证边界。",
+            "detail": "未登录账号、未发起真实 API 请求，也未验证付费额度。",
+            "limitation": "生产业务应使用目标账号、目标 API endpoint 和真实请求路径复测。"
+          }
+        ]
       }
     }
   }
