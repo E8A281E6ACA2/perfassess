@@ -8,7 +8,8 @@
 - 工作区干净：`git status --short --branch` 不应显示未提交改动。
 - 本地已通过 `make release-check`。
 - 至少完成一次真实 VPS 验收，并保留脱敏后的验收摘要。
-- 如果本次改动影响评分阈值或 `score_calibration.version`，必须先按 `docs/calibration-dataset-policy.md` 完成样本准入检查。
+- 如果真实 VPS 结果用于评分校准，只能从远程机器取回 `/tmp/perfassess-auto/calibration_sample.json`，并用 `PERFASSESS_CALIBRATION_REQUIRE_MANIFEST=1 scripts/calibration-collect.sh` 归档到样本池；不要把原始报告、日志、压缩包或完整报告目录作为校准输入。
+- 如果本次改动影响评分阈值或 `score_calibration.version`，必须先按 `docs/calibration-dataset-policy.md` 完成样本准入检查；默认要求运行 `python3 scripts/calibration-summary.py /path/to/samples --require-manifest --require-score-profiles vps,server,workstation --require-policy formal`，除非发布记录明确说明本次只覆盖某个单一 `score_profile`。
 
 ## 发布前检查
 

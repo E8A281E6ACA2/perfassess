@@ -22,7 +22,8 @@ make validate
 - 依赖检查冒烟测试
 - 快速报告语义契约检查，包括测评结论、关键证据、模块可信度和分享模板
 - Web 报告 HTML 渲染契约检查，包括首屏决策面板、模块健康和报告目录
-- 脱敏校准样本隐私契约检查，确保 `calibration_sample.json` 标记 `redacted=true`，不嵌入原始报告结构、敏感字段名或公网 IPv4 值
+- 脱敏校准样本隐私与消费契约检查，确保 `calibration_sample.json` 标记 `redacted=true`，不嵌入原始报告结构、敏感字段名或公网 IPv4 值，并能被 `scripts/calibration-summary.py` 生成数据集策略、收集计划和 profile policies
+- 远程样本回收链路检查，确保手册要求只复制 `/tmp/perfassess-auto/calibration_sample.json`，并通过 `scripts/calibration-collect.sh` 生成 `manifest.json` 和样本集汇总
 - JSON 报告脱敏工具冒烟测试，确保公开归档前可生成 `.redacted.json`，并移除 IP、ISP、ASN、地理位置和路由 hop 细节
 - 自动测评报告产物清单校验，包括文件大小、SHA256、压缩包内容、目录模式下的压缩包内部 SHA256 校验、目录 manifest 与压缩包内 manifest 一致性、目录篡改和压缩包内部篡改负向测试
 - 严格 VPS 验收资源预检冒烟测试，确保资源不足时在生成报告前快速失败并给出提示
@@ -33,7 +34,7 @@ make validate
 make release-check
 ```
 
-候选发布基线的本地验证记录见 [发布验证记录](release-validation-log.md)。新增或更新记录后，仍需按下方真实 VPS 验收要求完成实机验证。
+候选发布基线的本地验证记录见 [发布验证记录](release-validation-log.md)。如当前工作区包含多主题候选基线，先按 [候选基线拆分提交计划](candidate-baseline-split-plan.md) 拆分为可审计提交。新增或更新记录后，仍需按下方真实 VPS 验收要求完成实机验证。
 
 正式创建 GitHub Release 时，按 [GitHub Release 发布手册](release-runbook.md) 执行 tag、workflow、资产校验和发布后 bootstrap 验证。
 
@@ -82,10 +83,10 @@ make vps-acceptance-low-standard
 ./build/perfassess -b network --network-backend speedtest --output-format json -o /tmp/perfassess-speedtest.json
 ```
 
-如有可用 iperf3 服务端，再补充。使用节点文件前，先把 `docs/examples/iperf3-servers.txt` 替换为自有或授权节点：
+如有自有或授权 iperf3 服务端，再补充。下面的 `192.0.2.10:5201` 是文档保留地址，只表示格式，运行前必须替换。使用节点文件前，先把 `docs/examples/iperf3-servers.txt` 替换为自有或授权节点：
 
 ```bash
-./build/perfassess -b network --network-backend iperf3 --iperf3-server 1.2.3.4:5201 --output-format json -o /tmp/perfassess-iperf3.json
+./build/perfassess -b network --network-backend iperf3 --iperf3-server 192.0.2.10:5201 --output-format json -o /tmp/perfassess-iperf3.json
 ./build/perfassess -b network --network-backend iperf3 --iperf3-server-file docs/examples/iperf3-servers.txt --output-format json -o /tmp/perfassess-iperf3-file.json
 ```
 
@@ -96,7 +97,8 @@ make vps-acceptance-low-standard
 - 新增或修改报告字段时必须补充契约测试或快照测试。
 - JSON 报告必须保留 `summary.assessment_conclusion.evidence` 和 `summary.module_assessments`，否则阻止发布。
 - Web 报告必须保留结论优先首屏，包括 `decision-panel`、适用判断、优先建议、模块健康和报告目录。
-- 修改评分基准或 `score_calibration.version` 前，必须使用脱敏样本运行 `python3 scripts/calibration-summary.py /path/to/samples --require-policy formal`，并在发布记录中保留样本数量、过滤条件和汇总输出。
+- 真实 VPS 校准样本必须只从远程机器取回 `/tmp/perfassess-auto/calibration_sample.json`，并用 `PERFASSESS_CALIBRATION_REQUIRE_MANIFEST=1 scripts/calibration-collect.sh` 归档；不得把原始 `default.json`、日志、压缩包或完整报告目录作为校准输入。
+- 修改评分基准或 `score_calibration.version` 前，必须使用脱敏样本运行 `python3 scripts/calibration-summary.py /path/to/samples --require-manifest --require-score-profiles vps,server,workstation --require-policy formal`，并在发布记录中保留样本数量、过滤条件、manifest 审计状态、`profile_policies` 和汇总输出。若本次只发布单一评分档位，必须在发布记录中说明为什么只要求该 profile。
 - 发布 workflow 必须在上传前执行 Linux amd64 发布二进制冒烟测试。
 - 发布 workflow 必须上传 `checksums.txt`，并在上传前校验所有发布二进制的 SHA256。
 - 发布后必须执行 `scripts/verify-release-assets.sh --version latest` 或指定 tag；该验证默认会用当前平台可执行的发布二进制跑 basic 自动测评并校验报告目录和压缩包。

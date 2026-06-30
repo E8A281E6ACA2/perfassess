@@ -14,7 +14,7 @@ require_file_contains() {
   local file="$1"
   local pattern="$2"
   [[ -f "$file" ]] || fail "missing required file: $file"
-  grep -Eq "$pattern" "$file" || fail "$file does not contain required pattern: $pattern"
+  grep -Eq -- "$pattern" "$file" || fail "$file does not contain required pattern: $pattern"
 }
 
 forbidden_hits() {
@@ -31,6 +31,8 @@ forbidden_hits() {
 
 require_file_contains "go.mod" '^module github\.com/E8A281E6ACA2/perfassess$'
 require_file_contains "README.md" 'raw\.githubusercontent\.com/E8A281E6ACA2/perfassess/main/scripts/bootstrap\.sh'
+require_file_contains "README.md" 'docs/calibration-sampling-matrix\.md'
+require_file_contains "README.md" 'docs/candidate-baseline-split-plan\.md'
 require_file_contains "README.md" '0\.0\.0\.0:8080.*不是浏览器访问地址|0\.0\.0\.0:8080'
 require_file_contains "README.md" '国内方向参考.*不是真实回程|不等同真实回程'
 require_file_contains "AGENTS.md" 'type\(scope\): 中文描述'
@@ -41,6 +43,17 @@ require_file_contains "docs/project-analysis-and-roadmap.md" 'make pre-commit'
 require_file_contains "docs/release-checklist.md" 'make validate'
 require_file_contains "docs/release-checklist.md" 'make pre-commit'
 require_file_contains "docs/release-checklist.md" 'make vps-acceptance-low-standard'
+require_file_contains "docs/release-checklist.md" 'candidate-baseline-split-plan\.md'
+require_file_contains "docs/release-checklist.md" 'calibration-summary\.py.*--require-manifest.*--require-score-profiles.*--require-policy formal'
+require_file_contains "docs/release-runbook.md" 'calibration-summary\.py.*--require-manifest.*--require-score-profiles.*--require-policy formal'
+require_file_contains "docs/release-validation-log.md" 'candidate-baseline-split-plan\.md'
+require_file_contains "docs/calibration-dataset-policy.md" '--require-manifest'
+require_file_contains "docs/calibration-sampling-matrix.md" 'low-memory'
+require_file_contains "docs/calibration-sampling-matrix.md" 'PERFASSESS_CALIBRATION_REQUIRE_MANIFEST=1'
+require_file_contains "docs/calibration-sampling-matrix.md" '--require-score-profiles vps,server,workstation'
+require_file_contains "docs/examples/iperf3-servers.txt" '文档保留地址'
+require_file_contains "docs/examples/iperf3-servers.txt" 'auth=owned.*auth=authorized|auth=authorized.*auth=owned'
+require_file_contains "README.md" 'iperf3.*不.*内置公共'
 require_file_contains "docs/vps-acceptance.md" 'PERFASSESS_ACCEPTANCE_MATRIX=low,standard'
 require_file_contains "docs/vps-acceptance.md" 'make vps-acceptance-low-standard'
 require_file_contains "docs/vps-acceptance.md" 'summary\.json'
@@ -72,6 +85,12 @@ history_command_hits="$(forbidden_hits 'perfassess history|--store|~/.perfassess
 if [[ -n "$history_command_hits" ]]; then
   echo "$history_command_hits" >&2
   fail "removed default local history commands are still referenced"
+fi
+
+bad_iperf3_example_hits="$(forbidden_hits '1\.2\.3\.4:5201|iperf3\.example\.com:5201' README.md docs scripts internal cmd pkg .github)"
+if [[ -n "$bad_iperf3_example_hits" ]]; then
+  echo "$bad_iperf3_example_hits" >&2
+  fail "iperf3 examples must use documentation-only addresses/domains and explicit authorization"
 fi
 
 if [[ -e internal/history/history.go || -e internal/history/history_test.go || -e docs/return-route-probe-design.md ]]; then

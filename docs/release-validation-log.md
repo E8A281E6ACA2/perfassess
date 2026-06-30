@@ -37,6 +37,27 @@ make release-check
 - 2026-06-30：发布二进制冒烟 `scripts/release-smoke.sh` 增加自动测评 basic 档产物验证，使用发布二进制执行 `perfassess-auto.sh` 后校验报告目录和 `perfassess-report.zip`。重新执行 `bash -n scripts/release-smoke.sh`、`make release-smoke`、`git diff --check` 和 `go test ./...`，结果通过。
 - 2026-06-30：发布后资产校验 `scripts/verify-release-assets.sh` 增加默认发布二进制 basic 自动测评产物验证，并按当前平台选择可执行 Release 资产；无法执行当前平台资产时会清晰跳过 smoke，`--skip-smoke` 可用于仅校验下载资产和 SHA256。SHA256 校验优先使用 `sha256sum`，缺失或失败时回退 `shasum -a 256`。`make verify-release-assets-smoke` 覆盖 Linux 路径、skip smoke 路径和 shasum fallback 路径。重新执行 `bash -n scripts/verify-release-assets.sh scripts/verify-release-assets-smoke.sh scripts/release-runbook-smoke.sh`、`make verify-release-assets-smoke`、`make release-runbook-smoke`、`git diff --check` 和 `go test ./...`，结果通过。
 - 2026-06-30：bootstrap 预构建二进制 checksum 校验同步支持 `sha256sum` 和 `shasum -a 256`，避免 macOS 低内存/预构建路径因缺少 `sha256sum` 跳过校验；`make bootstrap-prebuilt-smoke` 使用 `basic/builtin/quick` 固定轻量档位，覆盖 sha256sum 路径和 shasum fallback 路径，专注验证预构建二进制下载、校验、跳过源码构建和报告生成。重新执行 `bash -n scripts/bootstrap.sh scripts/bootstrap-prebuilt-smoke.sh`、`make bootstrap-prebuilt-smoke`、`make remote-runbook-smoke`、`git diff --check` 和 `go test ./...`，结果通过。
+- 2026-06-30：当前候选基线继续收口外部检测证据可信度、主流外部后端结构化错误分类、VPS 验收校准适用性、校准样本 `Collection Plan` / `Score Profile Policies` / `--require-score-profiles` 门禁，并同步发布清单与手册。随后扩展 speedtest、fio 和 sysbench 常见许可/参数/网络/资源失败分类，收紧 iperf3 示例必须使用文档保留地址并声明自有/授权节点的不变量，并补强报告契约 smoke，验证自动测评生成的 `calibration_sample.json` 可被 `calibration-summary.py` 消费；重新执行 `make pre-commit`，结果通过。
+- 2026-06-30：当前候选基线在继续推进前重新执行 `make pre-commit` 和 `make release-check`，结果通过；覆盖提交前门禁、发布二进制端到端冒烟、Linux/macOS/Windows 跨平台构建和发布产物 SHA256 清单校验。
+- 2026-06-30：校准样本收集链路新增 `manifest.json`、`--require-manifest`、manifest 审计状态输出和发布前正式校准门禁要求后，重新执行 `make release-check`，结果通过；覆盖校准样本收集/汇总 smoke、发布二进制端到端冒烟、跨平台构建和发布产物 SHA256 清单校验。
+- 2026-06-30：新增真实 VPS 校准样本矩阵文档并接入 README、路线图和项目不变量检查后，重新执行 `make release-check`，结果通过；覆盖样本矩阵文档入口、不变量门禁、发布二进制端到端冒烟、跨平台构建和发布产物 SHA256 清单校验。
+- 2026-06-30：远程服务器测试手册补齐 `calibration_sample.json` 回收、`scripts/calibration-collect.sh` 归档、`manifest.json` 审计和 `docs/calibration-sampling-matrix.md` 入口，并将该链路接入 `remote-runbook-smoke`；重新执行 `bash -n scripts/remote-runbook-smoke.sh scripts/project-invariants-smoke.sh`、`make remote-runbook-smoke`、`make project-invariants-smoke`、`git diff --check`、`go test ./...` 和 `make pre-commit`，结果通过。
+- 2026-06-30：发布清单和发布手册新增真实 VPS 校准样本归档规则，要求只取回 `/tmp/perfassess-auto/calibration_sample.json`，并用 `PERFASSESS_CALIBRATION_REQUIRE_MANIFEST=1 scripts/calibration-collect.sh` 进入样本池；不得把原始 `default.json`、日志、压缩包或完整报告目录作为校准输入。同步补强 `release-runbook-smoke` 后，重新执行 `bash -n scripts/release-runbook-smoke.sh scripts/remote-runbook-smoke.sh scripts/project-invariants-smoke.sh`、`make release-runbook-smoke`、`make remote-runbook-smoke`、`make project-invariants-smoke`、`git diff --check`、`go test ./...` 和 `make validate`，结果通过。
+
+当前候选基线建议按主题拆分提交。完整文件边界、验证命令和注意事项见 [候选基线拆分提交计划](candidate-baseline-split-plan.md)：
+
+1. `feat(report): 增加外部检测证据可信度摘要`
+   - 范围：`internal/models/evidence.go`、IP 质量、流媒体、AI 服务、路由模型与报告/Web 展示、报告契约测试、schema 和示例报告。
+2. `fix(tests): 细化主流后端错误分类`
+   - 范围：`internal/tests/benchmark_error.go`、iperf3、speedtest、fio、sysbench 相关解析与单元测试。
+3. `scripts(calibration): 增加脱敏校准样本收集链路`
+   - 范围：`scripts/calibration-collect.sh`、`scripts/calibration-collect-smoke.sh`、`scripts/calibration-summary.py`、`.gitignore`、Makefile 校准 smoke。
+4. `docs(calibration): 补齐真实 VPS 样本矩阵和归档规范`
+   - 范围：`docs/calibration-dataset-policy.md`、`docs/calibration-sampling-matrix.md`、README 校准说明、远程测试手册样本回收说明。
+5. `docs(release): 收紧发布和远程验收门禁`
+   - 范围：`docs/release-checklist.md`、`docs/release-runbook.md`、`scripts/release-runbook-smoke.sh`、`scripts/remote-runbook-smoke.sh`、`scripts/project-invariants-smoke.sh`。
+6. `test(acceptance): 增强 VPS 验收摘要和报告覆盖检查`
+   - 范围：`scripts/vps-acceptance.sh`、`scripts/vps-acceptance-summary-smoke.sh`、`docs/vps-acceptance.md`、相关 Makefile 入口。
 
 覆盖范围：
 
