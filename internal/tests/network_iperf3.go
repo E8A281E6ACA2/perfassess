@@ -55,6 +55,14 @@ type iperf3Endpoint struct {
 	Port string
 }
 
+type iperf3ServerSpec struct {
+	Server        string
+	Name          string
+	Region        string
+	Provider      string
+	Authorization string
+}
+
 func (e iperf3Endpoint) TCPAddress() string {
 	port := e.Port
 	if port == "" {
@@ -125,7 +133,7 @@ func (b *Iperf3NetworkBackend) MeasureDownload() (NetworkDownloadResult, error) 
 		}
 		speed := averageSuccessfulIperf3Download(results)
 		if speed <= 0 {
-			return NetworkDownloadResult{}, fmt.Errorf("all iperf3 matrix download tests failed")
+			return NetworkDownloadResult{}, newBenchmarkError(BenchmarkErrorRuntime, "iperf3_matrix_download", "所有 iperf3 节点下载均失败，请检查节点连通性、防火墙和服务端配置。", fmt.Errorf("all iperf3 matrix download tests failed"))
 		}
 		return NetworkDownloadResult{SpeedMbps: speed, SourceURL: models.NetworkDownloadSourceIperf3}, nil
 	}
@@ -140,12 +148,12 @@ func (b *Iperf3NetworkBackend) MeasureDownload() (NetworkDownloadResult, error) 
 
 	output, err := b.runner.Run(ctx, "iperf3", b.commandArgs(endpoint, false)...)
 	if err != nil {
-		return NetworkDownloadResult{}, fmt.Errorf("iperf3 download failed: %w", err)
+		return NetworkDownloadResult{}, newBenchmarkError(BenchmarkErrorCommandFailed, "iperf3_download_run", "确认 iperf3 服务端可达、端口开放，并检查本机出站防火墙。", err)
 	}
 
 	speed, err := parseIperf3Mbps(output)
 	if err != nil {
-		return NetworkDownloadResult{}, fmt.Errorf("parse iperf3 download result: %w", err)
+		return NetworkDownloadResult{}, newBenchmarkError(BenchmarkErrorParseFailed, "iperf3_download_parse", "iperf3 JSON 输出格式无法识别，请保留 stdout/stderr 用于排查。", err)
 	}
 	return NetworkDownloadResult{SpeedMbps: speed, SourceURL: models.NetworkDownloadSourceIperf3}, nil
 }
@@ -162,7 +170,7 @@ func (b *Iperf3NetworkBackend) MeasureUpload(downloadSpeed float64) (float64, bo
 		}
 		speed := averageSuccessfulIperf3Upload(results)
 		if speed <= 0 {
-			return 0, false, fmt.Errorf("all iperf3 matrix upload tests failed")
+			return 0, false, newBenchmarkError(BenchmarkErrorRuntime, "iperf3_matrix_upload", "所有 iperf3 节点上传均失败，请检查节点反向测试支持、防火墙和服务端配置。", fmt.Errorf("all iperf3 matrix upload tests failed"))
 		}
 		return speed, false, nil
 	}
@@ -177,24 +185,28 @@ func (b *Iperf3NetworkBackend) MeasureUpload(downloadSpeed float64) (float64, bo
 
 	output, err := b.runner.Run(ctx, "iperf3", b.commandArgs(endpoint, true)...)
 	if err != nil {
-		return 0, false, fmt.Errorf("iperf3 upload failed: %w", err)
+		return 0, false, newBenchmarkError(BenchmarkErrorCommandFailed, "iperf3_upload_run", "确认 iperf3 服务端支持 reverse 上传测试，并检查服务端/安全组端口。", err)
 	}
 
 	speed, err := parseIperf3Mbps(output)
 	if err != nil {
-		return 0, false, fmt.Errorf("parse iperf3 upload result: %w", err)
+		return 0, false, newBenchmarkError(BenchmarkErrorParseFailed, "iperf3_upload_parse", "iperf3 JSON 输出格式无法识别，请保留 stdout/stderr 用于排查。", err)
 	}
 	return speed, false, nil
 }
 
 type iperf3ServerResult struct {
-	Server       string
-	Endpoint     iperf3Endpoint
-	Protocol     string
-	DownloadMbps float64
-	UploadMbps   float64
-	LatencyMs    float64
-	Error        string
+	Server        string
+	Name          string
+	Region        string
+	Provider      string
+	Authorization string
+	Endpoint      iperf3Endpoint
+	Protocol      string
+	DownloadMbps  float64
+	UploadMbps    float64
+	LatencyMs     float64
+	Error         string
 }
 
 func (b *Iperf3NetworkBackend) AppendMetrics(metrics map[string]interface{}) {
@@ -221,6 +233,18 @@ func (b *Iperf3NetworkBackend) AppendMetrics(metrics map[string]interface{}) {
 	for i, result := range b.matrix {
 		prefix := fmt.Sprintf("iperf3_matrix_%d", i+1)
 		metrics[prefix+"_server"] = result.Server
+		if result.Name != "" {
+			metrics[prefix+"_name"] = result.Name
+		}
+		if result.Region != "" {
+			metrics[prefix+"_region"] = result.Region
+		}
+		if result.Provider != "" {
+			metrics[prefix+"_provider"] = result.Provider
+		}
+		if result.Authorization != "" {
+			metrics[prefix+"_authorization"] = result.Authorization
+		}
 		metrics[prefix+"_host"] = result.Endpoint.Host
 		metrics[prefix+"_protocol"] = result.Protocol
 		if result.Endpoint.Port != "" {
@@ -251,7 +275,7 @@ func (b *Iperf3NetworkBackend) loadMatrix() ([]iperf3ServerResult, error) {
 
 func (b *Iperf3NetworkBackend) runMatrix() ([]iperf3ServerResult, error) {
 	if _, err := b.runner.LookPath("iperf3"); err != nil {
-		return nil, fmt.Errorf("iperf3 is not installed; install it manually before using --network-backend iperf3. Ubuntu/Debian: sudo apt install iperf3; RHEL/CentOS: sudo yum install iperf3; macOS: brew install iperf3")
+		return nil, newBenchmarkError(BenchmarkErrorMissingDependency, "iperf3_lookup", "安装 iperf3 后重试。Ubuntu/Debian: sudo apt install iperf3；RHEL/CentOS: sudo yum install iperf3；macOS: brew install iperf3", err)
 	}
 	servers, err := b.resolveServers()
 	if err != nil {
@@ -261,10 +285,17 @@ func (b *Iperf3NetworkBackend) runMatrix() ([]iperf3ServerResult, error) {
 		return nil, fmt.Errorf("iperf3 server is required; example: --network-backend iperf3 --iperf3-server 1.2.3.4:5201")
 	}
 
+	specs := b.resolveServerSpecs(servers)
 	results := make([]iperf3ServerResult, 0, len(servers))
-	for _, server := range servers {
-		result := iperf3ServerResult{Server: server}
-		endpoint, err := parseIperf3Endpoint(server)
+	for _, spec := range specs {
+		result := iperf3ServerResult{
+			Server:        spec.Server,
+			Name:          spec.Name,
+			Region:        spec.Region,
+			Provider:      spec.Provider,
+			Authorization: spec.Authorization,
+		}
+		endpoint, err := parseIperf3Endpoint(spec.Server)
 		if err != nil {
 			result.Error = err.Error()
 			results = append(results, result)
@@ -290,7 +321,7 @@ func (b *Iperf3NetworkBackend) runMatrix() ([]iperf3ServerResult, error) {
 		results = append(results, result)
 	}
 	if countSuccessfulIperf3Results(results) == 0 {
-		return results, fmt.Errorf("all iperf3 matrix tests failed")
+		return results, newBenchmarkError(BenchmarkErrorRuntime, "iperf3_matrix_run", "所有 iperf3 节点均失败，请检查节点文件、端口、安全组和服务端进程。", fmt.Errorf("all iperf3 matrix tests failed"))
 	}
 	return results, nil
 }
@@ -301,21 +332,25 @@ func (b *Iperf3NetworkBackend) runIperf3(endpoint iperf3Endpoint, reverse bool) 
 
 	output, err := b.runner.Run(ctx, "iperf3", b.commandArgs(endpoint, reverse)...)
 	if err != nil {
-		return 0, err
+		return 0, newBenchmarkError(BenchmarkErrorCommandFailed, "iperf3_matrix_run", "确认 iperf3 节点可达、端口开放，并检查服务端是否允许测试。", err)
 	}
-	return parseIperf3Mbps(output)
+	speed, err := parseIperf3Mbps(output)
+	if err != nil {
+		return 0, newBenchmarkError(BenchmarkErrorParseFailed, "iperf3_matrix_parse", "iperf3 JSON 输出格式无法识别，请保留 stdout/stderr 用于排查。", err)
+	}
+	return speed, nil
 }
 
 func (b *Iperf3NetworkBackend) validateReady(servers []string) (iperf3Endpoint, error) {
 	if len(servers) == 0 {
-		return iperf3Endpoint{}, fmt.Errorf("iperf3 server is required; example: --network-backend iperf3 --iperf3-server 1.2.3.4:5201")
+		return iperf3Endpoint{}, newBenchmarkError(BenchmarkErrorInvalidConfig, "iperf3_config", "提供可访问的 --iperf3-server、--iperf3-servers 或 --iperf3-server-file。", fmt.Errorf("iperf3 server is required; example: --network-backend iperf3 --iperf3-server 1.2.3.4:5201"))
 	}
 	endpoint, err := parseIperf3Endpoint(servers[0])
 	if err != nil {
-		return iperf3Endpoint{}, err
+		return iperf3Endpoint{}, newBenchmarkError(BenchmarkErrorInvalidConfig, "iperf3_config", "服务端格式应为 host、host:port 或 [IPv6]:port。", err)
 	}
 	if _, err := b.runner.LookPath("iperf3"); err != nil {
-		return iperf3Endpoint{}, fmt.Errorf("iperf3 is not installed; install it manually before using --network-backend iperf3. Ubuntu/Debian: sudo apt install iperf3; RHEL/CentOS: sudo yum install iperf3; macOS: brew install iperf3")
+		return iperf3Endpoint{}, newBenchmarkError(BenchmarkErrorMissingDependency, "iperf3_lookup", "安装 iperf3 后重试。Ubuntu/Debian: sudo apt install iperf3；RHEL/CentOS: sudo yum install iperf3；macOS: brew install iperf3", err)
 	}
 	return endpoint, nil
 }
@@ -397,24 +432,62 @@ func normalizeIperf3Servers(single string, servers []string) []string {
 }
 
 func (b *Iperf3NetworkBackend) resolveServers() ([]string, error) {
-	fileServers, err := loadIperf3ServersFile(b.serverFile)
+	fileSpecs, err := loadIperf3ServerSpecsFile(b.serverFile)
 	if err != nil {
 		return nil, err
+	}
+	fileServers := make([]string, 0, len(fileSpecs))
+	for _, spec := range fileSpecs {
+		fileServers = append(fileServers, spec.Server)
 	}
 	return normalizeIperf3Servers("", append(append([]string{}, b.servers...), fileServers...)), nil
 }
 
+func (b *Iperf3NetworkBackend) resolveServerSpecs(servers []string) []iperf3ServerSpec {
+	specByServer := map[string]iperf3ServerSpec{}
+	fileSpecs, err := loadIperf3ServerSpecsFile(b.serverFile)
+	if err == nil {
+		for _, spec := range fileSpecs {
+			if spec.Server != "" {
+				specByServer[spec.Server] = spec
+			}
+		}
+	}
+
+	specs := make([]iperf3ServerSpec, 0, len(servers))
+	for _, server := range servers {
+		if spec, ok := specByServer[server]; ok {
+			specs = append(specs, spec)
+			continue
+		}
+		specs = append(specs, iperf3ServerSpec{Server: server})
+	}
+	return specs
+}
+
 func loadIperf3ServersFile(path string) ([]string, error) {
+	specs, err := loadIperf3ServerSpecsFile(path)
+	if err != nil {
+		return nil, err
+	}
+	servers := make([]string, 0, len(specs))
+	for _, spec := range specs {
+		servers = append(servers, spec.Server)
+	}
+	return servers, nil
+}
+
+func loadIperf3ServerSpecsFile(path string) ([]iperf3ServerSpec, error) {
 	path = strings.TrimSpace(path)
 	if path == "" {
 		return nil, nil
 	}
 	content, err := os.ReadFile(path)
 	if err != nil {
-		return nil, fmt.Errorf("read iperf3 server file %q: %w", path, err)
+		return nil, newBenchmarkError(BenchmarkErrorInvalidConfig, "iperf3_server_file_read", "确认 iperf3 节点文件路径存在且当前用户可读。", err)
 	}
 	lines := strings.Split(string(content), "\n")
-	servers := make([]string, 0, len(lines))
+	servers := make([]iperf3ServerSpec, 0, len(lines))
 	for _, line := range lines {
 		trimmed := strings.TrimSpace(line)
 		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
@@ -424,10 +497,57 @@ func loadIperf3ServersFile(path string) ([]string, error) {
 			trimmed = strings.TrimSpace(trimmed[:index])
 		}
 		if trimmed != "" {
-			servers = append(servers, trimmed)
+			spec, err := parseIperf3ServerSpecLine(trimmed)
+			if err != nil {
+				return nil, newBenchmarkError(BenchmarkErrorInvalidConfig, "iperf3_server_file_parse", "节点文件每行应为 host[:port]，并必须追加 auth=owned 或 auth=authorized；可追加 name=、region=、provider= 元数据。", err)
+			}
+			servers = append(servers, spec)
 		}
 	}
 	return servers, nil
+}
+
+func parseIperf3ServerSpecLine(line string) (iperf3ServerSpec, error) {
+	fields := strings.Fields(strings.TrimSpace(line))
+	if len(fields) == 0 {
+		return iperf3ServerSpec{}, fmt.Errorf("iperf3 server is required")
+	}
+
+	spec := iperf3ServerSpec{Server: fields[0]}
+	if _, err := parseIperf3Endpoint(spec.Server); err != nil {
+		return iperf3ServerSpec{}, err
+	}
+
+	for _, field := range fields[1:] {
+		key, value, ok := strings.Cut(field, "=")
+		if !ok {
+			return iperf3ServerSpec{}, fmt.Errorf("invalid iperf3 server metadata %q; use key=value", field)
+		}
+		key = strings.ToLower(strings.TrimSpace(key))
+		value = strings.TrimSpace(value)
+		if value == "" {
+			return iperf3ServerSpec{}, fmt.Errorf("invalid iperf3 server metadata %q; value is required", field)
+		}
+		switch key {
+		case "name":
+			spec.Name = value
+		case "region":
+			spec.Region = value
+		case "provider":
+			spec.Provider = value
+		case "auth", "authorization":
+			if value != "owned" && value != "authorized" {
+				return iperf3ServerSpec{}, fmt.Errorf("unsupported iperf3 authorization %q; supported values: owned, authorized", value)
+			}
+			spec.Authorization = value
+		default:
+			return iperf3ServerSpec{}, fmt.Errorf("unsupported iperf3 server metadata key %q; supported keys: name, region, provider, auth", key)
+		}
+	}
+	if spec.Authorization == "" {
+		return iperf3ServerSpec{}, fmt.Errorf("iperf3 server file entries must declare auth=owned or auth=authorized")
+	}
+	return spec, nil
 }
 
 func iperf3Protocol(host string) string {

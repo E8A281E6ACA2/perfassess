@@ -309,6 +309,7 @@ func (rg *ReportGenerator) formatSingleTestResult(testName string, result *model
 			if message := getNetworkError(result); message != "" {
 				sb.WriteString(fmt.Sprintf("  网络说明:     %s\n", message))
 			}
+			rg.writeBenchmarkErrorSummary(&sb, result, "  ")
 			if latency, ok := getNetworkLatency(result); ok {
 				source := getNetworkLatencySource(result)
 				if source != "" {
@@ -352,10 +353,10 @@ func (rg *ReportGenerator) formatSingleTestResult(testName string, result *model
 				}
 			}
 			if rows := getNetworkIperf3MatrixRows(result); len(rows) > 0 {
-				sb.WriteString("  iperf3矩阵:   server | proto | latency ms | download Mbps | upload Mbps\n")
+				sb.WriteString("  iperf3矩阵:   node | region | provider | auth | proto | latency ms | download Mbps | upload Mbps\n")
 				for _, row := range rows {
-					sb.WriteString(fmt.Sprintf("                 %s | %s | %.2f | %.2f | %.2f\n",
-						row.Server, row.Protocol, row.LatencyMs, row.DownloadMbps, row.UploadMbps))
+					sb.WriteString(fmt.Sprintf("                 %s | %s | %s | %s | %s | %.2f | %.2f | %.2f\n",
+						iperf3MatrixNodeLabel(row), fallbackText(row.Region, "-"), fallbackText(row.Provider, "-"), fallbackText(row.Authorization, "-"), row.Protocol, row.LatencyMs, row.DownloadMbps, row.UploadMbps))
 					if row.Error != "" {
 						sb.WriteString(fmt.Sprintf("                 节点错误: %s\n", row.Error))
 					}
@@ -381,12 +382,37 @@ func (rg *ReportGenerator) formatSingleTestResult(testName string, result *model
 		}
 	} else if result.Status == "failed" && result.ErrorMessage != "" {
 		sb.WriteString(fmt.Sprintf("错误信息:       %s\n", result.ErrorMessage))
+		rg.writeBenchmarkErrorSummary(&sb, result, "")
 	} else if result.Status == "skipped" && result.ErrorMessage != "" {
 		sb.WriteString(fmt.Sprintf("跳过原因:       %s\n", result.ErrorMessage))
+		rg.writeBenchmarkErrorSummary(&sb, result, "")
 	}
 
 	sb.WriteString("\n")
 	return sb.String()
+}
+
+func (rg *ReportGenerator) writeBenchmarkErrorSummary(sb *strings.Builder, result *models.TestResult, prefix string) {
+	summary := getBenchmarkErrorSummary(result)
+	if summary.Category == "" && summary.Stage == "" && summary.Hint == "" {
+		return
+	}
+	if summary.Category != "" {
+		sb.WriteString(fmt.Sprintf("%s错误分类:     %s\n", prefix, benchmarkErrorCategoryText(summary.Category)))
+	}
+	if summary.Stage != "" {
+		sb.WriteString(fmt.Sprintf("%s错误阶段:     %s\n", prefix, summary.Stage))
+	}
+	if summary.Hint != "" {
+		sb.WriteString(fmt.Sprintf("%s处理建议:     %s\n", prefix, summary.Hint))
+	}
+}
+
+func iperf3MatrixNodeLabel(row networkIperf3MatrixRow) string {
+	if row.Name != "" {
+		return row.Name + " (" + row.Server + ")"
+	}
+	return row.Server
 }
 
 // AddSummary 添加摘要信息到报告
@@ -456,7 +482,1033 @@ func (rg *ReportGenerator) AddSummary(report *models.Report, overallScore *model
 		overallScore.Grade = "未完成"
 	}
 	report.Summary["vps_benchmark_summary"] = rg.buildVPSBenchmarkSummary(report, overallScore)
+	report.Summary["assessment_conclusion"] = rg.buildAssessmentConclusion(report, overallScore)
 	report.Summary["share_templates"] = rg.buildShareTemplates(report)
+	rg.RefreshModuleAssessments(report)
+}
+
+func (rg *ReportGenerator) RefreshModuleAssessments(report *models.Report) {
+	if report == nil || report.Summary == nil {
+		return
+	}
+	report.Summary["module_assessments"] = rg.buildModuleAssessments(report)
+}
+
+func (rg *ReportGenerator) buildModuleAssessments(report *models.Report) map[string]interface{} {
+	modules := map[string]interface{}{}
+	modules["cpu"] = rg.buildCPUModuleAssessment(report)
+	modules["memory"] = rg.buildMemoryModuleAssessment(report)
+	modules["disk"] = rg.buildDiskModuleAssessment(report)
+	modules["network"] = rg.buildNetworkModuleAssessment(report)
+	modules["route"] = rg.buildRouteModuleAssessment(report)
+	modules["ip_quality"] = rg.buildIPQualityModuleAssessment(report)
+	modules["streaming"] = rg.buildStreamingModuleAssessment(report)
+	modules["ai_services"] = rg.buildAIModuleAssessment(report)
+	return modules
+}
+
+func (rg *ReportGenerator) buildCPUModuleAssessment(report *models.Report) map[string]interface{} {
+	assessment := moduleAssessmentBase("cpu", "CPU 性能", "skipped", "low", "CPU 测试未执行。")
+	if report == nil || report.TestResults == nil || report.TestResults.CPUResult == nil {
+		assessment["recommendations"] = []string{"运行包含 CPU 的测评档位后再判断计算能力。"}
+		return assessment
+	}
+
+	result := report.TestResults.CPUResult
+	status := moduleStatusFromTestStatus(result.Status)
+	backend := fallbackText(getCPUBackend(result), "-")
+	confidence := confidenceFromCoreResult(result, backend != models.CPUBackendBuiltin)
+	summary := fmt.Sprintf("CPU 后端 %s，状态 %s。", backend, statusText(result.Status))
+	evidence := []map[string]interface{}{
+		moduleEvidence("backend", "测试后端", backend, backendEvidenceStatus(backend, models.CPUBackendBuiltin), "sysbench 或 Geekbench 更适合公开横向比较；builtin 更适合快速验收。"),
+	}
+	if single, ok := metricFloat64(result.Metrics, "single_core_score"); ok {
+		evidence = append(evidence, moduleEvidence("single_core", "单核评分", fmt.Sprintf("%.2f", single), evidenceStatus(single, 75, 60), "单核评分影响动态语言、控制面和低并发请求响应。"))
+	}
+	if multi, ok := metricFloat64(result.Metrics, "multi_core_score"); ok {
+		evidence = append(evidence, moduleEvidence("multi_core", "多核评分", fmt.Sprintf("%.2f", multi), evidenceStatus(multi, 75, 60), "多核评分影响编译、批处理和多进程服务容量。"))
+	}
+	if score, ok := getCPUScore(result); ok {
+		evidence = append(evidence, moduleEvidence("score", "CPU 总分", fmt.Sprintf("%.2f / 100", score), evidenceStatus(score, 75, 60), "CPU 总分由单核、多核和后端评分口径综合生成。"))
+	}
+	if stddev, ok := getCPUScoreStdDev(result); ok {
+		status := "success"
+		if stddev > 10 {
+			status = "warning"
+		}
+		evidence = append(evidence, moduleEvidence("stability", "采样波动", fmt.Sprintf("%.2f stddev", stddev), status, "多轮采样波动过大时，应在低负载时段复测。"))
+	}
+	if result.ErrorMessage != "" {
+		evidence = append(evidence, moduleEvidence("error", "执行问题", result.ErrorMessage, "failed", "失败或跳过会降低整份报告置信度。"))
+	}
+
+	recommendations := []string{}
+	limitations := []string{}
+	if backend == models.CPUBackendBuiltin {
+		limitations = append(limitations, "CPU 使用内置轻量后端，适合快速参考，不适合作为公开基准排名。")
+		recommendations = append(recommendations, "如需主流 CPU 基准，使用 --cpu-backend sysbench 或 --cpu-backend geekbench 复测。")
+	}
+	if len(recommendations) == 0 {
+		recommendations = append(recommendations, "保留同一 CPU 后端和档位，用于不同 VPS 横向比较。")
+	}
+	assessment["status"] = status
+	assessment["confidence"] = confidence
+	assessment["summary"] = summary
+	assessment["evidence"] = evidence
+	assessment["limitations"] = limitations
+	assessment["recommendations"] = recommendations
+	return assessment
+}
+
+func (rg *ReportGenerator) buildMemoryModuleAssessment(report *models.Report) map[string]interface{} {
+	assessment := moduleAssessmentBase("memory", "内存性能", "skipped", "low", "内存测试未执行。")
+	if report == nil || report.TestResults == nil || report.TestResults.MemoryResult == nil {
+		assessment["recommendations"] = []string{"运行包含内存的测评档位后再判断内存吞吐。"}
+		return assessment
+	}
+
+	result := report.TestResults.MemoryResult
+	status := moduleStatusFromTestStatus(result.Status)
+	backend := fallbackText(getMemoryBackend(result), "-")
+	confidence := confidenceFromCoreResult(result, backend != models.MemoryBackendBuiltin)
+	summary := fmt.Sprintf("内存后端 %s，状态 %s。", backend, statusText(result.Status))
+	evidence := []map[string]interface{}{
+		moduleEvidence("backend", "测试后端", backend, backendEvidenceStatus(backend, models.MemoryBackendBuiltin), "sysbench 内存后端更接近主流报告口径；builtin 更适合快速验收。"),
+	}
+	if read, ok := getMemoryReadSpeed(result); ok {
+		evidence = append(evidence, moduleEvidence("read", "读取速度", fmt.Sprintf("%.2f MB/s", read), evidenceStatus(read, 3000, 1000), "读取吞吐影响缓存、扫描和数据处理场景。"))
+	}
+	if write, ok := getMemoryWriteSpeed(result); ok {
+		evidence = append(evidence, moduleEvidence("write", "写入速度", fmt.Sprintf("%.2f MB/s", write), evidenceStatus(write, 2500, 800), "写入吞吐影响缓存更新和内存密集型任务。"))
+	}
+	if score, ok := metricFloat64(result.Metrics, "score"); ok {
+		evidence = append(evidence, moduleEvidence("score", "内存评分", fmt.Sprintf("%.2f / 100", score), evidenceStatus(score, 75, 60), "内存评分由读取、写入和评分基准综合生成。"))
+	}
+	if readStd, ok := getMemoryReadStdDev(result); ok && readStd > 0 {
+		status := "success"
+		if readStd > 1000 {
+			status = "warning"
+		}
+		evidence = append(evidence, moduleEvidence("read_stability", "读取波动", fmt.Sprintf("%.2f MB/s stddev", readStd), status, "读取波动过大可能来自同宿主负载或测评期间资源争用。"))
+	}
+	if writeStd, ok := getMemoryWriteStdDev(result); ok && writeStd > 0 {
+		status := "success"
+		if writeStd > 1000 {
+			status = "warning"
+		}
+		evidence = append(evidence, moduleEvidence("write_stability", "写入波动", fmt.Sprintf("%.2f MB/s stddev", writeStd), status, "写入波动过大时建议在低负载时段复测。"))
+	}
+	if result.ErrorMessage != "" {
+		evidence = append(evidence, moduleEvidence("error", "执行问题", result.ErrorMessage, "failed", "失败或跳过会降低整份报告置信度。"))
+	}
+
+	recommendations := []string{}
+	limitations := []string{}
+	if backend == models.MemoryBackendBuiltin {
+		limitations = append(limitations, "内存使用内置轻量后端，适合快速参考，不适合作为公开基准排名。")
+		recommendations = append(recommendations, "如需主流内存基准，使用 --memory-backend sysbench 复测。")
+	}
+	if len(recommendations) == 0 {
+		recommendations = append(recommendations, "保留同一内存后端和档位，用于不同 VPS 横向比较。")
+	}
+	assessment["status"] = status
+	assessment["confidence"] = confidence
+	assessment["summary"] = summary
+	assessment["evidence"] = evidence
+	assessment["limitations"] = limitations
+	assessment["recommendations"] = recommendations
+	return assessment
+}
+
+func (rg *ReportGenerator) buildDiskModuleAssessment(report *models.Report) map[string]interface{} {
+	assessment := moduleAssessmentBase("disk", "磁盘性能", "skipped", "low", "磁盘测试未执行。")
+	if report == nil || report.TestResults == nil || report.TestResults.DiskResult == nil {
+		assessment["recommendations"] = []string{"运行包含磁盘的测评档位后再判断存储能力。"}
+		return assessment
+	}
+
+	result := report.TestResults.DiskResult
+	status := moduleStatusFromTestStatus(result.Status)
+	backend := fallbackText(getDiskBackend(result), "-")
+	confidence := confidenceFromCoreResult(result, backend == models.DiskBackendFio)
+	summary := fmt.Sprintf("磁盘后端 %s，状态 %s。", backend, statusText(result.Status))
+	evidence := []map[string]interface{}{
+		moduleEvidence("backend", "测试后端", backend, backendEvidenceStatus(backend, models.DiskBackendBuiltin), "fio 更接近主流磁盘基准口径；builtin 更适合快速验收。"),
+	}
+	if read, ok := getDiskReadSpeed(result); ok {
+		evidence = append(evidence, moduleEvidence("sequential_read", "顺序读取", fmt.Sprintf("%.2f MB/s", read), evidenceStatus(read, 1000, 300), "顺序读取影响镜像、备份和大文件读取场景。"))
+	}
+	if write, ok := getDiskWriteSpeed(result); ok {
+		evidence = append(evidence, moduleEvidence("sequential_write", "顺序写入", fmt.Sprintf("%.2f MB/s", write), evidenceStatus(write, 800, 200), "顺序写入影响日志、备份和大文件写入场景。"))
+	}
+	if iops, ok := getDiskRandomIOPS(result); ok {
+		evidence = append(evidence, moduleEvidence("random_iops", "随机 IOPS", fmt.Sprintf("%d", iops), evidenceStatus(float64(iops), 5000, 1000), "随机 IOPS 更影响数据库、小文件和高并发读写。"))
+	}
+	if rows := getDiskFioMixedRows(result); len(rows) > 0 {
+		evidence = append(evidence, moduleEvidence("fio_matrix", "fio 混合矩阵", fmt.Sprintf("%d 组", len(rows)), "success", "混合矩阵可用于观察 4k/64k/1m 等块大小下的读写均衡性。"))
+	}
+	if score, ok := metricFloat64(result.Metrics, "score"); ok {
+		evidence = append(evidence, moduleEvidence("score", "磁盘评分", fmt.Sprintf("%.2f / 100", score), evidenceStatus(score, 75, 60), "磁盘评分由顺序读写、随机 IOPS 和评分基准综合生成。"))
+	}
+	if result.ErrorMessage != "" {
+		evidence = append(evidence, moduleEvidence("error", "执行问题", result.ErrorMessage, "failed", "失败或跳过会降低整份报告置信度。"))
+	}
+
+	recommendations := []string{}
+	limitations := []string{}
+	if backend == models.DiskBackendBuiltin {
+		limitations = append(limitations, "磁盘使用内置轻量后端，适合快速参考，不适合作为公开基准排名。")
+		recommendations = append(recommendations, "如需主流磁盘基准，使用 --disk-backend fio 复测。")
+	}
+	if len(recommendations) == 0 {
+		recommendations = append(recommendations, "保留同一磁盘后端和档位，用于不同 VPS 横向比较。")
+	}
+	assessment["status"] = status
+	assessment["confidence"] = confidence
+	assessment["summary"] = summary
+	assessment["evidence"] = evidence
+	assessment["limitations"] = limitations
+	assessment["recommendations"] = recommendations
+	return assessment
+}
+
+func (rg *ReportGenerator) buildNetworkModuleAssessment(report *models.Report) map[string]interface{} {
+	assessment := moduleAssessmentBase("network", "网络质量", "skipped", "low", "网络性能测试未执行。")
+	if report == nil || report.TestResults == nil || report.TestResults.NetworkResult == nil {
+		assessment["recommendations"] = []string{"运行包含 network 的测评档位后再判断网络质量。"}
+		return assessment
+	}
+
+	result := report.TestResults.NetworkResult
+	status := moduleStatusFromTestStatus(result.Status)
+	confidence := "high"
+	if result.Status != models.TestStatusSuccess {
+		confidence = "low"
+	} else if isNetworkUploadEstimated(result) || getNetworkBackend(result) == models.NetworkBackendBuiltin {
+		confidence = "medium"
+	}
+	backend := fallbackText(getNetworkBackend(result), "-")
+	summary := fmt.Sprintf("网络后端 %s，状态 %s。", backend, statusText(result.Status))
+	evidence := []map[string]interface{}{
+		moduleEvidence("backend", "网络后端", backend, status, fmt.Sprintf("下载来源 %s，上传来源 %s。", fallbackText(getNetworkDownloadSource(result), "-"), fallbackText(getNetworkUploadSource(result), "-"))),
+	}
+	if latency, ok := getNetworkLatency(result); ok {
+		evidence = append(evidence, moduleEvidence("latency", "平均延迟", fmt.Sprintf("%.2f ms", latency), evidenceStatus(100-latency, 70, 40), "延迟来自网络测试后端或 TCP connect 近似测量。"))
+	}
+	if download, ok := getNetworkDownloadSpeed(result); ok {
+		evidence = append(evidence, moduleEvidence("download", "下载速度", fmt.Sprintf("%.2f Mbps", download), evidenceStatus(download, 500, 100), "下载速度用于判断公网入站吞吐参考能力。"))
+	}
+	if upload, ok := getNetworkUploadSpeed(result); ok {
+		uploadStatus := evidenceStatus(upload, 300, 50)
+		detail := "上传速度来自真实测量路径。"
+		if isNetworkUploadEstimated(result) {
+			uploadStatus = "warning"
+			detail = "上传速度为估算值，不能等同于真实上传吞吐。"
+		}
+		evidence = append(evidence, moduleEvidence("upload", "上传速度", fmt.Sprintf("%.2f Mbps", upload), uploadStatus, detail))
+	}
+	if errMsg := getNetworkError(result); errMsg != "" {
+		evidence = append(evidence, moduleEvidence("partial_error", "部分失败", errMsg, "warning", "网络后端返回了部分失败信息。"))
+	}
+
+	recommendations := []string{}
+	limitations := []string{}
+	if isNetworkUploadEstimated(result) {
+		limitations = append(limitations, "上传速度为估算值，网络上传敏感业务需要补充真实测速。")
+		recommendations = append(recommendations, "配置 iperf3 服务端或 speedtest 后端后复测上传和多节点吞吐。")
+	}
+	if getNetworkBackend(result) == models.NetworkBackendBuiltin {
+		limitations = append(limitations, "内置网络后端更适合快速验收，不适合作为公开带宽排名依据。")
+	}
+	if len(recommendations) == 0 {
+		recommendations = append(recommendations, "保留同一网络档位结果，用于不同 VPS 横向对比。")
+	}
+	assessment["status"] = status
+	assessment["confidence"] = confidence
+	assessment["summary"] = summary
+	assessment["evidence"] = evidence
+	assessment["limitations"] = limitations
+	assessment["recommendations"] = recommendations
+	return assessment
+}
+
+func (rg *ReportGenerator) buildRouteModuleAssessment(report *models.Report) map[string]interface{} {
+	assessment := moduleAssessmentBase("route", "路由追踪", "skipped", "low", "路由追踪未执行。")
+	if report == nil || report.Summary == nil {
+		assessment["recommendations"] = []string{"使用 --route-trace 或 standard/full 自动档位补充路由追踪。"}
+		return assessment
+	}
+	results, ok := report.Summary["route_trace_results"].([]*models.TraceResult)
+	if !ok || len(results) == 0 {
+		assessment["recommendations"] = []string{"使用 --route-trace 或 standard/full 自动档位补充路由追踪。"}
+		return assessment
+	}
+
+	successCount := 0
+	timeoutHops := 0
+	totalHops := 0
+	latencyTotal := 0.0
+	latencyCount := 0
+	realReturnCount := 0
+	failedTargets := []string{}
+	recommendations := []string{}
+	for _, result := range results {
+		if result == nil {
+			continue
+		}
+		if result.Success {
+			successCount++
+			totalHops += result.TotalHops
+			timeoutHops += result.TimeoutHops
+			if result.AverageLatencyMs > 0 {
+				latencyTotal += result.AverageLatencyMs
+				latencyCount++
+			}
+		} else {
+			failedTargets = append(failedTargets, result.Target)
+		}
+		if result.IsRealReturnRoute {
+			realReturnCount++
+		}
+		for _, recommendation := range result.Recommendations {
+			if recommendation != "" && !stringSliceContains(recommendations, recommendation) {
+				recommendations = append(recommendations, recommendation)
+			}
+		}
+	}
+
+	total := len(results)
+	status := availabilityStatus(successCount, total)
+	confidence := "medium"
+	if successCount == 0 {
+		confidence = "low"
+	} else if successCount == total && total >= 3 {
+		confidence = "high"
+	}
+	avgHops := 0.0
+	if successCount > 0 {
+		avgHops = float64(totalHops) / float64(successCount)
+	}
+	avgLatency := 0.0
+	if latencyCount > 0 {
+		avgLatency = latencyTotal / float64(latencyCount)
+	}
+
+	evidence := []map[string]interface{}{
+		moduleEvidence("coverage", "追踪成功率", fmt.Sprintf("%d / %d", successCount, total), status, "成功率反映本机到目标的 traceroute/tracert 可见性。"),
+		moduleEvidence("return_route_boundary", "真实回程", yesNoText(realReturnCount > 0), "warning", "当前内置路由追踪表示本机出站路径，不是真实回程。"),
+	}
+	if avgHops > 0 {
+		evidence = append(evidence, moduleEvidence("avg_hops", "平均跳数", fmt.Sprintf("%.1f hops", avgHops), routeEvidenceStatusFromHops(avgHops), "跳数偏多时可能表示跨区域或绕路。"))
+	}
+	if timeoutHops > 0 {
+		evidence = append(evidence, moduleEvidence("timeout_hops", "超时跳", fmt.Sprintf("%d hops", timeoutHops), "warning", "不可见跳点可能来自中间路由屏蔽探测包，不一定代表链路不可用。"))
+	}
+	if avgLatency > 0 {
+		evidence = append(evidence, moduleEvidence("avg_latency", "平均延迟", fmt.Sprintf("%.2f ms", avgLatency), evidenceStatus(100-avgLatency/2, 70, 40), "延迟来自可见跳点均值，只能作为路径参考。"))
+	}
+	if len(failedTargets) > 0 {
+		evidence = append(evidence, moduleEvidence("failed_targets", "失败目标", strings.Join(failedTargets, ", "), "failed", "失败目标可能由依赖缺失、ICMP/UDP 策略或目标网络限制导致。"))
+	}
+
+	if len(recommendations) == 0 {
+		recommendations = append(recommendations, "结合业务目标地区的真实访问延迟和丢包继续验证。")
+	}
+	limitations := []string{
+		"内置 traceroute/tracert 只能表示本机到目标的出站路径。",
+		"国内方向参考不等同于真实回程；真实回程需要远端探针或第三方平台配合。",
+	}
+	assessment["status"] = status
+	assessment["confidence"] = confidence
+	assessment["summary"] = fmt.Sprintf("追踪 %d 个目标，成功 %d 个；平均跳数 %.1f，超时跳 %d。", total, successCount, avgHops, timeoutHops)
+	assessment["evidence"] = evidence
+	assessment["limitations"] = limitations
+	assessment["recommendations"] = recommendations
+	return assessment
+}
+
+func (rg *ReportGenerator) buildIPQualityModuleAssessment(report *models.Report) map[string]interface{} {
+	assessment := moduleAssessmentBase("ip_quality", "IP 质量", "skipped", "low", "IP 质量检测未执行。")
+	if report == nil || report.Summary == nil {
+		assessment["recommendations"] = []string{"使用 --ip-quality 或 standard/full 自动档位补充 IP 质量检测。"}
+		return assessment
+	}
+	ipReport, ok := report.Summary["ip_quality_report"].(*models.IPQualityReport)
+	if !ok || ipReport == nil {
+		assessment["recommendations"] = []string{"使用 --ip-quality 或 standard/full 自动档位补充 IP 质量检测。"}
+		return assessment
+	}
+
+	status := "success"
+	confidence := "medium"
+	switch ipReport.RiskLevel {
+	case "high":
+		status = "failed"
+	case "medium":
+		status = "warning"
+	}
+	if len(ipReport.Evidence) >= 3 && ipReport.BlacklistSummary != nil {
+		confidence = "high"
+	}
+	if len(ipReport.Evidence) == 0 {
+		confidence = "low"
+	}
+
+	evidence := []map[string]interface{}{
+		moduleEvidence("risk", "风险评分", fmt.Sprintf("%d / 100", ipReport.RiskScore), status, "风险分来自 IP 类型、DNSBL、邮件连通性和启发式风险来源。"),
+		moduleEvidence("identity", "IP 归属", ipQualityTextASNLabel(ipReport), "success", fmt.Sprintf("%s %s，%s。", fallbackText(ipReport.Country, "-"), fallbackText(ipReport.City, "-"), ipQualityTextNodeTypeSummary(ipReport))),
+	}
+	if ipReport.BlacklistSummary != nil {
+		blacklistStatus := "success"
+		if ipReport.BlacklistSummary.Listed > 0 {
+			blacklistStatus = "warning"
+		}
+		evidence = append(evidence, moduleEvidence("dnsbl", "DNSBL", fmt.Sprintf("命中 %d / 总计 %d", ipReport.BlacklistSummary.Listed, ipReport.BlacklistSummary.Total), blacklistStatus, "DNSBL 命中会影响邮件和部分风控场景。"))
+	}
+	if ipReport.MailSummary != nil {
+		mailStatus := "success"
+		if ipReport.MailSummary.ProviderOpen == 0 {
+			mailStatus = "warning"
+		}
+		evidence = append(evidence, moduleEvidence("mail", "邮件连通", fmt.Sprintf("服务商 %d / %d 可连", ipReport.MailSummary.ProviderOpen, ipReport.MailSummary.Providers), mailStatus, "邮件端口结果用于判断 SMTP 使用环境。"))
+	}
+	for _, item := range ipReport.Evidence {
+		if item == nil {
+			continue
+		}
+		evidence = append(evidence, moduleEvidence("source", item.Name, item.Value, normalizeEvidenceStatus(item.Status), item.Detail))
+	}
+
+	recommendations := append([]string{}, ipReport.Recommendations...)
+	if len(recommendations) == 0 {
+		recommendations = append(recommendations, "保留 IP 质量模块 JSON，用于后续和其他节点横向比较。")
+	}
+	assessment["status"] = status
+	assessment["confidence"] = confidence
+	assessment["summary"] = ipQualitySummaryText(ipReport)
+	assessment["evidence"] = evidence
+	assessment["limitations"] = ipReport.Notes
+	assessment["recommendations"] = recommendations
+	return assessment
+}
+
+func (rg *ReportGenerator) buildStreamingModuleAssessment(report *models.Report) map[string]interface{} {
+	assessment := moduleAssessmentBase("streaming", "流媒体解锁", "skipped", "low", "流媒体检测未执行。")
+	if report == nil || report.Summary == nil {
+		assessment["recommendations"] = []string{"使用 --streaming 或 standard/full 自动档位补充流媒体检测。"}
+		return assessment
+	}
+	results, ok := report.Summary["streaming_results"].(map[string]*models.StreamingResult)
+	if !ok || len(results) == 0 {
+		assessment["recommendations"] = []string{"使用 --streaming 或 standard/full 自动档位补充流媒体检测。"}
+		return assessment
+	}
+
+	total, available, partial := streamingCounts(results)
+	status := availabilityStatus(available, total)
+	confidence := "medium"
+	if total >= 8 {
+		confidence = "high"
+	}
+	if available == 0 {
+		confidence = "medium"
+	}
+	evidence := []map[string]interface{}{
+		moduleEvidence("coverage", "平台覆盖", fmt.Sprintf("%d 个平台", total), "success", "平台数量由流媒体检测档位决定。"),
+		moduleEvidence("availability", "可用平台", fmt.Sprintf("%d / %d", available, total), status, "可用数量反映当前 IP 对主流平台的访问能力。"),
+	}
+	if partial > 0 {
+		evidence = append(evidence, moduleEvidence("partial", "部分解锁", fmt.Sprintf("%d 个平台", partial), "warning", "部分解锁通常表示区域或内容库受限。"))
+	}
+	assessment["status"] = status
+	assessment["confidence"] = confidence
+	assessment["summary"] = fmt.Sprintf("检测 %d 个流媒体平台，可用 %d 个，部分解锁 %d 个。", total, available, partial)
+	assessment["evidence"] = evidence
+	assessment["limitations"] = []string{"流媒体检测基于平台响应和区域提示，平台策略变化可能导致结果波动。"}
+	assessment["recommendations"] = []string{"需要公开分享时，建议使用 full 流媒体档位并保留原始 JSON。"}
+	return assessment
+}
+
+func (rg *ReportGenerator) buildAIModuleAssessment(report *models.Report) map[string]interface{} {
+	assessment := moduleAssessmentBase("ai_services", "AI 服务", "skipped", "low", "AI 服务检测未执行。")
+	if report == nil || report.Summary == nil {
+		assessment["recommendations"] = []string{"使用 --ai-services 或 standard/full 自动档位补充 AI 服务检测。"}
+		return assessment
+	}
+	results, ok := report.Summary["ai_results"].(map[string]*models.AIServiceResult)
+	if !ok || len(results) == 0 {
+		assessment["recommendations"] = []string{"使用 --ai-services 或 standard/full 自动档位补充 AI 服务检测。"}
+		return assessment
+	}
+
+	total, available, restricted := aiCounts(results)
+	status := availabilityStatus(available, total)
+	confidence := "medium"
+	if total >= 4 {
+		confidence = "high"
+	}
+	evidence := []map[string]interface{}{
+		moduleEvidence("coverage", "服务覆盖", fmt.Sprintf("%d 个服务", total), "success", "服务数量由 AI 检测列表决定。"),
+		moduleEvidence("availability", "可访问服务", fmt.Sprintf("%d / %d", available, total), status, "可访问数量反映当前 IP 对主流 AI 服务的访问能力。"),
+	}
+	if restricted > 0 {
+		evidence = append(evidence, moduleEvidence("restricted", "受限服务", fmt.Sprintf("%d 个服务", restricted), "warning", "受限、需验证或限流并不等同于完全不可用。"))
+	}
+	assessment["status"] = status
+	assessment["confidence"] = confidence
+	assessment["summary"] = fmt.Sprintf("检测 %d 个 AI 服务，可访问 %d 个，受限 %d 个。", total, available, restricted)
+	assessment["evidence"] = evidence
+	assessment["limitations"] = []string{"AI 服务检测基于访问性响应，不能替代账号、风控和长期稳定性验证。"}
+	assessment["recommendations"] = []string{"业务依赖 AI 服务时，建议在目标账号和真实请求路径下复测。"}
+	return assessment
+}
+
+func moduleAssessmentBase(id string, title string, status string, confidence string, summary string) map[string]interface{} {
+	return map[string]interface{}{
+		"id":              id,
+		"title":           title,
+		"status":          status,
+		"confidence":      confidence,
+		"summary":         summary,
+		"evidence":        []map[string]interface{}{},
+		"limitations":     []string{},
+		"recommendations": []string{},
+	}
+}
+
+func moduleEvidence(category string, label string, value string, status string, detail string) map[string]interface{} {
+	return map[string]interface{}{
+		"category": category,
+		"label":    label,
+		"value":    value,
+		"status":   status,
+		"detail":   detail,
+	}
+}
+
+func moduleStatusFromTestStatus(status string) string {
+	switch status {
+	case models.TestStatusSuccess:
+		return "success"
+	case models.TestStatusDegraded:
+		return "warning"
+	case models.TestStatusSkipped:
+		return "skipped"
+	default:
+		return "failed"
+	}
+}
+
+func normalizeEvidenceStatus(status string) string {
+	switch status {
+	case "success", "clean", "available", "ok":
+		return "success"
+	case "partial", "warning", "medium":
+		return "warning"
+	case "failed", "high", "listed", "blocked":
+		return "failed"
+	default:
+		return "partial"
+	}
+}
+
+func availabilityStatus(available int, total int) string {
+	if total <= 0 {
+		return "skipped"
+	}
+	if available == total {
+		return "success"
+	}
+	if available > 0 {
+		return "warning"
+	}
+	return "failed"
+}
+
+func routeEvidenceStatusFromHops(hops float64) string {
+	switch {
+	case hops <= 12:
+		return "success"
+	case hops <= 20:
+		return "warning"
+	default:
+		return "failed"
+	}
+}
+
+func stringSliceContains(items []string, target string) bool {
+	for _, item := range items {
+		if item == target {
+			return true
+		}
+	}
+	return false
+}
+
+func backendEvidenceStatus(backend string, builtinBackend string) string {
+	if backend == "" || backend == "-" {
+		return "warning"
+	}
+	if backend == builtinBackend {
+		return "warning"
+	}
+	return "success"
+}
+
+func confidenceFromCoreResult(result *models.TestResult, mainstream bool) string {
+	if result == nil || result.Status != models.TestStatusSuccess {
+		return "low"
+	}
+	if mainstream {
+		return "high"
+	}
+	return "medium"
+}
+
+func streamingCounts(results map[string]*models.StreamingResult) (total int, available int, partial int) {
+	for _, result := range results {
+		if result == nil {
+			continue
+		}
+		total++
+		if result.Available {
+			available++
+		}
+		if result.UnlockType == "partial" || result.UnlockType == "limited" || result.UnlockType == "login_required" {
+			partial++
+		}
+	}
+	return total, available, partial
+}
+
+func aiCounts(results map[string]*models.AIServiceResult) (total int, available int, restricted int) {
+	for _, result := range results {
+		if result == nil {
+			continue
+		}
+		total++
+		if result.Available {
+			available++
+		}
+		switch result.AccessType {
+		case "restricted", "rate_limited", "verification_required", "login_required":
+			restricted++
+		}
+	}
+	return total, available, restricted
+}
+
+func ipQualitySummaryText(report *models.IPQualityReport) string {
+	if report == nil {
+		return "IP 质量检测未执行。"
+	}
+	if report.Verdict != nil && report.Verdict.Summary != "" {
+		return report.Verdict.Summary
+	}
+	return fmt.Sprintf("%s 风险等级 %s，风险分 %d/100。", fallbackText(report.PublicIP, "当前 IP"), fallbackText(report.RiskLevel, "unknown"), report.RiskScore)
+}
+
+func (rg *ReportGenerator) buildAssessmentConclusion(report *models.Report, overallScore *models.OverallScore) map[string]interface{} {
+	conclusion := map[string]interface{}{
+		"headline":        "测评结论不可用",
+		"scenario":        "需要完整核心测试后判断适用场景。",
+		"suitability":     []string{},
+		"evidence":        []map[string]interface{}{},
+		"limitations":     []string{},
+		"recommendations": []string{},
+		"bottlenecks":     []map[string]interface{}{},
+	}
+	if report == nil || overallScore == nil {
+		return conclusion
+	}
+
+	confidence := "unknown"
+	if value, ok := report.Summary["confidence_level"].(map[string]interface{}); ok {
+		if level, ok := value["level"].(string); ok && level != "" {
+			confidence = level
+		}
+	}
+	grade := overallScore.Grade
+	if value, ok := report.Summary["grade"].(string); ok && value != "" {
+		grade = value
+	}
+
+	conclusion["headline"] = conclusionHeadline(overallScore.TotalScore, grade, confidence)
+	conclusion["scenario"] = scenarioConclusion(overallScore, grade)
+	conclusion["suitability"] = suitabilityList(overallScore, report.TestResults, grade)
+	conclusion["evidence"] = conclusionEvidence(report, overallScore, confidence, grade)
+	conclusion["limitations"] = conclusionLimitations(report)
+	conclusion["recommendations"] = conclusionRecommendations(report, overallScore)
+	conclusion["bottlenecks"] = scoreBottlenecks(overallScore)
+	conclusion["confidence"] = confidence
+	conclusion["grade"] = grade
+	conclusion["total_score"] = overallScore.TotalScore
+	return conclusion
+}
+
+func conclusionEvidence(report *models.Report, score *models.OverallScore, confidence string, grade string) []map[string]interface{} {
+	items := []map[string]interface{}{}
+	if score != nil {
+		scoreStatus := evidenceStatus(score.TotalScore, 75, 60)
+		scoreDetail := fmt.Sprintf("评分基准汇总 CPU %.2f、内存 %.2f、磁盘 %.2f、网络 %.2f。", score.CPUScore, score.MemoryScore, score.DiskScore, score.NetworkScore)
+		if grade == "未完成" {
+			scoreStatus = "failed"
+			scoreDetail = "核心测试未全部成功，当前总分只能作为已完成分项的局部参考。"
+		}
+		items = append(items, conclusionEvidenceItem(
+			"score",
+			"综合评分",
+			fmt.Sprintf("%.2f / 100，等级 %s", score.TotalScore, grade),
+			scoreStatus,
+			scoreDetail,
+		))
+		if bottlenecks := scoreBottlenecks(score); len(bottlenecks) > 0 {
+			weakest := bottlenecks[0]
+			items = append(items, conclusionEvidenceItem(
+				"bottleneck",
+				"主要短板",
+				fmt.Sprintf("%s %.2f / 100", summaryValueString(weakest["label"]), weakest["score"].(float64)),
+				evidenceStatus(weakest["score"].(float64), 75, 60),
+				"短板排序按分项得分从低到高生成，用于判断优先复测或规避的业务场景。",
+			))
+		}
+	}
+	if report == nil || report.TestResults == nil {
+		items = append(items, conclusionEvidenceItem("coverage", "核心测试覆盖", "0 / 4", "failed", "未获取核心测试结果，结论只能作为排查参考。"))
+		return items
+	}
+
+	success, failed, skipped, degraded := coreTestCounts(report.TestResults)
+	coverageStatus := "success"
+	if failed > 0 || skipped > 0 {
+		coverageStatus = "failed"
+	} else if degraded > 0 {
+		coverageStatus = "warning"
+	}
+	items = append(items, conclusionEvidenceItem(
+		"coverage",
+		"核心测试覆盖",
+		fmt.Sprintf("%d / 4 成功，失败 %d，跳过 %d，降级 %d", success, failed, skipped, degraded),
+		coverageStatus,
+		"CPU、内存、磁盘、网络四个核心模块决定报告是否可作为完整性能结论。",
+	))
+
+	mainstream := countMainstreamBackends(report.TestResults)
+	backendStatus := "success"
+	if mainstream == 0 {
+		backendStatus = "warning"
+	} else if mainstream < 3 {
+		backendStatus = "partial"
+	}
+	items = append(items, conclusionEvidenceItem(
+		"backend",
+		"主流后端覆盖",
+		fmt.Sprintf("%d / 4", mainstream),
+		backendStatus,
+		fmt.Sprintf("CPU=%s，内存=%s，磁盘=%s，网络=%s。", fallbackText(getCPUBackend(report.TestResults.CPUResult), "-"), fallbackText(getMemoryBackend(report.TestResults.MemoryResult), "-"), fallbackText(getDiskBackend(report.TestResults.DiskResult), "-"), fallbackText(getNetworkBackend(report.TestResults.NetworkResult), "-")),
+	))
+
+	if report.TestResults.NetworkResult != nil {
+		networkStatus := "success"
+		networkDetail := "网络上传为真实测量路径。"
+		if isNetworkUploadEstimated(report.TestResults.NetworkResult) {
+			networkStatus = "warning"
+			networkDetail = "网络上传为估算值，上传敏感业务需使用 iperf3 或 speedtest 复测。"
+		}
+		value := "上传真实测量"
+		if isNetworkUploadEstimated(report.TestResults.NetworkResult) {
+			value = "上传估算"
+		}
+		if latency, ok := getNetworkLatency(report.TestResults.NetworkResult); ok {
+			value = fmt.Sprintf("%s，延迟 %.2f ms", value, latency)
+		}
+		items = append(items, conclusionEvidenceItem("network", "网络测量路径", value, networkStatus, networkDetail))
+	}
+
+	items = append(items, conclusionEvidenceItem(
+		"confidence",
+		"报告置信度",
+		confidence,
+		confidenceEvidenceStatus(confidence),
+		"置信度会受核心测试失败、内置轻量后端、估算上传和外部依赖缺失影响。",
+	))
+	return items
+}
+
+func conclusionEvidenceItem(category string, label string, value string, status string, detail string) map[string]interface{} {
+	return map[string]interface{}{
+		"category": category,
+		"label":    label,
+		"value":    value,
+		"status":   status,
+		"detail":   detail,
+	}
+}
+
+func coreTestCounts(testResults *models.TestResults) (success int, failed int, skipped int, degraded int) {
+	if testResults == nil {
+		return 0, 4, 0, 0
+	}
+	for _, result := range []*models.TestResult{testResults.CPUResult, testResults.MemoryResult, testResults.DiskResult, testResults.NetworkResult} {
+		if result == nil {
+			skipped++
+			continue
+		}
+		switch result.Status {
+		case models.TestStatusSuccess:
+			success++
+		case models.TestStatusSkipped:
+			skipped++
+		case models.TestStatusDegraded:
+			degraded++
+		default:
+			failed++
+		}
+	}
+	return success, failed, skipped, degraded
+}
+
+func evidenceStatus(value float64, goodThreshold float64, watchThreshold float64) string {
+	switch {
+	case value >= goodThreshold:
+		return "success"
+	case value >= watchThreshold:
+		return "warning"
+	default:
+		return "failed"
+	}
+}
+
+func confidenceEvidenceStatus(confidence string) string {
+	switch confidence {
+	case "high":
+		return "success"
+	case "medium":
+		return "warning"
+	default:
+		return "failed"
+	}
+}
+
+func conclusionHeadline(totalScore float64, grade string, confidence string) string {
+	if grade == "未完成" {
+		return fmt.Sprintf("核心测试未完成，当前结果仅适合作为排查参考，置信度 %s。", confidence)
+	}
+	switch {
+	case totalScore >= 90:
+		return fmt.Sprintf("综合性能优秀，适合高负载 VPS 场景，置信度 %s。", confidence)
+	case totalScore >= 75:
+		return fmt.Sprintf("综合性能良好，适合多数生产和建站场景，置信度 %s。", confidence)
+	case totalScore >= 60:
+		return fmt.Sprintf("综合性能一般，适合轻量服务和低并发任务，置信度 %s。", confidence)
+	default:
+		return fmt.Sprintf("综合性能偏弱，建议只承担轻量或备用任务，置信度 %s。", confidence)
+	}
+}
+
+func scenarioConclusion(score *models.OverallScore, grade string) string {
+	if score == nil || grade == "未完成" {
+		return "未完成全部核心测试，不建议直接用于采购或迁移决策。"
+	}
+	weakest := weakestComponent(score)
+	switch weakest {
+	case "network":
+		return "主要短板在网络侧，更适合计算、本地任务或对外带宽不敏感的服务。"
+	case "disk":
+		return "主要短板在磁盘侧，更适合静态服务、轻量 API 或低写入压力业务。"
+	case "memory":
+		return "主要短板在内存侧，更适合轻量 Web、代理、监控节点等低内存占用场景。"
+	case "cpu":
+		return "主要短板在 CPU 侧，更适合转发、静态内容和低计算密度任务。"
+	default:
+		return "分项表现较均衡，适合常规 Web、API、代理、监控和中轻量数据库场景。"
+	}
+}
+
+func suitabilityList(score *models.OverallScore, testResults *models.TestResults, grade string) []string {
+	if score == nil {
+		return []string{}
+	}
+	if grade == "未完成" {
+		return []string{"已完成分项可作为局部参考，不建议直接判定整体适用场景"}
+	}
+	items := []string{}
+	if score.TotalScore >= 75 && score.CPUScore >= 70 && score.MemoryScore >= 60 {
+		items = append(items, "常规 Web / API 服务")
+	}
+	if score.NetworkScore >= 75 {
+		items = append(items, "网络转发、下载、代理或边缘节点")
+	}
+	if score.DiskScore >= 75 && score.MemoryScore >= 70 {
+		items = append(items, "中轻量数据库或缓存服务")
+	}
+	if score.CPUScore >= 80 {
+		items = append(items, "编译、压缩、批处理等 CPU 任务")
+	}
+	if score.TotalScore < 60 {
+		items = append(items, "低负载管理面板、备用节点或临时测试")
+	}
+	if testResults != nil && isNetworkUploadEstimated(testResults.NetworkResult) {
+		items = append(items, "网络上传敏感业务需补充真实 iperf3/speedtest 验证")
+	}
+	return uniqueStrings(items)
+}
+
+func conclusionLimitations(report *models.Report) []string {
+	if report == nil || report.Summary == nil {
+		return []string{"报告缺少摘要信息。"}
+	}
+	items := []string{}
+	if note, ok := report.Summary["performance_note"].(string); ok && note != "" {
+		items = append(items, note)
+	}
+	if notes, ok := report.Summary["quality_notes"].([]string); ok {
+		for _, note := range notes {
+			items = append(items, note)
+		}
+	}
+	if len(items) == 0 {
+		items = append(items, "核心测试均已完成，未发现明显降级或估算路径。")
+	}
+	return uniqueStrings(items)
+}
+
+func conclusionRecommendations(report *models.Report, score *models.OverallScore) []string {
+	items := []string{}
+	if report != nil && report.TestResults != nil {
+		if missing := missingCoreTestNames(report.TestResults); len(missing) > 0 {
+			items = append(items, "先补齐未完成核心测试："+strings.Join(missing, "、")+"。")
+		}
+		if getCPUBackend(report.TestResults.CPUResult) == models.CPUBackendBuiltin {
+			items = append(items, "如需公开对比 CPU，请使用 --cpu-backend sysbench 或 --cpu-backend geekbench 复测。")
+		}
+		if getMemoryBackend(report.TestResults.MemoryResult) == models.MemoryBackendBuiltin {
+			items = append(items, "如需更接近主流口径的内存结果，请使用 --memory-backend sysbench。")
+		}
+		if getDiskBackend(report.TestResults.DiskResult) == models.DiskBackendBuiltin {
+			items = append(items, "如需真实磁盘基准，请使用 --disk-backend fio。")
+		}
+		if isNetworkUploadEstimated(report.TestResults.NetworkResult) {
+			items = append(items, "网络上传为估算值，建议配置 iperf3 节点或 speedtest 后端复测。")
+		}
+	}
+	if score != nil {
+		switch weakestComponent(score) {
+		case "network":
+			items = append(items, "网络分数偏低时，优先复测不同地区节点并检查 IPv6、丢包和路由绕行。")
+		case "disk":
+			items = append(items, "磁盘分数偏低时，避免高写入数据库和日志密集型业务。")
+		case "memory":
+			items = append(items, "内存分数偏低时，控制服务数量并设置合理 swap。")
+		case "cpu":
+			items = append(items, "CPU 分数偏低时，避免编译、视频处理和高并发动态计算。")
+		}
+	}
+	if len(items) == 0 {
+		items = append(items, "可以保留本次 JSON 报告，用同一档位对其他 VPS 做横向比较。")
+	}
+	return uniqueStrings(items)
+}
+
+func missingCoreTestNames(testResults *models.TestResults) []string {
+	if testResults == nil {
+		return []string{"CPU", "内存", "磁盘", "网络"}
+	}
+	items := []string{}
+	for _, item := range []struct {
+		name   string
+		result *models.TestResult
+	}{
+		{name: "CPU", result: testResults.CPUResult},
+		{name: "内存", result: testResults.MemoryResult},
+		{name: "磁盘", result: testResults.DiskResult},
+		{name: "网络", result: testResults.NetworkResult},
+	} {
+		if item.result == nil || item.result.Status != models.TestStatusSuccess {
+			items = append(items, item.name)
+		}
+	}
+	return items
+}
+
+func scoreBottlenecks(score *models.OverallScore) []map[string]interface{} {
+	if score == nil {
+		return []map[string]interface{}{}
+	}
+	items := []struct {
+		key   string
+		label string
+		score float64
+	}{
+		{key: "cpu", label: "CPU", score: score.CPUScore},
+		{key: "memory", label: "内存", score: score.MemoryScore},
+		{key: "disk", label: "磁盘", score: score.DiskScore},
+		{key: "network", label: "网络", score: score.NetworkScore},
+	}
+	ordered := make([]map[string]interface{}, 0, len(items))
+	for _, item := range items {
+		ordered = append(ordered, map[string]interface{}{
+			"component": item.key,
+			"label":     item.label,
+			"score":     item.score,
+			"severity":  bottleneckSeverity(item.score),
+		})
+	}
+	for i := 0; i < len(ordered)-1; i++ {
+		for j := i + 1; j < len(ordered); j++ {
+			if ordered[j]["score"].(float64) < ordered[i]["score"].(float64) {
+				ordered[i], ordered[j] = ordered[j], ordered[i]
+			}
+		}
+	}
+	return ordered
+}
+
+func weakestComponent(score *models.OverallScore) string {
+	if score == nil {
+		return ""
+	}
+	weakest := "cpu"
+	minScore := score.CPUScore
+	for key, value := range map[string]float64{
+		"memory":  score.MemoryScore,
+		"disk":    score.DiskScore,
+		"network": score.NetworkScore,
+	} {
+		if value < minScore {
+			weakest = key
+			minScore = value
+		}
+	}
+	if minScore >= 70 {
+		return ""
+	}
+	return weakest
+}
+
+func bottleneckSeverity(score float64) string {
+	switch {
+	case score >= 75:
+		return "good"
+	case score >= 60:
+		return "watch"
+	default:
+		return "weak"
+	}
+}
+
+func uniqueStrings(items []string) []string {
+	seen := map[string]bool{}
+	unique := []string{}
+	for _, item := range items {
+		item = strings.TrimSpace(item)
+		if item == "" || seen[item] {
+			continue
+		}
+		seen[item] = true
+		unique = append(unique, item)
+	}
+	return unique
 }
 
 func (rg *ReportGenerator) buildQualityNotes(testResults *models.TestResults) []string {
@@ -684,6 +1736,8 @@ func lowerConfidence(current string, candidate string) string {
 
 func statusText(status string) string {
 	switch status {
+	case models.TestStatusSuccess:
+		return "成功"
 	case models.TestStatusFailed:
 		return "失败"
 	case models.TestStatusSkipped:
@@ -710,6 +1764,9 @@ func (rg *ReportGenerator) FormatReport(report *models.Report) string {
 
 	if vpsSummary := rg.FormatVPSBenchmarkSummary(report); vpsSummary != "" {
 		sb.WriteString(vpsSummary)
+	}
+	if conclusion := rg.FormatAssessmentConclusion(report); conclusion != "" {
+		sb.WriteString(conclusion)
 	}
 
 	// 系统信息
@@ -777,6 +1834,10 @@ func (rg *ReportGenerator) FormatReport(report *models.Report) string {
 	}
 
 	sb.WriteString("\n")
+	if moduleText := rg.FormatModuleAssessments(report); moduleText != "" {
+		sb.WriteString(moduleText)
+	}
+
 	if share := rg.FormatSharePlainText(report); share != "" {
 		sb.WriteString("=== 分享模板 ===\n\n")
 		sb.WriteString(share)
@@ -1018,6 +2079,223 @@ func (rg *ReportGenerator) FormatReport(report *models.Report) string {
 	sb.WriteString("════════════════════════════════════════════════════════════════\n")
 
 	return sb.String()
+}
+
+func (rg *ReportGenerator) FormatAssessmentConclusion(report *models.Report) string {
+	if report == nil || report.Summary == nil {
+		return ""
+	}
+	conclusion, ok := report.Summary["assessment_conclusion"].(map[string]interface{})
+	if !ok || len(conclusion) == 0 {
+		return ""
+	}
+
+	var sb strings.Builder
+	sb.WriteString("=== 测评结论 ===\n\n")
+	sb.WriteString(fmt.Sprintf("结论:           %s\n", summaryValueString(conclusion["headline"])))
+	sb.WriteString(fmt.Sprintf("适用判断:       %s\n", summaryValueString(conclusion["scenario"])))
+	if items := summaryStringSlice(conclusion["suitability"]); len(items) > 0 {
+		sb.WriteString("适合场景:\n")
+		for _, item := range items {
+			sb.WriteString(fmt.Sprintf("  - %s\n", item))
+		}
+	}
+	if evidence := summaryEvidence(conclusion["evidence"]); len(evidence) > 0 {
+		sb.WriteString("关键证据:\n")
+		for _, item := range evidence {
+			sb.WriteString(fmt.Sprintf("  - [%s] %s: %s；%s\n", evidenceStatusText(item.Status), item.Label, item.Value, item.Detail))
+		}
+	}
+	if bottlenecks := summaryBottlenecks(conclusion["bottlenecks"]); len(bottlenecks) > 0 {
+		sb.WriteString("短板排序:\n")
+		for _, item := range bottlenecks {
+			sb.WriteString(fmt.Sprintf("  - %s: %.2f / 100，%s\n", item.Label, item.Score, bottleneckSeverityText(item.Severity)))
+		}
+	}
+	if items := summaryStringSlice(conclusion["recommendations"]); len(items) > 0 {
+		sb.WriteString("建议:\n")
+		for _, item := range items {
+			sb.WriteString(fmt.Sprintf("  - %s\n", item))
+		}
+	}
+	sb.WriteString("\n")
+	return sb.String()
+}
+
+func (rg *ReportGenerator) FormatModuleAssessments(report *models.Report) string {
+	if report == nil || report.Summary == nil {
+		return ""
+	}
+	modules, ok := report.Summary["module_assessments"].(map[string]interface{})
+	if !ok || len(modules) == 0 {
+		return ""
+	}
+
+	var sb strings.Builder
+	wroteHeader := false
+	for _, key := range []string{"cpu", "memory", "disk", "network", "route", "ip_quality", "streaming", "ai_services"} {
+		module, ok := modules[key].(map[string]interface{})
+		if !ok || module["status"] == "skipped" {
+			continue
+		}
+		if !wroteHeader {
+			sb.WriteString("=== 模块可信度 ===\n\n")
+			wroteHeader = true
+		}
+		sb.WriteString(fmt.Sprintf("%s: %s | 置信度 %s\n", summaryValueString(module["title"]), moduleStatusText(summaryValueString(module["status"])), summaryValueString(module["confidence"])))
+		sb.WriteString(fmt.Sprintf("  结论: %s\n", summaryValueString(module["summary"])))
+		if evidence := summaryEvidence(module["evidence"]); len(evidence) > 0 {
+			for _, item := range evidence[:minInt(len(evidence), 3)] {
+				sb.WriteString(fmt.Sprintf("  - [%s] %s: %s\n", evidenceStatusText(item.Status), item.Label, item.Value))
+			}
+		}
+		if recommendations := summaryStringSlice(module["recommendations"]); len(recommendations) > 0 {
+			sb.WriteString(fmt.Sprintf("  建议: %s\n", recommendations[0]))
+		}
+		sb.WriteString("\n")
+	}
+	return sb.String()
+}
+
+type conclusionBottleneck struct {
+	Label    string
+	Score    float64
+	Severity string
+}
+
+type conclusionEvidenceRow struct {
+	Label  string
+	Value  string
+	Status string
+	Detail string
+}
+
+func summaryValueString(value interface{}) string {
+	if value == nil {
+		return "-"
+	}
+	if text, ok := value.(string); ok && text != "" {
+		return text
+	}
+	return fmt.Sprintf("%v", value)
+}
+
+func summaryStringSlice(value interface{}) []string {
+	switch items := value.(type) {
+	case []string:
+		return items
+	case []interface{}:
+		out := make([]string, 0, len(items))
+		for _, item := range items {
+			if text := summaryValueString(item); text != "-" {
+				out = append(out, text)
+			}
+		}
+		return out
+	default:
+		return []string{}
+	}
+}
+
+func summaryBottlenecks(value interface{}) []conclusionBottleneck {
+	items, ok := value.([]map[string]interface{})
+	if !ok {
+		if generic, ok := value.([]interface{}); ok {
+			items = make([]map[string]interface{}, 0, len(generic))
+			for _, item := range generic {
+				if mapped, ok := item.(map[string]interface{}); ok {
+					items = append(items, mapped)
+				}
+			}
+		}
+	}
+	out := make([]conclusionBottleneck, 0, len(items))
+	for _, item := range items {
+		score, _ := metricFloat64(item, "score")
+		out = append(out, conclusionBottleneck{
+			Label:    summaryValueString(item["label"]),
+			Score:    score,
+			Severity: summaryValueString(item["severity"]),
+		})
+	}
+	return out
+}
+
+func summaryEvidence(value interface{}) []conclusionEvidenceRow {
+	items, ok := value.([]map[string]interface{})
+	if !ok {
+		interfaceItems, ok := value.([]interface{})
+		if !ok {
+			return nil
+		}
+		items = make([]map[string]interface{}, 0, len(interfaceItems))
+		for _, item := range interfaceItems {
+			if itemMap, ok := item.(map[string]interface{}); ok {
+				items = append(items, itemMap)
+			}
+		}
+	}
+
+	out := make([]conclusionEvidenceRow, 0, len(items))
+	for _, item := range items {
+		out = append(out, conclusionEvidenceRow{
+			Label:  summaryValueString(item["label"]),
+			Value:  summaryValueString(item["value"]),
+			Status: summaryValueString(item["status"]),
+			Detail: summaryValueString(item["detail"]),
+		})
+	}
+	return out
+}
+
+func evidenceStatusText(status string) string {
+	switch status {
+	case "success":
+		return "通过"
+	case "partial":
+		return "部分"
+	case "warning":
+		return "注意"
+	case "failed":
+		return "风险"
+	default:
+		return "未知"
+	}
+}
+
+func moduleStatusText(status string) string {
+	switch status {
+	case "success":
+		return "通过"
+	case "warning":
+		return "注意"
+	case "failed":
+		return "风险"
+	case "skipped":
+		return "未执行"
+	default:
+		return status
+	}
+}
+
+func minInt(a int, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+func bottleneckSeverityText(severity string) string {
+	switch severity {
+	case "good":
+		return "表现正常"
+	case "watch":
+		return "需要关注"
+	case "weak":
+		return "明显短板"
+	default:
+		return severity
+	}
 }
 
 func ipRiskSourceStatusLabel(source *models.IPRiskSource) string {

@@ -57,7 +57,7 @@ func (b *SysbenchMemoryBackend) MeasureWrite(sizeMB int) (MemoryBackendResult, e
 
 func (b *SysbenchMemoryBackend) runSysbench(sizeMB int, operation string) (MemoryBackendResult, error) {
 	if _, err := b.runner.LookPath("sysbench"); err != nil {
-		return MemoryBackendResult{}, fmt.Errorf("sysbench is not installed; install it manually before using --memory-backend sysbench. Ubuntu/Debian: sudo apt install sysbench; RHEL/CentOS: sudo yum install sysbench; macOS: brew install sysbench")
+		return MemoryBackendResult{}, newBenchmarkError(BenchmarkErrorMissingDependency, "memory_sysbench_lookup", "安装 sysbench 后重试。Ubuntu/Debian: sudo apt install sysbench；RHEL/CentOS: sudo yum install sysbench；macOS: brew install sysbench", err)
 	}
 	if sizeMB <= 0 {
 		sizeMB = 512
@@ -76,12 +76,12 @@ func (b *SysbenchMemoryBackend) runSysbench(sizeMB int, operation string) (Memor
 		"run",
 	)
 	if err != nil {
-		return MemoryBackendResult{}, fmt.Errorf("sysbench memory %s failed: %w", operation, err)
+		return MemoryBackendResult{}, classifyExternalCommandError("memory_sysbench_run", output, err, "确认 sysbench 可执行、内存测试规模适合当前机器，并在低内存机器上使用 basic/builtin 档位。")
 	}
 
 	speed, err := parseSysbenchMemoryMBps(output)
 	if err != nil {
-		return MemoryBackendResult{}, fmt.Errorf("parse sysbench memory %s result: %w", operation, err)
+		return MemoryBackendResult{}, newBenchmarkError(BenchmarkErrorParseFailed, "memory_sysbench_parse", "sysbench 内存输出格式无法识别，请保留 stdout/stderr 用于排查。", err)
 	}
 	return MemoryBackendResult{SpeedMBps: speed}, nil
 }

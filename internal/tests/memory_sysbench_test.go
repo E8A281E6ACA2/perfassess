@@ -38,6 +38,28 @@ func TestSysbenchMemoryBackendReportsMissingBinary(t *testing.T) {
 	}
 }
 
+func TestSysbenchMemoryBackendClassifiesResourceFailure(t *testing.T) {
+	backend := NewSysbenchMemoryBackend(SysbenchMemoryConfig{
+		Runner: &fakeCommandRunner{
+			output:     []byte("FATAL: cannot allocate memory"),
+			err:        fmt.Errorf("exit status 1"),
+			lookPathOK: true,
+		},
+	})
+
+	_, err := backend.MeasureRead(512)
+	if err == nil {
+		t.Fatal("expected sysbench memory command failure")
+	}
+	category, stage, hint, ok := benchmarkErrorFields(err)
+	if !ok {
+		t.Fatalf("expected benchmark error fields, got %T", err)
+	}
+	if category != BenchmarkErrorResource || stage != "memory_sysbench_run" || !strings.Contains(hint, "资源不足") {
+		t.Fatalf("unexpected benchmark error fields: %q %q %q", category, stage, hint)
+	}
+}
+
 func TestSysbenchMemoryBackendParsesReadResult(t *testing.T) {
 	runner := &fakeCommandRunner{
 		output:     []byte(`1024.00 MiB transferred (1536.50 MiB/sec)`),

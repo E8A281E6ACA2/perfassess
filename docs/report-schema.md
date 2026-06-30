@@ -24,6 +24,14 @@
 - `metrics`: 测试指标
 - `error_message`: 失败或降级原因
 
+当外部后端失败时，`metrics` 可包含统一错误分类：
+
+- `error_category`: 错误类别，可能为 `missing_dependency`、`invalid_config`、`command_failed`、`permission_denied`、`resource_limited`、`network_unavailable`、`parse_failed`、`timeout` 或 `runtime_error`
+- `error_stage`: 出错阶段，例如 `fio_write_run`、`speedtest_parse`、`iperf3_config`
+- `error_hint`: 面向用户的处理建议
+
+网络测试可能在延迟、下载、上传多个阶段分别失败，因此还可能包含 `network_error_<stage>_category`、`network_error_<stage>_stage` 和 `network_error_<stage>_hint`。
+
 ## CPU Metrics
 
 - `backend`: `builtin`、`sysbench` 或 `geekbench`
@@ -124,6 +132,10 @@
 - `iperf3_matrix_best_download_mbps`: iperf3 多节点最佳下载吞吐
 - `iperf3_matrix_best_upload_mbps`: iperf3 多节点最佳上传吞吐
 - `iperf3_matrix_<n>_server`: 第 n 个 iperf3 服务端原始配置
+- `iperf3_matrix_<n>_name`: 第 n 个 iperf3 节点名称，来自节点文件 `name=` 元数据
+- `iperf3_matrix_<n>_region`: 第 n 个 iperf3 节点区域，来自节点文件 `region=` 元数据
+- `iperf3_matrix_<n>_provider`: 第 n 个 iperf3 节点提供方，来自节点文件 `provider=` 元数据
+- `iperf3_matrix_<n>_authorization`: 第 n 个 iperf3 节点授权声明，来自节点文件 `auth=owned|authorized`
 - `iperf3_matrix_<n>_protocol`: 第 n 个 iperf3 服务端协议族，`ipv4` 或 `ipv6`
 - `iperf3_matrix_<n>_latency_ms`: 第 n 个 iperf3 服务端 TCP connect 延迟
 - `iperf3_matrix_<n>_download_mbps`: 第 n 个 iperf3 服务端下载吞吐
@@ -146,6 +158,8 @@
 - `tests_degraded`: 降级测试数量，例如网络只完成延迟但吞吐失败
 - `performance_note`: 未完成全部核心测试时的说明
 - `quality_notes`: 质量提示列表
+- `assessment_conclusion`: 测评结论，包含适用场景、关键证据、短板排序、限制和建议
+- `module_assessments`: 模块级可信度，统一描述 CPU、内存、磁盘、网络、路由追踪、IP 质量、流媒体和 AI 服务的状态、置信度、证据、限制和建议
 - `benchmark_profile`: 本次评测档位和实际后端组合
 - `confidence_level`: 本次报告置信等级和原因
 - `vps_benchmark_summary`: 面向 VPS 测评分享的核心摘要
@@ -314,16 +328,16 @@
 - `winner`: 该指标胜出方
 - `higher_is_better`: 是否数值越高越好
 
-## History Entry
+## Compare Directory Entry
 
-`perfassess history add <report.json>` 会把单次 JSON 报告提取为一行 JSONL 历史索引，默认路径为 `~/.perfassess/history.jsonl`，可通过 `--store` 指定。
+`perfassess compare-dir <reports-dir> --format json` 会读取目录中的 JSON 报告，并输出按指定分数字段排序后的报告摘要数组。它只做本次目录内排序，不写入本地历史库。
 
 核心字段：
 
 - `report_path`: 原始报告路径
 - `session_id`: 评测会话 ID
 - `timestamp`: 报告时间
-- `host_id`: 从系统信息派生的主机标识
+- `host_label`: 从公网 IP、ISP 和 CPU 型号生成的展示标签
 - `cpu_model`: CPU 型号
 - `os`: 操作系统名称和版本
 - `architecture`: 系统架构
@@ -336,17 +350,4 @@
 - `disk_score`: 磁盘分项分
 - `network_score`: 网络分项分
 
-`perfassess history trend --format json` 输出趋势对象：
-
-- `host_id`: 趋势对应主机
-- `count`: 样本数量
-- `first`: 第一条历史记录
-- `last`: 最后一条历史记录
-- `total_delta`: 总分变化
-- `cpu_delta`: CPU 分变化
-- `memory_delta`: 内存分变化
-- `disk_delta`: 磁盘分变化
-- `network_delta`: 网络分变化
-- `entries`: 参与趋势计算的历史记录
-
-`perfassess compare-dir <reports-dir> --format json` 输出按指定分数字段排序后的 `History Entry` 数组，`--sort-by` 支持 `total`、`cpu`、`memory`、`disk`、`network`。
+`--sort-by` 支持 `total`、`cpu`、`memory`、`disk`、`network`。

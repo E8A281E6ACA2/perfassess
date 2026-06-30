@@ -68,9 +68,43 @@ func TestRunTestsPreservesFatalFailureResult(t *testing.T) {
 	}
 }
 
+func TestRunTestsSkipsResourceLimitedTestAndContinues(t *testing.T) {
+	runner := NewTestRunner(newTestLogger(t))
+	results, err := runner.RunTests([]PerformanceTest{
+		&setupFailingPerformanceTest{
+			name: "内存性能测试",
+			err:  fmt.Errorf("当前可用于测试的内存不足: 仅 188 MB: 可用内存不足"),
+		},
+		&successfulPerformanceTest{
+			name: "磁盘性能测试",
+		},
+	})
+	if err != nil {
+		t.Fatalf("expected resource-limited test to be skipped, got %v", err)
+	}
+	if results.MemoryResult == nil {
+		t.Fatal("expected memory result")
+	}
+	if results.MemoryResult.Status != models.TestStatusSkipped {
+		t.Fatalf("expected memory skipped, got %q", results.MemoryResult.Status)
+	}
+	if results.DiskResult == nil || results.DiskResult.Status != models.TestStatusSuccess {
+		t.Fatalf("expected disk test to continue successfully, got %#v", results.DiskResult)
+	}
+}
+
 type failingPerformanceTest struct {
 	name string
 	err  error
+}
+
+type setupFailingPerformanceTest struct {
+	name string
+	err  error
+}
+
+type successfulPerformanceTest struct {
+	name string
 }
 
 type partialFailingPerformanceTest struct {
@@ -126,5 +160,53 @@ func (t *failingPerformanceTest) GetTimeout() time.Duration {
 }
 
 func (t *failingPerformanceTest) GetName() string {
+	return t.name
+}
+
+func (t *setupFailingPerformanceTest) Setup() error {
+	return t.err
+}
+
+func (t *setupFailingPerformanceTest) Execute() (*models.TestResult, error) {
+	return nil, nil
+}
+
+func (t *setupFailingPerformanceTest) Teardown() error {
+	return nil
+}
+
+func (t *setupFailingPerformanceTest) GetTimeout() time.Duration {
+	return time.Second
+}
+
+func (t *setupFailingPerformanceTest) GetName() string {
+	return t.name
+}
+
+func (t *successfulPerformanceTest) Setup() error {
+	return nil
+}
+
+func (t *successfulPerformanceTest) Execute() (*models.TestResult, error) {
+	now := time.Now()
+	return &models.TestResult{
+		TestName:        t.name,
+		Status:          models.TestStatusSuccess,
+		StartTime:       now,
+		EndTime:         now,
+		DurationSeconds: 0,
+		Metrics:         map[string]interface{}{},
+	}, nil
+}
+
+func (t *successfulPerformanceTest) Teardown() error {
+	return nil
+}
+
+func (t *successfulPerformanceTest) GetTimeout() time.Duration {
+	return time.Second
+}
+
+func (t *successfulPerformanceTest) GetName() string {
 	return t.name
 }

@@ -58,7 +58,7 @@ func (b *SysbenchCPUBackend) MeasureMultiCore() (CPUBackendResult, error) {
 
 func (b *SysbenchCPUBackend) runSysbench(threads int) (CPUBackendResult, error) {
 	if _, err := b.runner.LookPath("sysbench"); err != nil {
-		return CPUBackendResult{}, fmt.Errorf("sysbench is not installed; install it manually before using --cpu-backend sysbench. Ubuntu/Debian: sudo apt install sysbench; RHEL/CentOS: sudo yum install sysbench; macOS: brew install sysbench")
+		return CPUBackendResult{}, newBenchmarkError(BenchmarkErrorMissingDependency, "cpu_sysbench_lookup", "安装 sysbench 后重试。Ubuntu/Debian: sudo apt install sysbench；RHEL/CentOS: sudo yum install sysbench；macOS: brew install sysbench", err)
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), b.timeout)
@@ -66,12 +66,12 @@ func (b *SysbenchCPUBackend) runSysbench(threads int) (CPUBackendResult, error) 
 
 	output, err := b.runner.Run(ctx, "sysbench", "cpu", fmt.Sprintf("--threads=%d", threads), "--time=10", "run")
 	if err != nil {
-		return CPUBackendResult{}, fmt.Errorf("sysbench cpu failed: %w", err)
+		return CPUBackendResult{}, classifyExternalCommandError("cpu_sysbench_run", output, err, "确认 sysbench 可执行、CPU 测试未被系统限制，并降低并发后重试。")
 	}
 
 	eventsPerSecond, err := parseSysbenchEventsPerSecond(output)
 	if err != nil {
-		return CPUBackendResult{}, fmt.Errorf("parse sysbench cpu result: %w", err)
+		return CPUBackendResult{}, newBenchmarkError(BenchmarkErrorParseFailed, "cpu_sysbench_parse", "sysbench 输出格式无法识别，请保留 stdout/stderr 用于排查。", err)
 	}
 
 	score := scoreSysbenchCPU(eventsPerSecond, threads)

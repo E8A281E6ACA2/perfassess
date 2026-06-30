@@ -14,7 +14,6 @@ import (
 	"github.com/E8A281E6ACA2/perfassess/internal/config"
 	"github.com/E8A281E6ACA2/perfassess/internal/controller"
 	"github.com/E8A281E6ACA2/perfassess/internal/doctor"
-	"github.com/E8A281E6ACA2/perfassess/internal/history"
 )
 
 // CLI 命令行界面结构体
@@ -97,7 +96,6 @@ func (c *CLI) setupCommands() {
 	c.rootCmd.AddCommand(c.newVersionCommand())
 	c.rootCmd.AddCommand(c.newCompareCommand())
 	c.rootCmd.AddCommand(c.newCompareDirCommand())
-	c.rootCmd.AddCommand(c.newHistoryCommand())
 
 	// 添加命令行参数
 	flags := c.rootCmd.Flags()
@@ -192,7 +190,7 @@ func (c *CLI) setupCommands() {
 
 	// --iperf3-server-file 参数：iperf3 节点文件
 	flags.String("iperf3-server-file", "",
-		"iperf3 节点文件路径，支持空行和 # 注释（仅 network-backend=iperf3 时使用）")
+		"iperf3 节点文件路径，支持空行、# 注释和 auth=owned|authorized 授权声明（仅 network-backend=iperf3 时使用）")
 
 	// --disk-backend 参数：选择磁盘测试后端
 	flags.String("disk-backend", "builtin",
@@ -279,125 +277,27 @@ func (c *CLI) newCompareDirCommand() *cobra.Command {
 				return err
 			}
 			sortBy, _ := cmd.Flags().GetString("sort-by")
-			entries, err := history.EntriesFromDir(args[0])
+			entries, err := compare.RankEntriesFromDir(args[0])
 			if err != nil {
 				return err
 			}
-			if err := history.SortEntries(entries, sortBy, true); err != nil {
+			if err := compare.SortRankEntries(entries, sortBy, true); err != nil {
 				return err
 			}
 			if format == "json" {
-				content, err := history.FormatJSON(entries)
+				content, err := compare.FormatJSON(entries)
 				if err != nil {
 					return err
 				}
 				fmt.Fprintln(cmd.OutOrStdout(), content)
 				return nil
 			}
-			fmt.Fprint(cmd.OutOrStdout(), history.FormatRankText(entries, sortBy))
+			fmt.Fprint(cmd.OutOrStdout(), compare.FormatRankText(entries, sortBy))
 			return nil
 		},
 	}
 	cmd.Flags().String("format", "text", "输出格式 (text,json)")
 	cmd.Flags().String("sort-by", "total", "排序字段 (total,cpu,memory,disk,network)")
-	return cmd
-}
-
-func (c *CLI) newHistoryCommand() *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "history",
-		Short: "管理本地 JSON 报告历史库",
-	}
-	cmd.AddCommand(c.newHistoryAddCommand())
-	cmd.AddCommand(c.newHistoryListCommand())
-	cmd.AddCommand(c.newHistoryTrendCommand())
-	return cmd
-}
-
-func (c *CLI) newHistoryAddCommand() *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "add <report.json>",
-		Short: "加入一份 JSON 报告到本地历史库",
-		Args:  cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			store, _ := cmd.Flags().GetString("store")
-			entry, err := history.AddReport(store, args[0])
-			if err != nil {
-				return err
-			}
-			fmt.Fprintf(cmd.OutOrStdout(), "已加入历史库: %s | total=%.2f | host=%s\n", entry.ReportPath, entry.TotalScore, entry.HostID)
-			return nil
-		},
-	}
-	cmd.Flags().String("store", history.DefaultStorePath(), "历史库 JSONL 路径")
-	return cmd
-}
-
-func (c *CLI) newHistoryListCommand() *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "list",
-		Short: "列出本地历史库中的报告",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			format, _ := cmd.Flags().GetString("format")
-			if err := validateOutputFormat(format); err != nil {
-				return err
-			}
-			store, _ := cmd.Flags().GetString("store")
-			entries, err := history.LoadEntries(store)
-			if err != nil {
-				return err
-			}
-			if format == "json" {
-				content, err := history.FormatJSON(entries)
-				if err != nil {
-					return err
-				}
-				fmt.Fprintln(cmd.OutOrStdout(), content)
-				return nil
-			}
-			fmt.Fprint(cmd.OutOrStdout(), history.FormatEntriesText(entries))
-			return nil
-		},
-	}
-	cmd.Flags().String("store", history.DefaultStorePath(), "历史库 JSONL 路径")
-	cmd.Flags().String("format", "text", "输出格式 (text,json)")
-	return cmd
-}
-
-func (c *CLI) newHistoryTrendCommand() *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "trend",
-		Short: "查看本地历史库中的评分趋势",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			format, _ := cmd.Flags().GetString("format")
-			if err := validateOutputFormat(format); err != nil {
-				return err
-			}
-			store, _ := cmd.Flags().GetString("store")
-			hostID, _ := cmd.Flags().GetString("host")
-			entries, err := history.LoadEntries(store)
-			if err != nil {
-				return err
-			}
-			trend, err := history.BuildTrend(entries, hostID)
-			if err != nil {
-				return err
-			}
-			if format == "json" {
-				content, err := history.FormatJSON(trend)
-				if err != nil {
-					return err
-				}
-				fmt.Fprintln(cmd.OutOrStdout(), content)
-				return nil
-			}
-			fmt.Fprint(cmd.OutOrStdout(), history.FormatTrendText(trend))
-			return nil
-		},
-	}
-	cmd.Flags().String("store", history.DefaultStorePath(), "历史库 JSONL 路径")
-	cmd.Flags().String("host", "", "按 host_id 过滤；为空时使用全部历史")
-	cmd.Flags().String("format", "text", "输出格式 (text,json)")
 	return cmd
 }
 

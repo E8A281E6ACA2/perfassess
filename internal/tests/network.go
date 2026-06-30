@@ -204,6 +204,7 @@ func (nt *NetworkTest) Execute() (*models.TestResult, error) {
 	downloadResult := NetworkDownloadResult{}
 	uploadSpeed := -1.0
 	uploadEstimated := false
+	errorMetrics := map[string]interface{}{}
 
 	// 测试网络延迟
 	nt.GetLogger().Info("开始网络延迟测试...")
@@ -213,6 +214,7 @@ func (nt *NetworkTest) Execute() (*models.TestResult, error) {
 		status = models.TestStatusDegraded
 		nt.GetLogger().Warn(fmt.Sprintf("延迟测试失败: %v", err))
 		metrics.AppendError("延迟测试失败: " + err.Error())
+		addNetworkBenchmarkErrorMetrics(errorMetrics, "latency", err)
 	} else {
 		metrics.LatencyMs = avgLatency
 		metrics.AverageLatencyMs = avgLatency
@@ -226,6 +228,7 @@ func (nt *NetworkTest) Execute() (*models.TestResult, error) {
 		status = models.TestStatusDegraded
 		nt.GetLogger().Warn(fmt.Sprintf("下载速度测试失败: %v", err))
 		metrics.AppendError("下载速度测试失败: " + err.Error())
+		addNetworkBenchmarkErrorMetrics(errorMetrics, "download", err)
 	} else {
 		downloadSpeed = downloadResult.SpeedMbps
 		metrics.DownloadSpeedMbps = downloadSpeed
@@ -240,6 +243,7 @@ func (nt *NetworkTest) Execute() (*models.TestResult, error) {
 		status = models.TestStatusDegraded
 		nt.GetLogger().Warn(fmt.Sprintf("上传速度测试失败: %v", err))
 		metrics.AppendError("上传速度测试失败: " + err.Error())
+		addNetworkBenchmarkErrorMetrics(errorMetrics, "upload", err)
 	} else {
 		metrics.UploadSpeedMbps = uploadSpeed
 		if uploadEstimated {
@@ -263,6 +267,9 @@ func (nt *NetworkTest) Execute() (*models.TestResult, error) {
 	nt.GetLogger().Info(fmt.Sprintf("网络测试完成，评分: %.2f", score))
 
 	metricsMap := metrics.ToMetricsMap()
+	for key, value := range errorMetrics {
+		metricsMap[key] = value
+	}
 	nt.appendNetworkQualityMetrics(metricsMap)
 	if appender, ok := nt.backend.(NetworkMetricsAppender); ok {
 		appender.AppendMetrics(metricsMap)

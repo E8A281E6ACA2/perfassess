@@ -98,7 +98,7 @@ func (b *SpeedtestNetworkBackend) MeasureLatency(hosts []string) (float64, error
 		return 0, err
 	}
 	if result.Ping.Latency <= 0 {
-		return 0, fmt.Errorf("speedtest result missing ping latency")
+		return 0, newBenchmarkError(BenchmarkErrorParseFailed, "speedtest_latency_parse", "speedtest JSON 中缺少 ping latency，请保留原始输出排查。", fmt.Errorf("speedtest result missing ping latency"))
 	}
 	return result.Ping.Latency, nil
 }
@@ -110,7 +110,7 @@ func (b *SpeedtestNetworkBackend) MeasureDownload() (NetworkDownloadResult, erro
 	}
 	speed := bandwidthBytesPerSecondToMbps(result.Download.Bandwidth)
 	if speed <= 0 {
-		return NetworkDownloadResult{}, fmt.Errorf("speedtest result missing download bandwidth")
+		return NetworkDownloadResult{}, newBenchmarkError(BenchmarkErrorParseFailed, "speedtest_download_parse", "speedtest JSON 中缺少 download bandwidth，请保留原始输出排查。", fmt.Errorf("speedtest result missing download bandwidth"))
 	}
 	return NetworkDownloadResult{SpeedMbps: speed, SourceURL: models.NetworkDownloadSourceSpeedtest}, nil
 }
@@ -122,7 +122,7 @@ func (b *SpeedtestNetworkBackend) MeasureUpload(downloadSpeed float64) (float64,
 	}
 	speed := bandwidthBytesPerSecondToMbps(result.Upload.Bandwidth)
 	if speed <= 0 {
-		return 0, false, fmt.Errorf("speedtest result missing upload bandwidth")
+		return 0, false, newBenchmarkError(BenchmarkErrorParseFailed, "speedtest_upload_parse", "speedtest JSON 中缺少 upload bandwidth，请保留原始输出排查。", fmt.Errorf("speedtest result missing upload bandwidth"))
 	}
 	return speed, false, nil
 }
@@ -158,7 +158,7 @@ func (b *SpeedtestNetworkBackend) measure() (*speedtestJSONResult, error) {
 		return b.result, nil
 	}
 	if _, err := b.runner.LookPath("speedtest"); err != nil {
-		return nil, fmt.Errorf("speedtest CLI is not installed; install Ookla speedtest before using --network-backend speedtest. Ubuntu/Debian: install from https://www.speedtest.net/apps/cli; macOS: brew install speedtest-cli")
+		return nil, newBenchmarkError(BenchmarkErrorMissingDependency, "speedtest_lookup", "安装 Ookla Speedtest CLI 后重试。Ubuntu/Debian 请参考 speedtest.net/apps/cli；macOS: brew install speedtest-cli", err)
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), b.timeout)
@@ -166,11 +166,11 @@ func (b *SpeedtestNetworkBackend) measure() (*speedtestJSONResult, error) {
 
 	output, err := b.runner.Run(ctx, "speedtest", "--format=json", "--accept-license", "--accept-gdpr")
 	if err != nil {
-		return nil, fmt.Errorf("speedtest failed: %w", err)
+		return nil, classifyExternalCommandError("speedtest_run", output, err, "确认 speedtest CLI 可执行、许可参数可用，并检查当前网络是否允许测速。")
 	}
 	result, err := parseSpeedtestJSON(output)
 	if err != nil {
-		return nil, err
+		return nil, newBenchmarkError(BenchmarkErrorParseFailed, "speedtest_parse", "speedtest JSON 输出格式无法识别，请保留 stdout/stderr 用于排查。", err)
 	}
 	b.result = result
 	return result, nil

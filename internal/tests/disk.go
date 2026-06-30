@@ -152,6 +152,7 @@ func (dt *DiskTest) Execute() (*models.TestResult, error) {
 	writeSpeed, err := dt.backend.MeasureSequentialWrite(100) // 100MB
 	if err != nil {
 		status = "failed"
+		addBenchmarkErrorMetrics(metrics, err)
 		return dt.CreateResult("failed", metrics, fmt.Sprintf("写入测试失败: %v", err)), err
 	}
 	metrics["write_speed_mbps"] = writeSpeed
@@ -164,6 +165,7 @@ func (dt *DiskTest) Execute() (*models.TestResult, error) {
 	readSpeed, err := dt.backend.MeasureSequentialRead(100) // 100MB
 	if err != nil {
 		status = "failed"
+		addBenchmarkErrorMetrics(metrics, err)
 		return dt.CreateResult("failed", metrics, fmt.Sprintf("读取测试失败: %v", err)), err
 	}
 	metrics["read_speed_mbps"] = readSpeed
@@ -176,6 +178,7 @@ func (dt *DiskTest) Execute() (*models.TestResult, error) {
 	iops, err := dt.backend.MeasureRandomIOPS(5) // 5秒测试
 	if err != nil {
 		status = "failed"
+		addBenchmarkErrorMetrics(metrics, err)
 		return dt.CreateResult("failed", metrics, fmt.Sprintf("IOPS测试失败: %v", err)), err
 	}
 	metrics["random_iops"] = iops

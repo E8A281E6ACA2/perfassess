@@ -482,61 +482,6 @@ func TestCompareCommandRejectsInvalidFormat(t *testing.T) {
 	}
 }
 
-func TestHistoryCommandsAddListAndTrend(t *testing.T) {
-	dir := t.TempDir()
-	store := filepath.Join(dir, "history.jsonl")
-	pathA := filepath.Join(dir, "a.json")
-	pathB := filepath.Join(dir, "b.json")
-	writeCLIReport(t, pathA, 80, "server")
-	writeCLIReport(t, pathB, 90, "server")
-
-	app := NewCLI()
-	addCmd := app.GetRootCmd()
-	addCmd.SetArgs([]string{"history", "add", pathA, "--store", store})
-	if err := addCmd.Execute(); err != nil {
-		t.Fatalf("expected history add a to succeed, got %v", err)
-	}
-
-	app = NewCLI()
-	addCmd = app.GetRootCmd()
-	addCmd.SetArgs([]string{"history", "add", pathB, "--store", store})
-	if err := addCmd.Execute(); err != nil {
-		t.Fatalf("expected history add b to succeed, got %v", err)
-	}
-
-	app = NewCLI()
-	listCmd := app.GetRootCmd()
-	var listOutput bytes.Buffer
-	listCmd.SetOut(&listOutput)
-	listCmd.SetArgs([]string{"history", "list", "--store", store, "--format", "json"})
-	if err := listCmd.Execute(); err != nil {
-		t.Fatalf("expected history list to succeed, got %v", err)
-	}
-	var entries []map[string]interface{}
-	if err := json.Unmarshal(listOutput.Bytes(), &entries); err != nil {
-		t.Fatalf("expected history list json, got %v\n%s", err, listOutput.String())
-	}
-	if len(entries) != 2 {
-		t.Fatalf("expected two history entries, got %d", len(entries))
-	}
-
-	app = NewCLI()
-	trendCmd := app.GetRootCmd()
-	var trendOutput bytes.Buffer
-	trendCmd.SetOut(&trendOutput)
-	trendCmd.SetArgs([]string{"history", "trend", "--store", store, "--format", "json"})
-	if err := trendCmd.Execute(); err != nil {
-		t.Fatalf("expected history trend to succeed, got %v", err)
-	}
-	var trend map[string]interface{}
-	if err := json.Unmarshal(trendOutput.Bytes(), &trend); err != nil {
-		t.Fatalf("expected history trend json, got %v\n%s", err, trendOutput.String())
-	}
-	if trend["count"] != float64(2) {
-		t.Fatalf("expected trend count 2, got %#v", trend["count"])
-	}
-}
-
 func TestCompareDirCommandOutputsRankedJSON(t *testing.T) {
 	dir := t.TempDir()
 	writeCLIReport(t, filepath.Join(dir, "a.json"), 80, "server")

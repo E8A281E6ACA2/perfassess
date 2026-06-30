@@ -84,6 +84,23 @@ func (tr *TestRunner) RunTests(tests []PerformanceTest) (*models.TestResults, er
 				tr.assignResult(results, test.GetName(), result)
 				return results, fmt.Errorf("测试 %s 遇到致命错误: %w", test.GetName(), err)
 			}
+			if action == utils.ActionSkipTest {
+				if result == nil {
+					result = &models.TestResult{
+						TestName:        test.GetName(),
+						StartTime:       time.Now(),
+						EndTime:         time.Now(),
+						DurationSeconds: 0,
+						ErrorMessage:    err.Error(),
+					}
+				}
+				result.Status = models.TestStatusSkipped
+				if result.ErrorMessage == "" {
+					result.ErrorMessage = err.Error()
+				}
+				tr.assignResult(results, test.GetName(), result)
+				continue
+			}
 
 			// 非致命错误，继续执行其他测试
 			if result == nil {

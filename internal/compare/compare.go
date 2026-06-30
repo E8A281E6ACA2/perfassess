@@ -4,7 +4,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
+	"sort"
 	"strings"
+	"time"
 
 	"github.com/E8A281E6ACA2/perfassess/internal/models"
 )
@@ -37,6 +40,24 @@ type MetricDifference struct {
 	DeltaPercent   float64 `json:"delta_percent"`
 	Winner         string  `json:"winner"`
 	HigherIsBetter bool    `json:"higher_is_better"`
+}
+
+type RankEntry struct {
+	ReportPath       string                 `json:"report_path"`
+	SessionID        string                 `json:"session_id"`
+	Timestamp        time.Time              `json:"timestamp"`
+	HostLabel        string                 `json:"host_label,omitempty"`
+	CPUModel         string                 `json:"cpu_model,omitempty"`
+	OS               string                 `json:"os,omitempty"`
+	Architecture     string                 `json:"architecture,omitempty"`
+	ScoreProfile     string                 `json:"score_profile"`
+	BenchmarkProfile map[string]interface{} `json:"benchmark_profile,omitempty"`
+	Grade            string                 `json:"grade"`
+	TotalScore       float64                `json:"total_score"`
+	CPUScore         float64                `json:"cpu_score"`
+	MemoryScore      float64                `json:"memory_score"`
+	DiskScore        float64                `json:"disk_score"`
+	NetworkScore     float64                `json:"network_score"`
 }
 
 func CompareFiles(pathA string, pathB string) (*Result, error) {
@@ -86,6 +107,56 @@ func CompareReports(reportA *models.Report, reportB *models.Report, labelA strin
 	return result
 }
 
+func RankEntriesFromDir(dir string) ([]RankEntry, error) {
+	matches, err := filepath.Glob(filepath.Join(dir, "*.json"))
+	if err != nil {
+		return nil, err
+	}
+	var entries []RankEntry
+	var parseErrors []string
+	for _, path := range matches {
+		report, err := readReport(path)
+		if err != nil {
+			parseErrors = append(parseErrors, fmt.Sprintf("%s: %v", filepath.Base(path), err))
+			continue
+		}
+		entries = append(entries, rankEntryFromReport(report, path))
+	}
+	if len(entries) == 0 && len(parseErrors) > 0 {
+		return nil, fmt.Errorf("目录中没有可用 JSON 报告: %s", strings.Join(parseErrors, "; "))
+	}
+	return entries, nil
+}
+
+func SortRankEntries(entries []RankEntry, by string, desc bool) error {
+	value := func(entry RankEntry) float64 {
+		switch by {
+		case "total":
+			return entry.TotalScore
+		case "cpu":
+			return entry.CPUScore
+		case "memory":
+			return entry.MemoryScore
+		case "disk":
+			return entry.DiskScore
+		case "network":
+			return entry.NetworkScore
+		default:
+			return 0
+		}
+	}
+	if !validSortKey(by) {
+		return fmt.Errorf("无效排序字段: %s", by)
+	}
+	sort.SliceStable(entries, func(i, j int) bool {
+		if desc {
+			return value(entries[i]) > value(entries[j])
+		}
+		return value(entries[i]) < value(entries[j])
+	})
+	return nil
+}
+
 func FormatText(result *Result) string {
 	if result == nil {
 		return "比较结果不可用\n"
@@ -122,12 +193,26 @@ func FormatText(result *Result) string {
 	return sb.String()
 }
 
-func FormatJSON(result *Result) (string, error) {
-	data, err := json.MarshalIndent(result, "", "  ")
+func FormatJSON(value interface{}) (string, error) {
+	data, err := json.MarshalIndent(value, "", "  ")
 	if err != nil {
-		return "", fmt.Errorf("序列化对比结果失败: %w", err)
+		return "", fmt.Errorf("序列化结果失败: %w", err)
 	}
 	return string(data), nil
+}
+
+func FormatRankText(entries []RankEntry, sortBy string) string {
+	if len(entries) == 0 {
+		return "目录中没有可用 JSON 报告\n"
+	}
+	var sb strings.Builder
+	sb.WriteString("=== 报告批量排序 ===\n\n")
+	sb.WriteString(fmt.Sprintf("排序字段: %s\n\n", sortBy))
+	for i, entry := range entries {
+		sb.WriteString(fmt.Sprintf("%d. %s", i+1, formatRankEntryLine(entry)))
+		sb.WriteByte('\n')
+	}
+	return sb.String()
 }
 
 func readReport(path string) (*models.Report, error) {
@@ -144,6 +229,36 @@ func readReport(path string) (*models.Report, error) {
 		return nil, fmt.Errorf("报告缺少 summary")
 	}
 	return &report, nil
+}
+
+func rankEntryFromReport(report *models.Report, reportPath string) RankEntry {
+	entry := RankEntry{
+		ReportPath:       reportPath,
+		SessionID:        report.SessionID,
+		Timestamp:        report.Timestamp,
+		HostLabel:        hostLabel(report),
+		ScoreProfile:     scoreProfile(report),
+		BenchmarkProfile: benchmarkProfile(report),
+		Grade:            grade(report),
+		TotalScore:       score(report, "total_score"),
+		CPUScore:         score(report, "cpu_score"),
+		MemoryScore:      score(report, "memory_score"),
+		DiskScore:        score(report, "disk_score"),
+		NetworkScore:     score(report, "network_score"),
+	}
+	if entry.Timestamp.IsZero() {
+		entry.Timestamp = time.Now().UTC()
+	}
+	if report.SystemInfo != nil {
+		if report.SystemInfo.CPU != nil {
+			entry.CPUModel = report.SystemInfo.CPU.Model
+		}
+		if report.SystemInfo.OS != nil {
+			entry.OS = strings.TrimSpace(strings.Join([]string{report.SystemInfo.OS.Name, report.SystemInfo.OS.Version}, " "))
+			entry.Architecture = report.SystemInfo.OS.Architecture
+		}
+	}
+	return entry
 }
 
 func diff(name string, a float64, b float64, higherIsBetter bool) MetricDifference {
@@ -241,6 +356,13 @@ func summaryObject(report *models.Report, key string) interface{} {
 	return report.Summary[key]
 }
 
+func benchmarkProfile(report *models.Report) map[string]interface{} {
+	if value, ok := summaryObject(report, "benchmark_profile").(map[string]interface{}); ok {
+		return value
+	}
+	return nil
+}
+
 func grade(report *models.Report) string {
 	if report == nil || report.Summary == nil {
 		return ""
@@ -249,6 +371,66 @@ func grade(report *models.Report) string {
 		return value
 	}
 	return ""
+}
+
+func hostLabel(report *models.Report) string {
+	if report == nil || report.SystemInfo == nil {
+		return ""
+	}
+	parts := []string{}
+	if report.SystemInfo.IPInfo != nil {
+		if report.SystemInfo.IPInfo.PublicIP != "" {
+			parts = append(parts, report.SystemInfo.IPInfo.PublicIP)
+		}
+		if report.SystemInfo.IPInfo.ISP != "" {
+			parts = append(parts, report.SystemInfo.IPInfo.ISP)
+		}
+	}
+	if report.SystemInfo.CPU != nil && report.SystemInfo.CPU.Model != "" {
+		parts = append(parts, report.SystemInfo.CPU.Model)
+	}
+	return strings.Join(parts, " | ")
+}
+
+func validSortKey(key string) bool {
+	switch key {
+	case "total", "cpu", "memory", "disk", "network":
+		return true
+	default:
+		return false
+	}
+}
+
+func formatRankEntryLine(entry RankEntry) string {
+	return fmt.Sprintf("%s | host=%s | profile=%s | benchmark=%s | total=%.2f | cpu=%.2f | mem=%.2f | disk=%.2f | net=%.2f | %s",
+		formatRankTime(entry.Timestamp),
+		emptyAsUnknown(entry.HostLabel),
+		emptyAsUnknown(entry.ScoreProfile),
+		benchmarkName(entry.BenchmarkProfile),
+		entry.TotalScore,
+		entry.CPUScore,
+		entry.MemoryScore,
+		entry.DiskScore,
+		entry.NetworkScore,
+		entry.ReportPath,
+	)
+}
+
+func formatRankTime(value time.Time) string {
+	if value.IsZero() {
+		return "-"
+	}
+	return value.Format(time.RFC3339)
+}
+
+func benchmarkName(value map[string]interface{}) string {
+	if len(value) == 0 {
+		return "unknown"
+	}
+	if name, ok := value["name"].(string); ok && name != "" {
+		return name
+	}
+	return "unknown"
 }
 
 func boolText(value bool) string {

@@ -75,7 +75,7 @@ func (b *FioDiskBackend) MeasureSequentialWrite(fileSizeMB int) (float64, error)
 	}
 	stats, err := parseFioDirectionStats(output, "write")
 	if err != nil {
-		return 0, err
+		return 0, newBenchmarkError(BenchmarkErrorParseFailed, "fio_write_parse", "fio 顺序写 JSON 输出格式无法识别，请保留 stdout/stderr 用于排查。", err)
 	}
 	b.seqWriteStats = stats
 	return stats.BandwidthMBps, nil
@@ -88,7 +88,7 @@ func (b *FioDiskBackend) MeasureSequentialRead(fileSizeMB int) (float64, error) 
 	}
 	stats, err := parseFioDirectionStats(output, "read")
 	if err != nil {
-		return 0, err
+		return 0, newBenchmarkError(BenchmarkErrorParseFailed, "fio_read_parse", "fio 顺序读 JSON 输出格式无法识别，请保留 stdout/stderr 用于排查。", err)
 	}
 	b.seqReadStats = stats
 	return stats.BandwidthMBps, nil
@@ -160,7 +160,7 @@ func (b *FioDiskBackend) Cleanup() error {
 
 func (b *FioDiskBackend) runFio(name string, rw string, blockSize string, sizeMB int, runtimeSec int) ([]byte, error) {
 	if _, err := b.runner.LookPath("fio"); err != nil {
-		return nil, fmt.Errorf("fio is not installed; install it manually before using --disk-backend fio. Ubuntu/Debian: sudo apt install fio; RHEL/CentOS: sudo yum install fio; macOS: brew install fio")
+		return nil, newBenchmarkError(BenchmarkErrorMissingDependency, "fio_lookup", "安装 fio 后重试。Ubuntu/Debian: sudo apt install fio；RHEL/CentOS: sudo yum install fio；macOS: brew install fio", err)
 	}
 
 	filename := filepath.Join(b.workDir, "perfassess-fio-"+name+".dat")
@@ -185,7 +185,7 @@ func (b *FioDiskBackend) runFio(name string, rw string, blockSize string, sizeMB
 
 	output, err := b.runner.Run(ctx, "fio", args...)
 	if err != nil {
-		return nil, fmt.Errorf("fio %s failed: %w", rw, err)
+		return nil, classifyExternalCommandError("fio_"+rw+"_run", output, err, "确认测试目录可写、磁盘空间充足，并检查文件系统是否支持 direct I/O。")
 	}
 	return output, nil
 }
@@ -203,7 +203,7 @@ func (b *FioDiskBackend) runYABSMixedMatrix(durationSec int) (map[string]fioRand
 		}
 		stats, err := parseFioRandomStats(output)
 		if err != nil {
-			return nil, fmt.Errorf("parse fio mixed %s result: %w", blockSize, err)
+			return nil, newBenchmarkError(BenchmarkErrorParseFailed, "fio_mixed_parse", "fio mixed JSON 输出格式无法识别，请保留 stdout/stderr 用于排查。", err)
 		}
 		results[blockSize] = stats
 	}
@@ -212,7 +212,7 @@ func (b *FioDiskBackend) runYABSMixedMatrix(durationSec int) (map[string]fioRand
 
 func (b *FioDiskBackend) runFioMixed(name string, blockSize string, sizeMB int, runtimeSec int) ([]byte, error) {
 	if _, err := b.runner.LookPath("fio"); err != nil {
-		return nil, fmt.Errorf("fio is not installed; install it manually before using --disk-backend fio. Ubuntu/Debian: sudo apt install fio; RHEL/CentOS: sudo yum install fio; macOS: brew install fio")
+		return nil, newBenchmarkError(BenchmarkErrorMissingDependency, "fio_lookup", "安装 fio 后重试。Ubuntu/Debian: sudo apt install fio；RHEL/CentOS: sudo yum install fio；macOS: brew install fio", err)
 	}
 
 	filename := filepath.Join(b.workDir, "perfassess-fio-"+name+".dat")
@@ -241,7 +241,7 @@ func (b *FioDiskBackend) runFioMixed(name string, blockSize string, sizeMB int, 
 
 	output, err := b.runner.Run(ctx, "fio", args...)
 	if err != nil {
-		return nil, fmt.Errorf("fio mixed %s failed: %w", blockSize, err)
+		return nil, classifyExternalCommandError("fio_mixed_run", output, err, "确认测试目录可写、磁盘空间充足，并检查当前系统是否支持 libaio/direct I/O。")
 	}
 	return output, nil
 }

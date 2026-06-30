@@ -220,8 +220,10 @@ func (ac *AssessmentController) RunAssessment(session *models.AssessmentSession)
 		report.Summary["security_report"] = securityReport
 	}
 
-	// 更新格式化报告以包含新增的摘要内容
-	report.FormattedContent = reporter.NewReportGeneratorWithWeightsAndProfile(ac.config.ScoreWeights, ac.config.ScoreProfile).FormatReport(report)
+	// 更新模块评估和格式化报告以包含新增的摘要内容
+	reportGenerator := reporter.NewReportGeneratorWithWeightsAndProfile(ac.config.ScoreWeights, ac.config.ScoreProfile)
+	reportGenerator.RefreshModuleAssessments(report)
+	report.FormattedContent = reportGenerator.FormatReport(report)
 
 	ac.logger.Info("评估报告生成完成")
 
@@ -324,7 +326,7 @@ func (ac *AssessmentController) runPerformanceTests() (*models.TestResults, erro
 	// 运行测试
 	results, err := testRunner.RunTests(testList)
 	if err != nil {
-		return nil, err
+		return results, err
 	}
 
 	return results, nil

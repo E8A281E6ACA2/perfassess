@@ -103,7 +103,6 @@ func (eh *ErrorHandler) IsFatal(err error) bool {
 		"access denied",
 		"访问被拒绝",
 		"out of memory", // 内存不足
-		"内存不足",
 		"cannot allocate memory",
 		"无法分配内存",
 		"disk full", // 磁盘已满

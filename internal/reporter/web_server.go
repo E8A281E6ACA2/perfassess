@@ -46,16 +46,19 @@ type webTable struct {
 }
 
 type webReportSection struct {
-	ID         string
-	Title      string
-	Subtitle   string
-	Status     string
-	StatusText string
-	Summary    string
-	Hint       string
-	Metrics    []webMetricCard
-	Details    []webDetailRow
-	Tables     []webTable
+	ID              string
+	Title           string
+	Subtitle        string
+	Status          string
+	StatusText      string
+	Summary         string
+	Hint            string
+	Metrics         []webMetricCard
+	Details         []webDetailRow
+	Tables          []webTable
+	Evidence        []webEvidenceRow
+	Limitations     []string
+	Recommendations []string
 }
 
 type webReportGroup struct {
@@ -63,6 +66,30 @@ type webReportGroup struct {
 	Title    string
 	Subtitle string
 	Sections []webReportSection
+}
+
+type webDecisionPanel struct {
+	Headline        string
+	Scenario        string
+	Suitability     []string
+	Evidence        []webEvidenceRow
+	Bottlenecks     []webBottleneckRow
+	Recommendations []string
+	Limitations     []string
+}
+
+type webEvidenceRow struct {
+	Label      string
+	Value      string
+	Status     string
+	StatusText string
+}
+
+type webBottleneckRow struct {
+	Label    string
+	Score    float64
+	Severity string
+	Percent  string
 }
 
 // NewWebServer 创建新的 Web 服务器
@@ -187,6 +214,7 @@ func (ws *WebServer) prepareTemplateData() map[string]interface{} {
 	data["ConfidenceLevel"] = ws.confidenceLevel()
 	data["CalibrationVersion"] = ws.calibrationVersion()
 	data["SharePlainText"] = ws.sharePlainText()
+	data["DecisionPanel"] = ws.decisionPanel()
 	reportSections := ws.buildReportSections(overallScore)
 	data["ReportSections"] = reportSections
 	data["ReportGroups"] = groupWebReportSections(reportSections, ws.getQualityNotes(), ws.sharePlainText())
@@ -242,7 +270,131 @@ func (ws *WebServer) buildReportSections(overallScore *models.OverallScore) []we
 		ws.securitySection(),
 	)
 
+	ws.attachModuleAssessments(sections)
 	return sections
+}
+
+func (ws *WebServer) attachModuleAssessments(sections []webReportSection) {
+	if ws.report == nil || ws.report.Summary == nil {
+		return
+	}
+	modules, ok := ws.report.Summary["module_assessments"].(map[string]interface{})
+	if !ok {
+		return
+	}
+	for i := range sections {
+		key := webSectionModuleKey(sections[i].ID)
+		if key == "" {
+			continue
+		}
+		module, ok := modules[key].(map[string]interface{})
+		if !ok {
+			continue
+		}
+		if summary := summaryValueString(module["summary"]); summary != "-" && summary != "" {
+			sections[i].Summary = summary
+		}
+		if confidence := summaryValueString(module["confidence"]); confidence != "-" && confidence != "" {
+			sections[i].Details = append(sections[i].Details, webDetailRow{Label: "模块置信度", Value: confidence})
+		}
+		sections[i].Evidence = webEvidenceRows(summaryEvidence(module["evidence"]), 5)
+		sections[i].Limitations = limitStrings(summaryStringSlice(module["limitations"]), 4)
+		sections[i].Recommendations = limitStrings(summaryStringSlice(module["recommendations"]), 4)
+	}
+}
+
+func webSectionModuleKey(id string) string {
+	switch id {
+	case "cpu", "memory", "disk", "network", "streaming":
+		return id
+	case "route":
+		return "route"
+	case "ip-quality":
+		return "ip_quality"
+	case "ai":
+		return "ai_services"
+	default:
+		return ""
+	}
+}
+
+func (ws *WebServer) decisionPanel() webDecisionPanel {
+	panel := webDecisionPanel{
+		Headline: "测评结论不可用",
+		Scenario: "需要完整报告后判断适用场景。",
+	}
+	if ws.report == nil || ws.report.Summary == nil {
+		return panel
+	}
+	conclusion, ok := ws.report.Summary["assessment_conclusion"].(map[string]interface{})
+	if !ok {
+		return panel
+	}
+	panel.Headline = fallback(summaryValueString(conclusion["headline"]), panel.Headline)
+	panel.Scenario = fallback(summaryValueString(conclusion["scenario"]), panel.Scenario)
+	panel.Suitability = limitStrings(summaryStringSlice(conclusion["suitability"]), 3)
+	panel.Evidence = webEvidenceRows(summaryEvidence(conclusion["evidence"]), 4)
+	panel.Bottlenecks = webBottlenecks(summaryBottlenecks(conclusion["bottlenecks"]), 4)
+	panel.Recommendations = limitStrings(summaryStringSlice(conclusion["recommendations"]), 4)
+	panel.Limitations = limitStrings(summaryStringSlice(conclusion["limitations"]), 3)
+	return panel
+}
+
+func limitStrings(items []string, limit int) []string {
+	if limit <= 0 || len(items) <= limit {
+		return items
+	}
+	return append([]string(nil), items[:limit]...)
+}
+
+func webEvidenceRows(items []conclusionEvidenceRow, limit int) []webEvidenceRow {
+	if limit > 0 && len(items) > limit {
+		items = items[:limit]
+	}
+	out := make([]webEvidenceRow, 0, len(items))
+	for _, item := range items {
+		out = append(out, webEvidenceRow{
+			Label:      item.Label,
+			Value:      item.Value,
+			Status:     normalizeDecisionStatus(item.Status),
+			StatusText: evidenceStatusText(item.Status),
+		})
+	}
+	return out
+}
+
+func normalizeDecisionStatus(status string) string {
+	switch status {
+	case "success", "warning", "failed", "skipped", "degraded":
+		return status
+	case "partial":
+		return "warning"
+	default:
+		return "unknown"
+	}
+}
+
+func webBottlenecks(items []conclusionBottleneck, limit int) []webBottleneckRow {
+	if limit > 0 && len(items) > limit {
+		items = items[:limit]
+	}
+	out := make([]webBottleneckRow, 0, len(items))
+	for _, item := range items {
+		score := item.Score
+		if score < 0 {
+			score = 0
+		}
+		if score > 100 {
+			score = 100
+		}
+		out = append(out, webBottleneckRow{
+			Label:    item.Label,
+			Score:    item.Score,
+			Severity: item.Severity,
+			Percent:  fmt.Sprintf("%.0f%%", score),
+		})
+	}
+	return out
 }
 
 func groupWebReportSections(sections []webReportSection, qualityNotes []string, shareText string) []webReportGroup {
@@ -580,10 +732,13 @@ func (ws *WebServer) networkSection(result *models.TestResult, overallScore *mod
 		section.Tables = append(section.Tables, table)
 	}
 	if rows := getNetworkIperf3MatrixRows(result); len(rows) > 0 {
-		table := webTable{Title: "iperf3 多节点矩阵", Headers: []string{"节点", "协议", "下载", "上传", "延迟", "错误"}}
+		table := webTable{Title: "iperf3 多节点矩阵", Headers: []string{"节点", "区域", "提供方", "授权", "协议", "下载", "上传", "延迟", "错误"}}
 		for _, row := range rows {
 			table.Rows = append(table.Rows, []string{
-				row.Server,
+				iperf3MatrixNodeLabel(row),
+				fallback(row.Region, "-"),
+				fallback(row.Provider, "-"),
+				iperf3AuthorizationLabel(row.Authorization),
 				row.Protocol,
 				fmt.Sprintf("%.2f Mbps", row.DownloadMbps),
 				fmt.Sprintf("%.2f Mbps", row.UploadMbps),
@@ -597,6 +752,17 @@ func (ws *WebServer) networkSection(result *models.TestResult, overallScore *mod
 		section.Details = append(section.Details, webDetailRow{Label: "网络错误", Value: err})
 	}
 	return section
+}
+
+func iperf3AuthorizationLabel(value string) string {
+	switch value {
+	case "owned":
+		return "自有"
+	case "authorized":
+		return "已授权"
+	default:
+		return fallback(value, "-")
+	}
 }
 
 func (ws *WebServer) testSectionBase(id string, title string, subtitle string, result *models.TestResult, hint string) webReportSection {

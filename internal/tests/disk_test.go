@@ -20,6 +20,73 @@ func TestFioDiskBackendReportsMissingBinary(t *testing.T) {
 	if !strings.Contains(err.Error(), "sudo apt install fio") {
 		t.Fatalf("expected install hint in error, got %v", err)
 	}
+	category, stage, hint, ok := benchmarkErrorFields(err)
+	if !ok {
+		t.Fatalf("expected benchmark error fields, got %T", err)
+	}
+	if category != BenchmarkErrorMissingDependency || stage != "fio_lookup" || hint == "" {
+		t.Fatalf("unexpected benchmark error fields: %q %q %q", category, stage, hint)
+	}
+}
+
+func TestFioDiskBackendClassifiesPermissionFailure(t *testing.T) {
+	backend := NewFioDiskBackend(FioConfig{
+		Runner: &fakeCommandRunner{
+			output:     []byte("fio: failed opening file: Permission denied"),
+			err:        fmt.Errorf("exit status 1"),
+			lookPathOK: true,
+		},
+	})
+
+	_, err := backend.MeasureSequentialWrite(100)
+	if err == nil {
+		t.Fatal("expected fio command failure")
+	}
+	category, stage, hint, ok := benchmarkErrorFields(err)
+	if !ok {
+		t.Fatalf("expected benchmark error fields, got %T", err)
+	}
+	if category != BenchmarkErrorPermission || stage != "fio_write_run" || !strings.Contains(hint, "权限") {
+		t.Fatalf("unexpected benchmark error fields: %q %q %q", category, stage, hint)
+	}
+}
+
+func TestFioDiskBackendClassifiesResourceFailure(t *testing.T) {
+	backend := NewFioDiskBackend(FioConfig{
+		Runner: &fakeCommandRunner{
+			output:     []byte("fio: write failed: No space left on device"),
+			err:        fmt.Errorf("exit status 1"),
+			lookPathOK: true,
+		},
+	})
+
+	_, err := backend.MeasureRandomIOPS(5)
+	if err == nil {
+		t.Fatal("expected fio mixed command failure")
+	}
+	category, stage, hint, ok := benchmarkErrorFields(err)
+	if !ok {
+		t.Fatalf("expected benchmark error fields, got %T", err)
+	}
+	if category != BenchmarkErrorResource || stage != "fio_mixed_run" || !strings.Contains(hint, "资源不足") {
+		t.Fatalf("unexpected benchmark error fields: %q %q %q", category, stage, hint)
+	}
+}
+
+func TestDiskTestAddsBenchmarkErrorMetrics(t *testing.T) {
+	diskTest := NewDiskTestWithBackend(newTestLogger(t), NewFioDiskBackend(FioConfig{
+		Runner: &fakeCommandRunner{lookPathErr: fmt.Errorf("not found")},
+	}))
+
+	result, err := diskTest.Execute()
+	if err == nil {
+		t.Fatal("expected fio execute to fail")
+	}
+	assertMetricString(t, result.Metrics, "error_category", BenchmarkErrorMissingDependency)
+	assertMetricString(t, result.Metrics, "error_stage", "fio_lookup")
+	if result.Metrics["error_hint"] == "" {
+		t.Fatalf("expected error_hint metric, got %#v", result.Metrics)
+	}
 }
 
 func TestFioDiskBackendParsesSequentialReadMBps(t *testing.T) {

@@ -42,7 +42,7 @@ func TestReportJSONSampleContract(t *testing.T) {
 	}
 
 	summary := objectAt(t, sample, "summary")
-	for _, key := range []string{"benchmark_profile", "confidence_level", "score_calibration", "score_breakdown", "vps_benchmark_summary", "share_templates"} {
+	for _, key := range []string{"benchmark_profile", "confidence_level", "score_calibration", "score_breakdown", "vps_benchmark_summary", "assessment_conclusion", "module_assessments", "share_templates"} {
 		if _, ok := summary[key]; !ok {
 			t.Fatalf("sample summary missing key %q", key)
 		}
@@ -90,6 +90,21 @@ func TestReportJSONSampleContract(t *testing.T) {
 	network := objectAt(t, vpsSummary, "network")
 	if network["backend"] != "iperf3" {
 		t.Fatalf("expected VPS summary network backend iperf3, got %#v", network["backend"])
+	}
+	conclusion := objectAt(t, summary, "assessment_conclusion")
+	if _, ok := conclusion["headline"].(string); !ok {
+		t.Fatalf("expected assessment conclusion headline, got %#v", conclusion["headline"])
+	}
+	if evidence, ok := conclusion["evidence"].([]interface{}); !ok || len(evidence) == 0 {
+		t.Fatalf("expected assessment conclusion evidence, got %#v", conclusion["evidence"])
+	}
+	if bottlenecks, ok := conclusion["bottlenecks"].([]interface{}); !ok || len(bottlenecks) != 4 {
+		t.Fatalf("expected four bottlenecks, got %#v", conclusion["bottlenecks"])
+	}
+	modules := objectAt(t, summary, "module_assessments")
+	networkModule := objectAt(t, modules, "network")
+	if networkModule["confidence"] != "high" {
+		t.Fatalf("expected network module confidence high, got %#v", networkModule["confidence"])
 	}
 
 	share := objectAt(t, summary, "share_templates")

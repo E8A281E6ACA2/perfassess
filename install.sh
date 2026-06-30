@@ -1,5 +1,5 @@
 #!/bin/bash
-# Perfassess - 一键安装脚本
+# Perfassess - 发布二进制安装脚本
 
 set -e
 
@@ -72,7 +72,7 @@ detect_platform() {
 
 # 下载二进制文件
 download_binary() {
-    print_info "正在下载 $BINARY_NAME..."
+    print_info "正在下载发布二进制 $BINARY_NAME..."
     
     # 构建下载URL
     if [ "$OS" = "windows" ]; then
@@ -136,10 +136,12 @@ verify_installation() {
         echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
         echo ""
         echo "快速开始："
-        echo "  1. 运行交互式菜单:  $BINARY_NAME"
-        echo "  2. 快速 CPU 测试:   $BINARY_NAME -b cpu"
+        echo "  1. 默认测评:        $BINARY_NAME"
+        echo "  2. 快速测评:        $BINARY_NAME --quick"
         echo "  3. 完整测试 + Web:  $BINARY_NAME -b all --web"
         echo "  4. 查看帮助:        $BINARY_NAME --help"
+        echo ""
+        echo "全新服务器如需自动准备依赖、源码构建和报告打包，请使用 scripts/bootstrap.sh。"
         echo ""
         echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     else
@@ -159,8 +161,7 @@ cleanup() {
 main() {
     echo ""
     echo "╔════════════════════════════════════════════════════════════════╗"
-    echo "║          Perfassess                       ║"
-    echo "║          Perfassess                         ║"
+    echo "║          Perfassess 发布二进制安装          ║"
     echo "╚════════════════════════════════════════════════════════════════╝"
     echo ""
     

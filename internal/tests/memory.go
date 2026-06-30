@@ -153,6 +153,7 @@ func (mt *MemoryTest) Execute() (*models.TestResult, error) {
 	metrics["backend"] = mt.backend.Name()
 	if err := mt.prepareBackendMemory(); err != nil {
 		status = "failed"
+		addBenchmarkErrorMetrics(metrics, err)
 		return mt.CreateResult("failed", metrics, fmt.Sprintf("准备内存测试失败: %v", err)), err
 	}
 
@@ -163,6 +164,7 @@ func (mt *MemoryTest) Execute() (*models.TestResult, error) {
 	})
 	if err != nil {
 		status = "failed"
+		addBenchmarkErrorMetrics(metrics, err)
 		return mt.CreateResult("failed", metrics, fmt.Sprintf("读取测试失败: %v", err)), err
 	}
 	readStats := calculateMemorySpeedStats(readSamples)
@@ -181,6 +183,7 @@ func (mt *MemoryTest) Execute() (*models.TestResult, error) {
 	})
 	if err != nil {
 		status = "failed"
+		addBenchmarkErrorMetrics(metrics, err)
 		return mt.CreateResult("failed", metrics, fmt.Sprintf("写入测试失败: %v", err)), err
 	}
 	writeStats := calculateMemorySpeedStats(writeSamples)

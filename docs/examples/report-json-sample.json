@@ -177,6 +177,10 @@
         "iperf3_matrix_best_download_mbps": 900,
         "iperf3_matrix_best_upload_mbps": 850,
         "iperf3_matrix_1_server": "127.0.0.1:5201",
+        "iperf3_matrix_1_name": "Tokyo",
+        "iperf3_matrix_1_region": "JP",
+        "iperf3_matrix_1_provider": "SelfHosted",
+        "iperf3_matrix_1_authorization": "owned",
         "iperf3_matrix_1_host": "127.0.0.1",
         "iperf3_matrix_1_port": "5201",
         "iperf3_matrix_1_protocol": "ipv4",
@@ -184,6 +188,10 @@
         "iperf3_matrix_1_download_mbps": 900,
         "iperf3_matrix_1_upload_mbps": 850,
         "iperf3_matrix_2_server": "[2001:db8::1]:5201",
+        "iperf3_matrix_2_name": "Frankfurt-v6",
+        "iperf3_matrix_2_region": "DE",
+        "iperf3_matrix_2_provider": "Lab",
+        "iperf3_matrix_2_authorization": "authorized",
         "iperf3_matrix_2_host": "2001:db8::1",
         "iperf3_matrix_2_port": "5201",
         "iperf3_matrix_2_protocol": "ipv6",
@@ -208,6 +216,323 @@
     "quality_notes": [
       "核心测试均已完成，未发现明显降级或估算路径。"
     ],
+    "assessment_conclusion": {
+      "headline": "综合性能优秀，适合高负载 VPS 场景，置信度 high。",
+      "scenario": "分项表现较均衡，适合常规 Web、API、代理、监控和中轻量数据库场景。",
+      "suitability": [
+        "常规 Web / API 服务",
+        "网络转发、下载、代理或边缘节点",
+        "中轻量数据库或缓存服务",
+        "编译、压缩、批处理等 CPU 任务"
+      ],
+      "evidence": [
+        {
+          "category": "score",
+          "label": "综合评分",
+          "value": "92.13 / 100，等级 优秀",
+          "status": "success",
+          "detail": "评分基准汇总 CPU 88.00、内存 78.67、磁盘 100.00、网络 100.00。"
+        },
+        {
+          "category": "bottleneck",
+          "label": "主要短板",
+          "value": "内存 78.67 / 100",
+          "status": "success",
+          "detail": "短板排序按分项得分从低到高生成，用于判断优先复测或规避的业务场景。"
+        },
+        {
+          "category": "coverage",
+          "label": "核心测试覆盖",
+          "value": "4 / 4 成功，失败 0，跳过 0，降级 0",
+          "status": "success",
+          "detail": "CPU、内存、磁盘、网络四个核心模块决定报告是否可作为完整性能结论。"
+        },
+        {
+          "category": "backend",
+          "label": "主流后端覆盖",
+          "value": "4 / 4",
+          "status": "success",
+          "detail": "CPU=sysbench，内存=sysbench，磁盘=fio，网络=iperf3。"
+        },
+        {
+          "category": "network",
+          "label": "网络测量路径",
+          "value": "上传真实测量，延迟 20.00 ms",
+          "status": "success",
+          "detail": "网络上传为真实测量路径。"
+        },
+        {
+          "category": "confidence",
+          "label": "报告置信度",
+          "value": "high",
+          "status": "success",
+          "detail": "置信度会受核心测试失败、内置轻量后端、估算上传和外部依赖缺失影响。"
+        }
+      ],
+      "limitations": [
+        "核心测试均已完成，未发现明显降级或估算路径。"
+      ],
+      "recommendations": [
+        "可以保留本次 JSON 报告，用同一档位对其他 VPS 做横向比较。"
+      ],
+      "bottlenecks": [
+        {
+          "component": "memory",
+          "label": "内存",
+          "score": 78.67,
+          "severity": "good"
+        },
+        {
+          "component": "cpu",
+          "label": "CPU",
+          "score": 88,
+          "severity": "good"
+        },
+        {
+          "component": "disk",
+          "label": "磁盘",
+          "score": 100,
+          "severity": "good"
+        },
+        {
+          "component": "network",
+          "label": "网络",
+          "score": 100,
+          "severity": "good"
+        }
+      ],
+      "confidence": "high",
+      "grade": "优秀",
+      "total_score": 92.13
+    },
+    "module_assessments": {
+      "cpu": {
+        "id": "cpu",
+        "title": "CPU 性能",
+        "status": "success",
+        "confidence": "high",
+        "summary": "CPU 后端 sysbench，状态 成功。",
+        "evidence": [
+          {
+            "category": "backend",
+            "label": "测试后端",
+            "value": "sysbench",
+            "status": "success",
+            "detail": "sysbench 或 Geekbench 更适合公开横向比较；builtin 更适合快速验收。"
+          },
+          {
+            "category": "single_core",
+            "label": "单核评分",
+            "value": "85.00",
+            "status": "success",
+            "detail": "单核评分影响动态语言、控制面和低并发请求响应。"
+          },
+          {
+            "category": "multi_core",
+            "label": "多核评分",
+            "value": "90.00",
+            "status": "success",
+            "detail": "多核评分影响编译、批处理和多进程服务容量。"
+          },
+          {
+            "category": "score",
+            "label": "CPU 总分",
+            "value": "88.00 / 100",
+            "status": "success",
+            "detail": "CPU 总分由单核、多核和后端评分口径综合生成。"
+          }
+        ],
+        "limitations": [],
+        "recommendations": [
+          "保留同一 CPU 后端和档位，用于不同 VPS 横向比较。"
+        ]
+      },
+      "memory": {
+        "id": "memory",
+        "title": "内存性能",
+        "status": "success",
+        "confidence": "high",
+        "summary": "内存后端 sysbench，状态 成功。",
+        "evidence": [
+          {
+            "category": "backend",
+            "label": "测试后端",
+            "value": "sysbench",
+            "status": "success",
+            "detail": "sysbench 内存后端更接近主流报告口径；builtin 更适合快速验收。"
+          },
+          {
+            "category": "read",
+            "label": "读取速度",
+            "value": "3200.00 MB/s",
+            "status": "success",
+            "detail": "读取吞吐影响缓存、扫描和数据处理场景。"
+          },
+          {
+            "category": "write",
+            "label": "写入速度",
+            "value": "2800.00 MB/s",
+            "status": "success",
+            "detail": "写入吞吐影响缓存更新和内存密集型任务。"
+          },
+          {
+            "category": "score",
+            "label": "内存评分",
+            "value": "78.67 / 100",
+            "status": "success",
+            "detail": "内存评分由读取、写入和评分基准综合生成。"
+          }
+        ],
+        "limitations": [],
+        "recommendations": [
+          "保留同一内存后端和档位，用于不同 VPS 横向比较。"
+        ]
+      },
+      "disk": {
+        "id": "disk",
+        "title": "磁盘性能",
+        "status": "success",
+        "confidence": "high",
+        "summary": "磁盘后端 fio，状态 成功。",
+        "evidence": [
+          {
+            "category": "backend",
+            "label": "测试后端",
+            "value": "fio",
+            "status": "success",
+            "detail": "fio 更接近主流磁盘基准口径；builtin 更适合快速验收。"
+          },
+          {
+            "category": "sequential_read",
+            "label": "顺序读取",
+            "value": "1000.00 MB/s",
+            "status": "success",
+            "detail": "顺序读取影响镜像、备份和大文件读取场景。"
+          },
+          {
+            "category": "sequential_write",
+            "label": "顺序写入",
+            "value": "800.00 MB/s",
+            "status": "success",
+            "detail": "顺序写入影响日志、备份和大文件写入场景。"
+          },
+          {
+            "category": "random_iops",
+            "label": "随机 IOPS",
+            "value": "12000",
+            "status": "success",
+            "detail": "随机 IOPS 更影响数据库、小文件和高并发读写。"
+          },
+          {
+            "category": "fio_matrix",
+            "label": "fio 混合矩阵",
+            "value": "4 组",
+            "status": "success",
+            "detail": "混合矩阵可用于观察 4k/64k/1m 等块大小下的读写均衡性。"
+          },
+          {
+            "category": "score",
+            "label": "磁盘评分",
+            "value": "100.00 / 100",
+            "status": "success",
+            "detail": "磁盘评分由顺序读写、随机 IOPS 和评分基准综合生成。"
+          }
+        ],
+        "limitations": [],
+        "recommendations": [
+          "保留同一磁盘后端和档位，用于不同 VPS 横向比较。"
+        ]
+      },
+      "network": {
+        "id": "network",
+        "title": "网络质量",
+        "status": "success",
+        "confidence": "high",
+        "summary": "网络后端 iperf3，状态 success。",
+        "evidence": [
+          {
+            "category": "backend",
+            "label": "网络后端",
+            "value": "iperf3",
+            "status": "success",
+            "detail": "下载来源 iperf3_download，上传来源 iperf3_upload。"
+          },
+          {
+            "category": "latency",
+            "label": "平均延迟",
+            "value": "20.00 ms",
+            "status": "success",
+            "detail": "延迟来自网络测试后端或 TCP connect 近似测量。"
+          },
+          {
+            "category": "download",
+            "label": "下载速度",
+            "value": "1500.00 Mbps",
+            "status": "success",
+            "detail": "下载速度用于判断公网入站吞吐参考能力。"
+          },
+          {
+            "category": "upload",
+            "label": "上传速度",
+            "value": "1000.00 Mbps",
+            "status": "success",
+            "detail": "上传速度来自真实测量路径。"
+          }
+        ],
+        "limitations": [],
+        "recommendations": [
+          "保留同一网络档位结果，用于不同 VPS 横向对比。"
+        ]
+      },
+      "route": {
+        "id": "route",
+        "title": "路由追踪",
+        "status": "skipped",
+        "confidence": "low",
+        "summary": "路由追踪未执行。",
+        "evidence": [],
+        "limitations": [],
+        "recommendations": [
+          "使用 --route-trace 或 standard/full 自动档位补充路由追踪。"
+        ]
+      },
+      "ip_quality": {
+        "id": "ip_quality",
+        "title": "IP 质量",
+        "status": "skipped",
+        "confidence": "low",
+        "summary": "IP 质量检测未执行。",
+        "evidence": [],
+        "limitations": [],
+        "recommendations": [
+          "使用 --ip-quality 或 standard/full 自动档位补充 IP 质量检测。"
+        ]
+      },
+      "streaming": {
+        "id": "streaming",
+        "title": "流媒体解锁",
+        "status": "skipped",
+        "confidence": "low",
+        "summary": "流媒体检测未执行。",
+        "evidence": [],
+        "limitations": [],
+        "recommendations": [
+          "使用 --streaming 或 standard/full 自动档位补充流媒体检测。"
+        ]
+      },
+      "ai_services": {
+        "id": "ai_services",
+        "title": "AI 服务",
+        "status": "skipped",
+        "confidence": "low",
+        "summary": "AI 服务检测未执行。",
+        "evidence": [],
+        "limitations": [],
+        "recommendations": [
+          "使用 --ai-services 或 standard/full 自动档位补充 AI 服务检测。"
+        ]
+      }
+    },
     "benchmark_profile": {
       "name": "full_iperf3",
       "cpu_backend": "sysbench",

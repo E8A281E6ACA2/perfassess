@@ -151,6 +151,26 @@
                     "geekbench"
                   ]
                 },
+                "error_category": {
+                  "type": "string",
+                  "enum": [
+                    "missing_dependency",
+                    "invalid_config",
+                    "command_failed",
+                    "permission_denied",
+                    "resource_limited",
+                    "network_unavailable",
+                    "parse_failed",
+                    "timeout",
+                    "runtime_error"
+                  ]
+                },
+                "error_stage": {
+                  "type": "string"
+                },
+                "error_hint": {
+                  "type": "string"
+                },
                 "single_core_source": {
                   "type": "string"
                 },
@@ -225,6 +245,26 @@
                     "sysbench"
                   ]
                 },
+                "error_category": {
+                  "type": "string",
+                  "enum": [
+                    "missing_dependency",
+                    "invalid_config",
+                    "command_failed",
+                    "permission_denied",
+                    "resource_limited",
+                    "network_unavailable",
+                    "parse_failed",
+                    "timeout",
+                    "runtime_error"
+                  ]
+                },
+                "error_stage": {
+                  "type": "string"
+                },
+                "error_hint": {
+                  "type": "string"
+                },
                 "read_speed_mbps": {
                   "type": "number"
                 },
@@ -285,6 +325,26 @@
                     "builtin",
                     "fio"
                   ]
+                },
+                "error_category": {
+                  "type": "string",
+                  "enum": [
+                    "missing_dependency",
+                    "invalid_config",
+                    "command_failed",
+                    "permission_denied",
+                    "resource_limited",
+                    "network_unavailable",
+                    "parse_failed",
+                    "timeout",
+                    "runtime_error"
+                  ]
+                },
+                "error_stage": {
+                  "type": "string"
+                },
+                "error_hint": {
+                  "type": "string"
                 },
                 "sequential_read_mbps": {
                   "type": "number"
@@ -462,6 +522,26 @@
                     "speedtest"
                   ]
                 },
+                "error_category": {
+                  "type": "string",
+                  "enum": [
+                    "missing_dependency",
+                    "invalid_config",
+                    "command_failed",
+                    "permission_denied",
+                    "resource_limited",
+                    "network_unavailable",
+                    "parse_failed",
+                    "timeout",
+                    "runtime_error"
+                  ]
+                },
+                "error_stage": {
+                  "type": "string"
+                },
+                "error_hint": {
+                  "type": "string"
+                },
                 "backend_server": {
                   "type": "string"
                 },
@@ -596,7 +676,10 @@
                 }
               },
               "patternProperties": {
-                "^iperf3_matrix_[0-9]+_(server|host|protocol|port|error)$": {
+                "^iperf3_matrix_[0-9]+_(server|name|region|provider|authorization|host|protocol|port|error)$": {
+                  "type": "string"
+                },
+                "^network_error_[a-z]+_(category|stage|hint)$": {
                   "type": "string"
                 },
                 "^iperf3_matrix_[0-9]+_(download_mbps|upload_mbps|latency_ms)$": {
@@ -630,6 +713,8 @@
         "tests_skipped",
         "tests_degraded",
         "quality_notes",
+        "assessment_conclusion",
+        "module_assessments",
         "benchmark_profile",
         "confidence_level",
         "vps_benchmark_summary",
@@ -664,6 +749,171 @@
           "type": "array",
           "items": {
             "type": "string"
+          }
+        },
+        "assessment_conclusion": {
+          "type": "object",
+          "required": [
+            "headline",
+            "scenario",
+            "suitability",
+            "evidence",
+            "limitations",
+            "recommendations",
+            "bottlenecks",
+            "confidence",
+            "grade",
+            "total_score"
+          ],
+          "properties": {
+            "headline": {
+              "type": "string"
+            },
+            "scenario": {
+              "type": "string"
+            },
+            "suitability": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "evidence": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "category",
+                  "label",
+                  "value",
+                  "status",
+                  "detail"
+                ],
+                "properties": {
+                  "category": {
+                    "type": "string"
+                  },
+                  "label": {
+                    "type": "string"
+                  },
+                  "value": {
+                    "type": "string"
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "success",
+                      "partial",
+                      "warning",
+                      "failed"
+                    ]
+                  },
+                  "detail": {
+                    "type": "string"
+                  }
+                }
+              }
+            },
+            "limitations": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "recommendations": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "bottlenecks": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "component",
+                  "label",
+                  "score",
+                  "severity"
+                ],
+                "properties": {
+                  "component": {
+                    "type": "string",
+                    "enum": [
+                      "cpu",
+                      "memory",
+                      "disk",
+                      "network"
+                    ]
+                  },
+                  "label": {
+                    "type": "string"
+                  },
+                  "score": {
+                    "type": "number"
+                  },
+                  "severity": {
+                    "type": "string",
+                    "enum": [
+                      "good",
+                      "watch",
+                      "weak"
+                    ]
+                  }
+                }
+              }
+            },
+            "confidence": {
+              "type": "string"
+            },
+            "grade": {
+              "type": "string"
+            },
+            "total_score": {
+              "type": "number"
+            }
+          }
+        },
+        "module_assessments": {
+          "type": "object",
+          "required": [
+            "cpu",
+            "memory",
+            "disk",
+            "network",
+            "route",
+            "ip_quality",
+            "streaming",
+            "ai_services"
+          ],
+          "additionalProperties": {
+            "$ref": "#/$defs/module_assessment"
+          },
+          "properties": {
+            "cpu": {
+              "$ref": "#/$defs/module_assessment"
+            },
+            "memory": {
+              "$ref": "#/$defs/module_assessment"
+            },
+            "disk": {
+              "$ref": "#/$defs/module_assessment"
+            },
+            "network": {
+              "$ref": "#/$defs/module_assessment"
+            },
+            "route": {
+              "$ref": "#/$defs/module_assessment"
+            },
+            "ip_quality": {
+              "$ref": "#/$defs/module_assessment"
+            },
+            "streaming": {
+              "$ref": "#/$defs/module_assessment"
+            },
+            "ai_services": {
+              "$ref": "#/$defs/module_assessment"
+            }
           }
         },
         "benchmark_profile": {
@@ -999,6 +1249,98 @@
     }
   },
   "$defs": {
+    "module_assessment": {
+      "type": "object",
+      "required": [
+        "id",
+        "title",
+        "status",
+        "confidence",
+        "summary",
+        "evidence",
+        "limitations",
+        "recommendations"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "success",
+            "warning",
+            "failed",
+            "skipped"
+          ]
+        },
+        "confidence": {
+          "type": "string",
+          "enum": [
+            "high",
+            "medium",
+            "low"
+          ]
+        },
+        "summary": {
+          "type": "string"
+        },
+        "evidence": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/module_evidence"
+          }
+        },
+        "limitations": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "recommendations": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "module_evidence": {
+      "type": "object",
+      "required": [
+        "category",
+        "label",
+        "value",
+        "status",
+        "detail"
+      ],
+      "properties": {
+        "category": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "value": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "success",
+            "partial",
+            "warning",
+            "failed"
+          ]
+        },
+        "detail": {
+          "type": "string"
+        }
+      }
+    },
     "vps_summary_section": {
       "type": "object",
       "properties": {

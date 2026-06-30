@@ -382,13 +382,17 @@ func getNetworkBackendServer(result *models.TestResult) string {
 }
 
 type networkIperf3MatrixRow struct {
-	Index        int
-	Server       string
-	Protocol     string
-	DownloadMbps float64
-	UploadMbps   float64
-	LatencyMs    float64
-	Error        string
+	Index         int
+	Server        string
+	Name          string
+	Region        string
+	Provider      string
+	Authorization string
+	Protocol      string
+	DownloadMbps  float64
+	UploadMbps    float64
+	LatencyMs     float64
+	Error         string
 }
 
 type networkQualityRow struct {
@@ -433,19 +437,27 @@ func getNetworkIperf3MatrixRows(result *models.TestResult) []networkIperf3Matrix
 	for i := 1; i <= count; i++ {
 		prefix := fmt.Sprintf("iperf3_matrix_%d", i)
 		server, _ := metricString(result.Metrics, prefix+"_server")
+		name, _ := metricString(result.Metrics, prefix+"_name")
+		region, _ := metricString(result.Metrics, prefix+"_region")
+		provider, _ := metricString(result.Metrics, prefix+"_provider")
+		authorization, _ := metricString(result.Metrics, prefix+"_authorization")
 		protocol, _ := metricString(result.Metrics, prefix+"_protocol")
 		download, _ := metricFloat64(result.Metrics, prefix+"_download_mbps")
 		upload, _ := metricFloat64(result.Metrics, prefix+"_upload_mbps")
 		latency, _ := metricFloat64(result.Metrics, prefix+"_latency_ms")
 		errorMessage, _ := metricString(result.Metrics, prefix+"_error")
 		rows = append(rows, networkIperf3MatrixRow{
-			Index:        i,
-			Server:       server,
-			Protocol:     protocol,
-			DownloadMbps: download,
-			UploadMbps:   upload,
-			LatencyMs:    latency,
-			Error:        errorMessage,
+			Index:         i,
+			Server:        server,
+			Name:          name,
+			Region:        region,
+			Provider:      provider,
+			Authorization: authorization,
+			Protocol:      protocol,
+			DownloadMbps:  download,
+			UploadMbps:    upload,
+			LatencyMs:     latency,
+			Error:         errorMessage,
 		})
 	}
 	return rows
@@ -579,6 +591,48 @@ func getNetworkError(result *models.TestResult) string {
 		return message
 	}
 	return ""
+}
+
+type benchmarkErrorSummary struct {
+	Category string
+	Stage    string
+	Hint     string
+}
+
+func getBenchmarkErrorSummary(result *models.TestResult) benchmarkErrorSummary {
+	if result == nil || result.Metrics == nil {
+		return benchmarkErrorSummary{}
+	}
+	summary := benchmarkErrorSummary{}
+	summary.Category, _ = metricString(result.Metrics, "error_category")
+	summary.Stage, _ = metricString(result.Metrics, "error_stage")
+	summary.Hint, _ = metricString(result.Metrics, "error_hint")
+	return summary
+}
+
+func benchmarkErrorCategoryText(category string) string {
+	switch category {
+	case "missing_dependency":
+		return "依赖缺失"
+	case "invalid_config":
+		return "配置错误"
+	case "command_failed":
+		return "命令执行失败"
+	case "permission_denied":
+		return "权限不足"
+	case "resource_limited":
+		return "资源不足"
+	case "network_unavailable":
+		return "网络不可达"
+	case "parse_failed":
+		return "结果解析失败"
+	case "timeout":
+		return "执行超时"
+	case "runtime_error":
+		return "运行异常"
+	default:
+		return category
+	}
 }
 
 func isNetworkUploadEstimated(result *models.TestResult) bool {

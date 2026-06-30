@@ -128,6 +128,11 @@ PROGRESS_HTML = """<!doctype html>
       line-height: 1.6;
       overflow-wrap: anywhere;
     }
+    .activity {
+      margin-top: 8px;
+      color: var(--text);
+      font-weight: 700;
+    }
     .bar {
       height: 10px;
       overflow: hidden;
@@ -197,6 +202,7 @@ PROGRESS_HTML = """<!doctype html>
       <section>
         <h2>当前进度</h2>
         <p class="message" id="message">正在等待进度文件生成。</p>
+        <p class="message activity" id="activity">当前活动：等待测评日志。</p>
         <div class="bar"><div id="bar"></div></div>
         <div class="summary-grid">
           <div class="metric"><div class="metric-label">已完成</div><div class="metric-value" id="done">0</div></div>
@@ -242,6 +248,9 @@ PROGRESS_HTML = """<!doctype html>
       overall.className = `badge ${cls(data.status)}`;
       overall.textContent = statusText[data.status] || data.status || "等待";
       document.getElementById("message").textContent = data.message || "暂无状态信息。";
+      const activeStep = steps.find(s => s.id === active) || {};
+      const activity = data.activity || activeStep.activity || "";
+      document.getElementById("activity").textContent = activity ? `当前活动：${activity}` : "当前活动：等待测评日志。";
       document.getElementById("done").textContent = String(done);
       document.getElementById("total").textContent = String(steps.length);
       document.getElementById("bar").style.width = `${percent}%`;
@@ -395,6 +404,45 @@ def render_tables(tables: list[dict[str, Any]]) -> str:
     return "".join(rendered)
 
 
+def module_assessment_tables(assessment: Any) -> list[dict[str, Any]]:
+    if not isinstance(assessment, dict):
+        return []
+
+    tables: list[dict[str, Any]] = [
+        table("模块结论", ["项目", "内容"], [
+            ["状态", module_status_label(assessment.get("status"))],
+            ["置信度", assessment.get("confidence")],
+            ["结论", assessment.get("summary")],
+        ])
+    ]
+
+    evidence = assessment.get("evidence") if isinstance(assessment.get("evidence"), list) else []
+    evidence_rows = []
+    for item in evidence:
+        if not isinstance(item, dict):
+            continue
+        evidence_rows.append([
+            item.get("label"),
+            item.get("value"),
+            evidence_label(text(item.get("status"))),
+            item.get("detail"),
+        ])
+    if evidence_rows:
+        tables.append(table("证据审计", ["证据", "结果", "状态", "说明"], evidence_rows))
+
+    limitations = assessment.get("limitations") if isinstance(assessment.get("limitations"), list) else []
+    recommendations = assessment.get("recommendations") if isinstance(assessment.get("recommendations"), list) else []
+    action_rows = []
+    for item in limitations:
+        action_rows.append(["限制", item])
+    for item in recommendations:
+        action_rows.append(["建议", item])
+    if action_rows:
+        tables.append(table("限制与建议", ["类型", "内容"], action_rows))
+
+    return tables
+
+
 def render_artifact_links(artifacts: list[dict[str, str]]) -> str:
     if not artifacts:
         return ""
@@ -412,6 +460,275 @@ def render_artifact_links(artifacts: list[dict[str, str]]) -> str:
     return f'<div class="artifact-grid">{"".join(links)}</div>'
 
 
+def first_text(items: Any, fallback: str = "-") -> str:
+    if isinstance(items, list):
+        for item in items:
+            value = text(item, "")
+            if value:
+                return value
+    return fallback
+
+
+def top_evidence_items(conclusion: dict[str, Any], limit: int = 4) -> list[dict[str, str]]:
+    evidence = conclusion.get("evidence") if isinstance(conclusion.get("evidence"), list) else []
+    rows = []
+    for item in evidence[:limit]:
+        if not isinstance(item, dict):
+            continue
+        rows.append({
+            "label": text(item.get("label")),
+            "value": text(item.get("value")),
+            "status": evidence_label(text(item.get("status"))),
+            "status_class": status_class(text(item.get("status"))),
+        })
+    return rows
+
+
+def module_health_items(modules: dict[str, Any]) -> list[dict[str, str]]:
+    rows = []
+    for key in ["cpu", "memory", "disk", "network", "route", "ip_quality", "streaming", "ai_services"]:
+        item = modules.get(key)
+        if not isinstance(item, dict):
+            continue
+        rows.append({
+            "title": text(item.get("title")),
+            "status": module_status_label(item.get("status")),
+            "status_class": status_class(text(item.get("status"))),
+            "confidence": text(item.get("confidence")),
+        })
+    return rows
+
+
+def evidence_map_groups(summary: dict[str, Any]) -> list[dict[str, Any]]:
+    conclusion = summary.get("assessment_conclusion") if isinstance(summary.get("assessment_conclusion"), dict) else {}
+    modules = summary.get("module_assessments") if isinstance(summary.get("module_assessments"), dict) else {}
+    quality_notes = summary.get("quality_notes") if isinstance(summary.get("quality_notes"), list) else []
+
+    groups = [
+        {
+            "title": "核心性能证据",
+            "subtitle": "CPU、内存、磁盘的后端、关键指标和可信度。",
+            "keys": ["cpu", "memory", "disk"],
+            "rows": [],
+        },
+        {
+            "title": "网络与连通证据",
+            "subtitle": "网络吞吐、IP 质量、流媒体和 AI 服务可达性。",
+            "keys": ["network", "route", "ip_quality", "streaming", "ai_services"],
+            "rows": [],
+        },
+    ]
+    for group in groups:
+        for key in group["keys"]:
+            item = modules.get(key)
+            if not isinstance(item, dict) or item.get("status") == "skipped":
+                continue
+            evidence = item.get("evidence") if isinstance(item.get("evidence"), list) else []
+            if evidence:
+                for evidence_item in evidence[:3]:
+                    if not isinstance(evidence_item, dict):
+                        continue
+                    group["rows"].append({
+                        "module": text(item.get("title")),
+                        "evidence": text(evidence_item.get("label")),
+                        "value": text(evidence_item.get("value")),
+                        "status": evidence_label(text(evidence_item.get("status"))),
+                        "status_class": status_class(text(evidence_item.get("status"))),
+                    })
+            else:
+                group["rows"].append({
+                    "module": text(item.get("title")),
+                    "evidence": "模块结论",
+                    "value": text(item.get("summary")),
+                    "status": module_status_label(item.get("status")),
+                    "status_class": status_class(text(item.get("status"))),
+                })
+
+    conclusion_rows = []
+    evidence = conclusion.get("evidence") if isinstance(conclusion.get("evidence"), list) else []
+    for item in evidence[:6]:
+        if isinstance(item, dict):
+            conclusion_rows.append({
+                "module": "总评",
+                "evidence": text(item.get("label")),
+                "value": text(item.get("value")),
+                "status": evidence_label(text(item.get("status"))),
+                "status_class": status_class(text(item.get("status"))),
+            })
+    if conclusion_rows:
+        groups.insert(0, {
+            "title": "总评证据",
+            "subtitle": "支撑最终等级、适用场景和主要短板的证据。",
+            "keys": [],
+            "rows": conclusion_rows,
+        })
+
+    risk_rows = []
+    limitations = conclusion.get("limitations") if isinstance(conclusion.get("limitations"), list) else []
+    recommendations = conclusion.get("recommendations") if isinstance(conclusion.get("recommendations"), list) else []
+    for item in limitations[:3]:
+        risk_rows.append({
+            "module": "限制",
+            "evidence": "主要限制",
+            "value": text(item),
+            "status": "注意",
+            "status_class": "warning",
+        })
+    for item in recommendations[:3]:
+        risk_rows.append({
+            "module": "建议",
+            "evidence": "优先建议",
+            "value": text(item),
+            "status": "建议",
+            "status_class": "success",
+        })
+    for item in quality_notes[:3]:
+        risk_rows.append({
+            "module": "质量提示",
+            "evidence": "可比性",
+            "value": text(item),
+            "status": "提示",
+            "status_class": "skipped",
+        })
+    if risk_rows:
+        groups.append({
+            "title": "限制与建议",
+            "subtitle": "影响置信度、可比性和下一步复测策略的提示。",
+            "keys": [],
+            "rows": risk_rows,
+        })
+
+    return [group for group in groups if group["rows"]]
+
+
+def render_evidence_map(summary: dict[str, Any]) -> str:
+    groups = evidence_map_groups(summary)
+    if not groups:
+        return ""
+    rendered_groups = []
+    for group in groups:
+        rows = []
+        for row in group["rows"]:
+            rows.append(
+                "<tr>"
+                f"<td>{esc(row['module'])}</td>"
+                f"<td>{esc(row['evidence'])}</td>"
+                f"<td>{esc(row['value'])}</td>"
+                f'<td><span class="status-badge status-{esc(row["status_class"])}">{esc(row["status"])}</span></td>'
+                "</tr>"
+            )
+        rendered_groups.append(
+            '<div class="evidence-map-group">'
+            f'<div class="evidence-map-head"><h3>{esc(group["title"])}</h3><p>{esc(group["subtitle"])}</p></div>'
+            '<div class="evidence-table-wrap"><table class="evidence-table">'
+            '<thead><tr><th>模块</th><th>证据</th><th>结果</th><th>状态</th></tr></thead>'
+            f'<tbody>{"".join(rows)}</tbody></table></div>'
+            '</div>'
+        )
+    return (
+        '<section class="evidence-map" aria-label="证据地图">'
+        '<div class="evidence-map-title"><span>Evidence Map</span><h2>证据地图</h2>'
+        '<p>把总评、核心性能、网络与连通、限制建议放在同一张阅读路径里，方便判断报告结论是否有足够支撑。</p></div>'
+        f'{"".join(rendered_groups)}</section>'
+    )
+
+
+def budget_summary(summary: dict[str, Any]) -> str:
+    value = summary.get("budget_summary")
+    return text(value, "") if value else ""
+
+
+def collect_error_diagnostics(report: dict[str, Any]) -> list[dict[str, str]]:
+    test_results = report.get("test_results") if isinstance(report.get("test_results"), dict) else {}
+    rows = []
+    for key, title in [
+        ("cpu_result", "CPU"),
+        ("memory_result", "内存"),
+        ("disk_result", "磁盘"),
+        ("network_result", "网络"),
+    ]:
+        result = test_results.get(key)
+        if not isinstance(result, dict):
+            continue
+        metrics = result.get("metrics") if isinstance(result.get("metrics"), dict) else {}
+        category = text(metrics.get("error_category"), "")
+        stage = text(metrics.get("error_stage"), "")
+        hint = text(metrics.get("error_hint"), "")
+        message = text(result.get("error_message"), "") or text(metrics.get("network_error"), "")
+        if category or stage or hint or message:
+            rows.append({
+                "module": title,
+                "status": test_status_label(result.get("status")),
+                "category": error_category_label(category),
+                "stage": stage or "-",
+                "message": message or "-",
+                "hint": hint or "-",
+            })
+    return rows
+
+
+def error_category_label(value: str) -> str:
+    return {
+        "missing_dependency": "依赖缺失",
+        "invalid_config": "配置错误",
+        "command_failed": "命令执行失败",
+        "permission_denied": "权限不足",
+        "resource_limited": "资源不足",
+        "network_unavailable": "网络不可达",
+        "parse_failed": "结果解析失败",
+        "timeout": "执行超时",
+        "runtime_error": "运行异常",
+    }.get(text(value, ""), text(value, "-"))
+
+
+def render_decision_panel(summary: dict[str, Any]) -> str:
+    conclusion = summary.get("assessment_conclusion") if isinstance(summary.get("assessment_conclusion"), dict) else {}
+    modules = summary.get("module_assessments") if isinstance(summary.get("module_assessments"), dict) else {}
+    if not conclusion:
+        return ""
+
+    suitability = conclusion.get("suitability") if isinstance(conclusion.get("suitability"), list) else []
+    recommendations = conclusion.get("recommendations") if isinstance(conclusion.get("recommendations"), list) else []
+    limitations = conclusion.get("limitations") if isinstance(conclusion.get("limitations"), list) else []
+    budget = budget_summary(summary)
+    evidence_cards = []
+    for item in top_evidence_items(conclusion):
+        evidence_cards.append(
+            f'<div class="evidence-card"><div class="evidence-head"><span>{esc(item["label"])}</span>'
+            f'<span class="status-badge status-{esc(item["status_class"])}">{esc(item["status"])}</span></div>'
+            f'<div class="evidence-value">{esc(item["value"])}</div></div>'
+        )
+
+    module_cards = []
+    for item in module_health_items(modules):
+        module_cards.append(
+            f'<div class="module-health-card"><div class="module-health-title">{esc(item["title"])}</div>'
+            f'<span class="status-badge status-{esc(item["status_class"])}">{esc(item["status"])}</span>'
+            f'<div class="module-health-confidence">置信度 {esc(item["confidence"])}</div></div>'
+        )
+
+    return (
+        '<section class="decision-panel" aria-label="结论优先摘要">'
+        '<div class="decision-main">'
+        '<div class="decision-block decision-primary">'
+        '<div class="decision-label">适用判断</div>'
+        f'<h2>{esc(conclusion.get("scenario"))}</h2>'
+        f'<p>{esc(first_text(suitability, "已完成分项可作为局部参考。"))}</p>'
+        '</div>'
+        '<div class="decision-block">'
+        '<div class="decision-label">优先建议</div>'
+        f'<p>{esc(first_text(recommendations, "保留本次 JSON 报告，用同一档位横向比较。"))}</p>'
+        '<div class="decision-label decision-gap">主要限制</div>'
+        f'<p>{esc(first_text(limitations, "未发现明显限制。"))}</p>'
+        '</div>'
+        '</div>'
+        f'<div class="budget-strip"><span>测评预算</span><strong>{esc(budget or "未提供预算说明")}</strong></div>'
+        f'<div class="decision-evidence">{"".join(evidence_cards)}</div>'
+        f'<div class="decision-modules">{"".join(module_cards)}</div>'
+        '</section>'
+    )
+
+
 def result_section(
     section_id: str,
     title: str,
@@ -420,7 +737,9 @@ def result_section(
     metrics: list[dict[str, str]],
     extra_details: list[dict[str, str]],
     hint: str,
+    assessment: Any = None,
 ) -> dict[str, Any]:
+    assessment_tables = module_assessment_tables(assessment)
     if not result:
         return {
             "id": section_id,
@@ -431,7 +750,7 @@ def result_section(
             "summary": hint,
             "metrics": [],
             "details": [],
-            "tables": [],
+            "tables": assessment_tables,
             "hint": hint,
         }
 
@@ -446,7 +765,9 @@ def result_section(
     details.extend(extra_details)
 
     metric_rows = [[key, value] for key, value in sorted(result_metrics.items()) if not isinstance(value, (dict, list))]
-    tables = [table("原始指标", ["指标", "值"], metric_rows)] if metric_rows else []
+    tables = assessment_tables
+    if metric_rows:
+        tables.append(table("原始指标", ["指标", "值"], metric_rows))
     return {
         "id": section_id,
         "title": title,
@@ -459,6 +780,13 @@ def result_section(
         "tables": tables,
         "hint": "" if status == "success" else text(result.get("error_message"), ""),
     }
+
+
+def safe_result_metrics(result: Optional[dict[str, Any]]) -> dict[str, Any]:
+    if not isinstance(result, dict):
+        return {}
+    metrics = result.get("metrics")
+    return metrics if isinstance(metrics, dict) else {}
 
 
 def key_metric_summary(title: str, metrics: dict[str, Any], status: str, hint: str) -> str:
@@ -492,7 +820,8 @@ def simple_value_rows(value: Any) -> list[list[str]]:
     return [["结果", text(value)]]
 
 
-def optional_section(section_id: str, title: str, subtitle: str, value: Any, hint: str) -> dict[str, Any]:
+def optional_section(section_id: str, title: str, subtitle: str, value: Any, hint: str, assessment: Any = None) -> dict[str, Any]:
+    assessment_tables = module_assessment_tables(assessment)
     if not value:
         return {
             "id": section_id,
@@ -503,7 +832,7 @@ def optional_section(section_id: str, title: str, subtitle: str, value: Any, hin
             "summary": hint,
             "metrics": [],
             "details": [],
-            "tables": [],
+            "tables": assessment_tables,
             "hint": hint,
         }
     row_count = len(value) if isinstance(value, (dict, list)) else 1
@@ -516,14 +845,14 @@ def optional_section(section_id: str, title: str, subtitle: str, value: Any, hin
         "summary": f"已生成 {row_count} 项检测数据。",
         "metrics": [metric("数据项", row_count, "", "primary")],
         "details": [],
-        "tables": [table("检测结果", ["项目", "值"], simple_value_rows(value))],
+        "tables": assessment_tables + [table("检测结果", ["项目", "值"], simple_value_rows(value))],
         "hint": "",
     }
 
 
-def availability_section(section_id: str, title: str, subtitle: str, value: Any, hint: str, name_key: str, region_label: str) -> dict[str, Any]:
+def availability_section(section_id: str, title: str, subtitle: str, value: Any, hint: str, name_key: str, region_label: str, assessment: Any = None) -> dict[str, Any]:
     if not isinstance(value, dict) or not value:
-        return optional_section(section_id, title, subtitle, None, hint)
+        return optional_section(section_id, title, subtitle, None, hint, assessment)
 
     items = [item for item in value.values() if isinstance(item, dict)]
     available_count = sum(1 for item in items if item.get("available"))
@@ -550,7 +879,7 @@ def availability_section(section_id: str, title: str, subtitle: str, value: Any,
             metric("不可用", len(items) - available_count, "", "amber" if available_count else "red"),
         ],
         "details": [],
-        "tables": [table("检测结果", ["项目", "状态", region_label, "说明"], rows)],
+        "tables": module_assessment_tables(assessment) + [table("检测结果", ["项目", "状态", region_label, "说明"], rows)],
         "hint": "",
     }
 
@@ -581,10 +910,10 @@ def streaming_unlock_type(value: Any) -> str:
     }.get(text(value, ""), text(value))
 
 
-def streaming_section(value: Any) -> dict[str, Any]:
+def streaming_section(value: Any, assessment: Any = None) -> dict[str, Any]:
     hint = "本次未启用流媒体检测。使用 --streaming、--full 或 bootstrap 的 standard/full 档位启用。"
     if not isinstance(value, dict) or not value:
-        return optional_section("streaming", "流媒体解锁", "Netflix、Disney+、YouTube 等平台的区域访问能力。", None, hint)
+        return optional_section("streaming", "流媒体解锁", "Netflix、Disney+、YouTube 等平台的区域访问能力。", None, hint, assessment)
 
     items = [item for item in value.values() if isinstance(item, dict)]
     available_count = sum(1 for item in items if item.get("available"))
@@ -614,7 +943,7 @@ def streaming_section(value: Any) -> dict[str, Any]:
             metric("不可用", len(items) - available_count, "", "amber" if available_count else "red"),
         ],
         "details": [],
-        "tables": [table("平台结果", ["分组", "平台", "状态", "区域", "解锁类型", "协议", "说明"], rows)],
+        "tables": module_assessment_tables(assessment) + [table("平台结果", ["分组", "平台", "状态", "区域", "解锁类型", "协议", "说明"], rows)],
         "hint": "",
     }
 
@@ -639,10 +968,10 @@ def ai_access_type(value: Any) -> str:
     }.get(text(value, ""), text(value))
 
 
-def ai_section(value: Any) -> dict[str, Any]:
+def ai_section(value: Any, assessment: Any = None) -> dict[str, Any]:
     hint = "本次未启用 AI 服务检测。使用 --ai-services、--full 或 bootstrap 的 standard/full 档位启用。"
     if not isinstance(value, dict) or not value:
-        return optional_section("ai", "AI 服务检测", "OpenAI、Gemini 等 AI 服务的可访问性。", None, hint)
+        return optional_section("ai", "AI 服务检测", "OpenAI、Gemini 等 AI 服务的可访问性。", None, hint, assessment)
 
     items = [item for item in value.values() if isinstance(item, dict)]
     available_count = sum(1 for item in items if item.get("available"))
@@ -671,7 +1000,7 @@ def ai_section(value: Any) -> dict[str, Any]:
             metric("不可用", len(items) - available_count, "", "amber" if available_count else "red"),
         ],
         "details": [],
-        "tables": [table("服务结果", ["分组", "服务", "状态", "访问类型", "区域提示", "说明"], rows)],
+        "tables": module_assessment_tables(assessment) + [table("服务结果", ["分组", "服务", "状态", "访问类型", "区域提示", "说明"], rows)],
         "hint": "",
     }
 
@@ -766,10 +1095,10 @@ def severity_label(value: Any) -> str:
     }.get(text(value, "info").lower(), text(value, "信息"))
 
 
-def route_section(value: Any) -> dict[str, Any]:
+def route_section(value: Any, assessment: Any = None) -> dict[str, Any]:
     hint = "本次未启用路由追踪。使用 --route-trace、--full 或 bootstrap 的 standard/full 档位启用。"
     if not isinstance(value, list) or not value:
-        return optional_section("route", "路由追踪", "到主要地区和节点的网络路径质量。", None, hint)
+        return optional_section("route", "路由追踪", "到主要地区和节点的网络路径质量。", None, hint, assessment)
 
     success_count = sum(1 for item in value if isinstance(item, dict) and item.get("success"))
     total_hops = sum(int(item.get("total_hops") or len(item.get("hops") or [])) for item in value if isinstance(item, dict) and item.get("success"))
@@ -782,7 +1111,7 @@ def route_section(value: Any) -> dict[str, Any]:
         if isinstance(item, dict) and isinstance(item.get("average_latency_ms"), (int, float)) and item.get("average_latency_ms") > 0
     ]
     avg_latency = sum(avg_latency_values) / len(avg_latency_values) if avg_latency_values else 0
-    tables = [
+    tables = module_assessment_tables(assessment) + [
         table("追踪目标", ["方向", "目标", "评级", "状态", "跳数", "超时", "平均延迟", "最后一跳/错误"], [
             [
                 route_direction_label(item),
@@ -913,12 +1242,13 @@ def format_route_latency(value: Any) -> str:
     return text(value)
 
 
-def ip_quality_section(summary: dict[str, Any]) -> dict[str, Any]:
+def ip_quality_section(summary: dict[str, Any], assessment: Any = None) -> dict[str, Any]:
     report = summary.get("ip_quality_report")
     hint = "本次未启用 IP 质量检测。使用 --ip-quality 或 --full 启用。"
     if not isinstance(report, dict):
-        return optional_section("ip-quality", "IP 节点分析报告", "公网 IP、归属地、机房类型、欺诈风险、DNSBL 和邮件连通性。", None, hint)
+        return optional_section("ip-quality", "IP 节点分析报告", "公网 IP、归属地、机房类型、欺诈风险、DNSBL 和邮件连通性。", None, hint, assessment)
 
+    tables = module_assessment_tables(assessment)
     blacklist = report.get("blacklist_summary") if isinstance(report.get("blacklist_summary"), dict) else {}
     verdict = report.get("verdict") if isinstance(report.get("verdict"), dict) else {}
     evidence = report.get("evidence") if isinstance(report.get("evidence"), list) else []
@@ -931,7 +1261,6 @@ def ip_quality_section(summary: dict[str, Any]) -> dict[str, Any]:
     network_stack = report.get("network_stack") if isinstance(report.get("network_stack"), dict) else {}
     level = text(report.get("risk_level"), "unknown")
     status = "failed" if level == "high" else "warning" if level == "medium" else "success"
-    tables = []
     if risk_sources:
         tables.append(table("风险来源", ["来源", "类型", "状态", "信号", "说明"], [
             [item.get("name"), item.get("type"), risk_source_status_label(item.get("status")), item.get("signal"), item.get("detail")]
@@ -1063,12 +1392,48 @@ def ip_quality_basis(report: dict[str, Any], blacklist: dict[str, Any], mail_che
     return " + ".join(parts)
 
 
+def bottleneck_label(value: str) -> str:
+    return {
+        "good": "表现正常",
+        "watch": "需要关注",
+        "weak": "明显短板",
+    }.get(value, text(value))
+
+
+def evidence_label(value: str) -> str:
+    return {
+        "success": "通过",
+        "partial": "部分",
+        "warning": "注意",
+        "failed": "风险",
+    }.get(value, text(value))
+
+
+def module_status_label(value: Any) -> str:
+    return {
+        "success": "通过",
+        "warning": "注意",
+        "failed": "风险",
+        "skipped": "未执行",
+    }.get(text(value, ""), text(value))
+
+
+def test_status_label(value: Any) -> str:
+    return {
+        "success": "成功",
+        "warning": "注意",
+        "failed": "失败",
+        "skipped": "跳过",
+        "partial": "部分完成",
+    }.get(text(value, ""), text(value, "-"))
+
+
 REPORT_GROUPS = [
-    ("overview", "概览", "评分、系统和报告结论。", {"overview", "system"}),
+    ("overview", "概览", "评分、系统和报告结论。", {"overview", "conclusion", "system"}),
     ("core", "核心性能", "CPU、内存、磁盘和网络基础测评。", {"cpu", "memory", "disk", "network"}),
     ("network", "网络扩展", "路由、流媒体、AI 服务、IP 质量和安全体检。", {"route", "streaming", "ai", "ip-quality", "security"}),
     ("stability", "稳定性", "压力测试和长时间负载表现。", {"stress"}),
-    ("delivery", "交付", "报告产物、质量提示和分享模板。", {"artifacts", "quality", "share"}),
+    ("delivery", "交付", "报告产物、质量提示和分享模板。", {"artifacts", "diagnostics", "quality", "share"}),
 ]
 
 
@@ -1109,10 +1474,12 @@ def artifact_section(output_dir: Optional[Path]) -> dict[str, Any]:
         ("终端纯文本报告", "console.txt"),
         ("Markdown 摘要", "summary.md"),
         ("报告压缩包", "perfassess-report.zip"),
+        ("报告产物清单", "artifact_manifest.json"),
         ("完整 JSON", "default.json"),
         ("完整文本报告", "default.txt"),
         ("硬件质量模块", "hardware_quality.json"),
         ("网络质量模块", "net_quality.json"),
+        ("脱敏校准样本", "calibration_sample.json"),
         ("路由追踪模块", "route_trace.json"),
         ("国内方向参考", "backroute_trace.json"),
         ("IP 质量模块", "ip_quality.json"),
@@ -1173,12 +1540,136 @@ def build_report_sections(report: dict[str, Any], output_dir: Optional[Path] = N
                 detail("评分基准", summary.get("score_profile")),
                 detail("评测档位", data_get(summary, "benchmark_profile", "name")),
                 detail("校准版本", data_get(summary, "score_calibration", "version")),
+                detail("测评预算", budget_summary(summary) or "-"),
                 detail("成功/失败/跳过", f"{text(summary.get('tests_success'), '0')} / {text(summary.get('tests_failed'), '0')} / {text(summary.get('tests_skipped'), '0')}"),
             ],
             "tables": [],
             "hint": text(summary.get("performance_note"), ""),
         }
     ]
+
+    conclusion = summary.get("assessment_conclusion") if isinstance(summary.get("assessment_conclusion"), dict) else {}
+    if conclusion:
+        bottlenecks = conclusion.get("bottlenecks") if isinstance(conclusion.get("bottlenecks"), list) else []
+        evidence = conclusion.get("evidence") if isinstance(conclusion.get("evidence"), list) else []
+        limitations = conclusion.get("limitations") if isinstance(conclusion.get("limitations"), list) else []
+        recommendations = conclusion.get("recommendations") if isinstance(conclusion.get("recommendations"), list) else []
+        suitability = conclusion.get("suitability") if isinstance(conclusion.get("suitability"), list) else []
+        sections.append({
+            "id": "conclusion",
+            "title": "测评结论",
+            "subtitle": "适用场景、主要短板、置信度限制和下一步建议。",
+            "status": "success" if text(conclusion.get("grade")) != "未完成" else "warning",
+            "status_text": text(conclusion.get("grade"), "已生成"),
+            "summary": text(conclusion.get("headline")),
+            "metrics": [
+                metric("总分", fmt_number(conclusion.get("total_score")), "/ 100", "primary"),
+                metric("等级", conclusion.get("grade"), "", "primary"),
+                metric("置信度", conclusion.get("confidence"), "", "cyan"),
+                metric("短板", text(data_get(bottlenecks[0], "label") if bottlenecks else "-"), "", "amber"),
+            ],
+            "details": [
+                detail("适用判断", conclusion.get("scenario")),
+                detail("适合场景", "、".join(text(item) for item in suitability) if suitability else "-"),
+                detail("主要限制", "；".join(text(item) for item in limitations[:3]) if limitations else "-"),
+                detail("优先建议", text(recommendations[0]) if recommendations else "-"),
+            ],
+            "tables": [
+                {
+                    "title": "短板排序",
+                    "headers": ["模块", "评分", "状态"],
+                    "rows": [
+                        [text(item.get("label")), fmt_number(item.get("score")), bottleneck_label(text(item.get("severity")))]
+                        for item in bottlenecks
+                        if isinstance(item, dict)
+                    ],
+                },
+                {
+                    "title": "关键证据",
+                    "headers": ["证据", "结果", "状态", "说明"],
+                    "rows": [
+                        [text(item.get("label")), text(item.get("value")), evidence_label(text(item.get("status"))), text(item.get("detail"))]
+                        for item in evidence[:6]
+                        if isinstance(item, dict)
+                    ],
+                },
+                {
+                    "title": "建议",
+                    "headers": ["序号", "内容"],
+                    "rows": [[str(idx + 1), text(item)] for idx, item in enumerate(recommendations[:5])],
+                },
+            ],
+            "hint": "",
+        })
+
+    module_assessments = summary.get("module_assessments") if isinstance(summary.get("module_assessments"), dict) else {}
+    module_rows = []
+    module_evidence_rows = []
+    for key in ["cpu", "memory", "disk", "network", "route", "ip_quality", "streaming", "ai_services"]:
+        item = module_assessments.get(key)
+        if not isinstance(item, dict) or item.get("status") == "skipped":
+            continue
+        module_rows.append([
+            text(item.get("title")),
+            module_status_label(item.get("status")),
+            text(item.get("confidence")),
+            text(item.get("summary")),
+        ])
+        evidence = item.get("evidence") if isinstance(item.get("evidence"), list) else []
+        for evidence_item in evidence[:3]:
+            if isinstance(evidence_item, dict):
+                module_evidence_rows.append([
+                    text(item.get("title")),
+                    text(evidence_item.get("label")),
+                    text(evidence_item.get("value")),
+                    evidence_label(text(evidence_item.get("status"))),
+                    text(evidence_item.get("detail")),
+                ])
+    if module_rows:
+        sections.append({
+            "id": "module-assessments",
+            "title": "模块可信度",
+            "subtitle": "网络、IP、流媒体和 AI 服务的模块级结论、证据和限制。",
+            "status": "success" if all(row[1] == "通过" for row in module_rows) else "warning",
+            "status_text": f"{len(module_rows)} 个模块",
+            "summary": "模块级评估用于解释扩展检测结果是否可直接作为结论。",
+            "metrics": [
+                metric("模块数", len(module_rows), "", "primary"),
+                metric("高置信", sum(1 for row in module_rows if row[2] == "high"), "", "green"),
+                metric("注意", sum(1 for row in module_rows if row[1] != "通过"), "", "amber"),
+            ],
+            "details": [],
+            "tables": [
+                table("模块判断", ["模块", "状态", "置信度", "结论"], module_rows),
+                table("模块证据", ["模块", "证据", "结果", "状态", "说明"], module_evidence_rows),
+            ],
+            "hint": "",
+        })
+
+    diagnostics = collect_error_diagnostics(report)
+    if diagnostics:
+        sections.append({
+            "id": "diagnostics",
+            "title": "诊断提示",
+            "subtitle": "外部后端、配置、命令执行和解析失败的结构化原因。",
+            "status": "warning",
+            "status_text": f"{len(diagnostics)} 条提示",
+            "summary": "这些提示用于判断本次报告的失败或降级原因，以及下一步如何处理。",
+            "metrics": [
+                metric("提示数", len(diagnostics), "", "amber"),
+                metric("依赖缺失", sum(1 for row in diagnostics if row["category"] == "依赖缺失"), "", "red"),
+                metric("配置错误", sum(1 for row in diagnostics if row["category"] == "配置错误"), "", "amber"),
+                metric("解析失败", sum(1 for row in diagnostics if row["category"] == "结果解析失败"), "", "amber"),
+            ],
+            "details": [],
+            "tables": [
+                table("错误诊断", ["模块", "状态", "分类", "阶段", "错误", "建议"], [
+                    [row["module"], row["status"], row["category"], row["stage"], row["message"], row["hint"]]
+                    for row in diagnostics
+                ]),
+            ],
+            "hint": "缺失可选依赖不会阻止 builtin 路径生成报告，但会降低主流后端可比性。",
+        })
 
     cpu = system.get("cpu") if isinstance(system.get("cpu"), dict) else {}
     memory_info = system.get("memory") if isinstance(system.get("memory"), dict) else {}
@@ -1219,46 +1710,46 @@ def build_report_sections(report: dict[str, Any], output_dir: Optional[Path] = N
     })
 
     cpu_result = test_results.get("cpu_result") if isinstance(test_results.get("cpu_result"), dict) else None
-    cpu_metrics = cpu_result.get("metrics", {}) if cpu_result else {}
+    cpu_metrics = safe_result_metrics(cpu_result)
     sections.append(result_section("cpu", "CPU 测试", "单核、多核性能和采样稳定性。", cpu_result, [
         metric("CPU 评分", fmt_number(summary.get("cpu_score")), "/ 100", "primary"),
         metric("单核", fmt_number(cpu_metrics.get("single_core_score")), "", "primary"),
         metric("多核", fmt_number(cpu_metrics.get("multi_core_score")), "", "primary"),
         metric("后端", cpu_metrics.get("backend"), "", "primary"),
-    ], [], "本次未执行 CPU 测试。"))
+    ], [], "本次未执行 CPU 测试。", module_assessments.get("cpu")))
 
     memory_result = test_results.get("memory_result") if isinstance(test_results.get("memory_result"), dict) else None
-    memory_metrics = memory_result.get("metrics", {}) if memory_result else {}
+    memory_metrics = safe_result_metrics(memory_result)
     sections.append(result_section("memory", "内存测试", "内存读写吞吐和采样稳定性。", memory_result, [
         metric("内存评分", fmt_number(summary.get("memory_score")), "/ 100", "green"),
         metric("读取速度", fmt_number(memory_metrics.get("read_speed_mbps")), "MB/s", "green"),
         metric("写入速度", fmt_number(memory_metrics.get("write_speed_mbps")), "MB/s", "green"),
         metric("后端", memory_metrics.get("backend"), "", "green"),
-    ], [], "本次未执行内存测试。"))
+    ], [], "本次未执行内存测试。", module_assessments.get("memory")))
 
     disk_result = test_results.get("disk_result") if isinstance(test_results.get("disk_result"), dict) else None
-    disk_metrics = disk_result.get("metrics", {}) if disk_result else {}
+    disk_metrics = safe_result_metrics(disk_result)
     sections.append(result_section("disk", "磁盘测试", "顺序读写、随机 IOPS 和磁盘评分。", disk_result, [
         metric("磁盘评分", fmt_number(summary.get("disk_score")), "/ 100", "amber"),
         metric("顺序读取", fmt_number(disk_metrics.get("sequential_read_mbps") or disk_metrics.get("read_speed_mbps")), "MB/s", "amber"),
         metric("顺序写入", fmt_number(disk_metrics.get("sequential_write_mbps") or disk_metrics.get("write_speed_mbps")), "MB/s", "amber"),
         metric("随机 IOPS", fmt_int(disk_metrics.get("random_iops")), "IOPS", "amber"),
-    ], [], "本次未执行磁盘测试。"))
+    ], [], "本次未执行磁盘测试。", module_assessments.get("disk")))
 
     network_result = test_results.get("network_result") if isinstance(test_results.get("network_result"), dict) else None
-    network_metrics = network_result.get("metrics", {}) if network_result else {}
+    network_metrics = safe_result_metrics(network_result)
     sections.append(result_section("network", "网络测试", "延迟、下载、上传、IPv4/IPv6 和多节点质量。", network_result, [
         metric("网络评分", fmt_number(summary.get("network_score")), "/ 100", "cyan"),
         metric("平均延迟", fmt_number(network_metrics.get("latency_ms")), "ms", "cyan"),
         metric("下载速度", fmt_number(network_metrics.get("download_speed_mbps")), "Mbps", "cyan"),
         metric("上传速度", fmt_number(network_metrics.get("upload_speed_mbps")), "Mbps", "cyan"),
-    ], [], "本次未执行网络测试。"))
+    ], [], "本次未执行网络测试。", module_assessments.get("network")))
 
     sections.extend([
-        route_section(summary.get("route_trace_results")),
-        streaming_section(summary.get("streaming_results")),
-        ai_section(summary.get("ai_results")),
-        ip_quality_section(summary),
+        route_section(summary.get("route_trace_results"), module_assessments.get("route")),
+        streaming_section(summary.get("streaming_results"), module_assessments.get("streaming")),
+        ai_section(summary.get("ai_results"), module_assessments.get("ai_services")),
+        ip_quality_section(summary, module_assessments.get("ip_quality")),
         stress_section(summary.get("stress_report")),
         security_section(summary.get("security_report")),
         artifact_section(output_dir),
@@ -1276,6 +1767,8 @@ def render_report(report: dict[str, Any], output_dir: Optional[Path] = None) -> 
     sections = build_report_sections(report, output_dir)
     quality_notes = summary.get("quality_notes") if isinstance(summary.get("quality_notes"), list) else []
     share = data_get(summary, "share_templates", "plain_text", default="")
+    decision_panel = render_decision_panel(summary)
+    evidence_map = render_evidence_map(summary)
     extra_ids = set()
     if quality_notes:
         extra_ids.add("quality")
@@ -1369,16 +1862,47 @@ def render_report(report: dict[str, Any], output_dir: Optional[Path] = None) -> 
     .actions {{ display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }}
     .chip, .action-link, .status-badge {{ display: inline-flex; align-items: center; min-height: 30px; padding: 5px 11px; border-radius: 999px; font-size: 12px; font-weight: 720; }}
     .chip, .action-link {{ color: #041e49; background: var(--primary-container); text-decoration: none; }}
-    .hero {{ overflow: hidden; border-radius: 8px; padding: 32px; color: #fff; background: linear-gradient(135deg, rgba(11, 87, 208, 0.96), rgba(0, 99, 155, 0.92)); box-shadow: 0 2px 6px rgba(60, 64, 67, 0.16), 0 8px 24px rgba(60, 64, 67, 0.10); }}
-    .hero-content {{ display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 28px; align-items: end; }}
+    .hero {{ overflow: visible; border-radius: 8px; padding: 28px 32px; color: #fff; background: linear-gradient(135deg, rgba(11, 87, 208, 0.96), rgba(0, 99, 155, 0.92)); box-shadow: 0 2px 6px rgba(60, 64, 67, 0.16), 0 8px 24px rgba(60, 64, 67, 0.10); }}
+    .hero-content {{ display: grid; grid-template-columns: minmax(0, 1fr) 170px; gap: 24px; align-items: end; }}
     .eyebrow {{ display: inline-flex; border-radius: 999px; padding: 7px 12px; background: rgba(255, 255, 255, 0.16); font-size: 13px; font-weight: 700; }}
-    .hero h1 {{ margin: 18px 0 10px; font-size: clamp(34px, 6vw, 64px); line-height: 0.98; letter-spacing: 0; }}
+    .hero h1 {{ margin: 14px 0 10px; padding-left: 2px; font-size: clamp(34px, 4.8vw, 56px); line-height: 1.08; letter-spacing: 0; overflow-wrap: anywhere; }}
     .hero p {{ margin: 0; max-width: 760px; color: rgba(255, 255, 255, 0.86); font-size: 15px; line-height: 1.8; }}
     .chip-row {{ display: flex; flex-wrap: wrap; gap: 10px; margin-top: 20px; }}
-    .hero-score {{ width: 190px; min-height: 190px; border-radius: 8px; padding: 22px; display: grid; align-content: center; text-align: center; background: rgba(255, 255, 255, 0.17); border: 1px solid rgba(255, 255, 255, 0.26); }}
-    .score-number {{ font-size: 64px; line-height: 1; font-weight: 820; }}
+    .hero-score {{ width: 170px; min-height: 150px; border-radius: 8px; padding: 18px; display: grid; align-content: center; text-align: center; background: rgba(255, 255, 255, 0.17); border: 1px solid rgba(255, 255, 255, 0.26); }}
+    .score-number {{ font-size: 58px; line-height: 1; font-weight: 820; }}
     .score-label {{ margin-top: 8px; color: rgba(255, 255, 255, 0.82); font-size: 13px; }}
     .report-layout {{ display: grid; grid-template-columns: 248px minmax(0, 1fr); gap: 28px; align-items: start; margin-top: 24px; }}
+    .decision-panel {{ margin-top: 18px; display: grid; gap: 14px; border-radius: 8px; padding: 18px; background: rgba(255, 255, 255, 0.92); border: 1px solid var(--outline); box-shadow: 0 1px 2px rgba(60, 64, 67, 0.10); }}
+    .decision-main {{ display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(280px, 0.65fr); gap: 14px; }}
+    .decision-block {{ min-width: 0; border-radius: 8px; padding: 16px; background: var(--surface-2); border: 1px solid var(--outline); }}
+    .decision-primary {{ background: var(--primary-container); border-color: #a8c7fa; }}
+    .decision-label {{ color: var(--muted); font-size: 12px; font-weight: 820; }}
+    .decision-gap {{ margin-top: 14px; }}
+    .decision-block h2 {{ margin: 8px 0 8px; font-size: 22px; line-height: 1.35; letter-spacing: 0; }}
+    .decision-block p {{ margin: 8px 0 0; color: var(--text); font-size: 14px; line-height: 1.7; }}
+    .budget-strip {{ display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 12px; align-items: start; border-radius: 8px; padding: 12px 14px; background: #fff8e1; border: 1px solid #fdd663; color: var(--text); }}
+    .budget-strip span {{ color: var(--amber); font-size: 12px; font-weight: 840; white-space: nowrap; }}
+    .budget-strip strong {{ font-size: 13px; line-height: 1.6; font-weight: 680; overflow-wrap: anywhere; }}
+    .decision-evidence, .decision-modules {{ display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }}
+    .evidence-card, .module-health-card {{ min-width: 0; min-height: 92px; border-radius: 8px; padding: 13px; background: #fff; border: 1px solid var(--outline); }}
+    .evidence-head {{ display: flex; align-items: center; justify-content: space-between; gap: 8px; color: var(--muted); font-size: 12px; font-weight: 800; }}
+    .evidence-value {{ margin-top: 12px; color: var(--text); font-size: 17px; line-height: 1.3; font-weight: 820; overflow-wrap: anywhere; }}
+    .module-health-title {{ color: var(--muted); font-size: 12px; font-weight: 820; margin-bottom: 10px; }}
+    .module-health-confidence {{ margin-top: 12px; color: var(--text); font-size: 13px; font-weight: 720; }}
+    .evidence-map {{ margin-top: 18px; display: grid; gap: 14px; border-radius: 8px; padding: 18px; background: rgba(255, 255, 255, 0.92); border: 1px solid var(--outline); box-shadow: 0 1px 2px rgba(60, 64, 67, 0.10); }}
+    .evidence-map-title span {{ color: var(--primary); font-size: 12px; font-weight: 840; }}
+    .evidence-map-title h2 {{ margin: 5px 0 6px; font-size: 22px; letter-spacing: 0; }}
+    .evidence-map-title p {{ margin: 0; color: var(--muted); font-size: 13px; line-height: 1.7; }}
+    .evidence-map-group {{ min-width: 0; border-radius: 8px; background: #fff; border: 1px solid var(--outline); overflow: hidden; }}
+    .evidence-map-head {{ padding: 14px 16px; background: var(--surface-2); border-bottom: 1px solid var(--outline); }}
+    .evidence-map-head h3 {{ margin: 0; font-size: 15px; }}
+    .evidence-map-head p {{ margin: 5px 0 0; color: var(--muted); font-size: 12px; line-height: 1.55; }}
+    .evidence-table-wrap {{ overflow-x: auto; }}
+    .evidence-table {{ width: 100%; border-collapse: collapse; }}
+    .evidence-table th, .evidence-table td {{ padding: 11px 12px; text-align: left; border-bottom: 1px solid var(--outline); vertical-align: top; font-size: 12px; line-height: 1.5; }}
+    .evidence-table th {{ color: var(--muted); font-weight: 820; white-space: nowrap; }}
+    .evidence-table td:nth-child(1), .evidence-table td:nth-child(2) {{ white-space: nowrap; font-weight: 700; }}
+    .evidence-table td:nth-child(3) {{ min-width: 240px; overflow-wrap: anywhere; }}
     .sidebar {{ position: sticky; top: 16px; padding: 2px 12px 12px 0; background: transparent; border-right: 1px solid var(--outline); box-shadow: none; overflow: visible; }}
     .sidebar-title {{ padding: 4px 8px 10px; color: var(--muted); font-size: 12px; font-weight: 800; }}
     .nav-group + .nav-group {{ margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--outline); }}
@@ -1387,10 +1911,10 @@ def render_report(report: dict[str, Any], output_dir: Optional[Path] = None) -> 
     .nav-link:hover, .nav-link.active {{ background: var(--primary-container); color: #041e49; }}
     .nav-link.active {{ box-shadow: inset 3px 0 0 var(--primary); }}
     .content-stack {{ display: grid; gap: 18px; }}
-    .report-health {{ display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-top: 18px; }}
-    .health-item {{ min-height: 74px; border-radius: 8px; padding: 12px; color: var(--text); background: rgba(255, 255, 255, 0.16); border: 1px solid rgba(255, 255, 255, 0.24); }}
+    .report-health {{ display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-top: 16px; }}
+    .health-item {{ min-height: 66px; border-radius: 8px; padding: 10px 12px; color: var(--text); background: rgba(255, 255, 255, 0.16); border: 1px solid rgba(255, 255, 255, 0.24); }}
     .health-label {{ font-size: 12px; color: rgba(255, 255, 255, 0.78); font-weight: 720; }}
-    .health-value {{ margin-top: 6px; font-size: 26px; font-weight: 820; }}
+    .health-value {{ margin-top: 4px; font-size: 24px; font-weight: 820; }}
     .section-group {{ display: grid; gap: 14px; }}
     .section-group-head {{ padding: 2px 2px 0; }}
     .section-group-head h2 {{ margin: 0; font-size: 18px; }}
@@ -1439,17 +1963,29 @@ def render_report(report: dict[str, Any], output_dir: Optional[Path] = None) -> 
     .footer {{ margin-top: 24px; padding: 22px; text-align: center; color: var(--muted); font-size: 13px; }}
     @media (max-width: 1100px) {{
       .report-layout {{ grid-template-columns: 1fr; }}
+      .decision-main {{ grid-template-columns: 1fr; }}
+      .decision-evidence, .decision-modules {{ grid-template-columns: repeat(2, minmax(0, 1fr)); }}
       .sidebar {{ position: static; display: flex; gap: 8px; padding: 0 0 10px; border-right: 0; border-bottom: 1px solid var(--outline); overflow-x: auto; }}
       .sidebar-title {{ display: none; }}
       .nav-link {{ flex: 0 0 auto; }}
     }}
     @media (max-width: 760px) {{
       .app-shell {{ width: min(100% - 20px, 1440px); padding-top: 12px; }}
-      .hero, .module-card {{ padding: 18px; }}
+      .top-app-bar {{ align-items: flex-start; flex-direction: column; gap: 12px; }}
+      .actions {{ justify-content: flex-start; }}
+      .hero {{ padding: 18px; }}
+      .module-card {{ padding: 18px; }}
       .hero-content, .detail-grid {{ grid-template-columns: 1fr; }}
-      .report-health {{ grid-template-columns: repeat(2, minmax(0, 1fr)); }}
-      .hero-score {{ width: 100%; min-height: 130px; }}
+      .hero h1 {{ font-size: 36px; margin-top: 12px; }}
+      .hero p {{ font-size: 14px; line-height: 1.65; }}
+      .chip-row {{ gap: 8px; margin-top: 14px; }}
+      .report-health {{ display: none; }}
+      .hero-score {{ width: 100%; min-height: 82px; padding: 12px; grid-template-columns: auto 1fr auto; align-items: center; align-content: center; gap: 12px; text-align: left; }}
+      .score-number {{ font-size: 42px; }}
+      .score-label {{ margin-top: 0; }}
+      .health-item {{ min-height: 58px; }}
       .metric-grid, .artifact-grid {{ grid-template-columns: repeat(2, minmax(0, 1fr)); }}
+      .decision-evidence, .decision-modules {{ grid-template-columns: 1fr; }}
       .module-head {{ flex-direction: column; }}
     }}
     @media (max-width: 480px) {{ .metric-grid, .report-health, .artifact-grid {{ grid-template-columns: 1fr; }} }}
@@ -1496,6 +2032,8 @@ def render_report(report: dict[str, Any], output_dir: Optional[Path] = None) -> 
         </div>
       </div>
     </section>
+    {decision_panel}
+    {evidence_map}
     <section class="report-layout">
       <nav class="sidebar" aria-label="报告目录">
         <div class="sidebar-title">报告目录</div>

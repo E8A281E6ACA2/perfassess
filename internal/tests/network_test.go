@@ -570,10 +570,10 @@ func TestLoadIperf3ServersFileParsesCommentsAndInlineComments(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "iperf3-servers.txt")
 	content := `
 # private iperf3 nodes
-node-a:5201
+node-a:5201 auth=owned
 
-node-b:5201 # eu node
-[2001:db8::2]:5201
+node-b:5201 auth=authorized # eu node
+[2001:db8::2]:5201 auth=owned
 `
 	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
 		t.Fatalf("failed to write iperf3 server file: %v", err)
@@ -586,12 +586,67 @@ node-b:5201 # eu node
 	assertStringSlice(t, servers, []string{"node-a:5201", "node-b:5201", "[2001:db8::2]:5201"})
 }
 
+func TestLoadIperf3ServerSpecsFileRejectsMissingAuthorization(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "iperf3-servers.txt")
+	if err := os.WriteFile(path, []byte("node-a:5201 name=Tokyo\n"), 0o600); err != nil {
+		t.Fatalf("failed to write iperf3 server file: %v", err)
+	}
+
+	_, err := loadIperf3ServerSpecsFile(path)
+	if err == nil {
+		t.Fatal("expected server file entry without auth metadata to fail")
+	}
+	if !strings.Contains(err.Error(), "auth=owned or auth=authorized") {
+		t.Fatalf("expected authorization error, got %v", err)
+	}
+}
+
+func TestLoadIperf3ServerSpecsFileParsesMetadata(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "iperf3-servers.txt")
+	content := `
+node-a:5201 name=Tokyo region=JP provider=SelfHosted auth=owned
+[2001:db8::2]:5201 name=Frankfurt region=DE provider=Lab auth=authorized
+`
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatalf("failed to write iperf3 server file: %v", err)
+	}
+
+	specs, err := loadIperf3ServerSpecsFile(path)
+	if err != nil {
+		t.Fatalf("expected server file to parse, got %v", err)
+	}
+	if len(specs) != 2 {
+		t.Fatalf("expected two specs, got %#v", specs)
+	}
+	if specs[0].Server != "node-a:5201" || specs[0].Name != "Tokyo" || specs[0].Region != "JP" || specs[0].Provider != "SelfHosted" || specs[0].Authorization != "owned" {
+		t.Fatalf("unexpected first spec: %#v", specs[0])
+	}
+	if specs[1].Server != "[2001:db8::2]:5201" || specs[1].Name != "Frankfurt" || specs[1].Region != "DE" || specs[1].Provider != "Lab" || specs[1].Authorization != "authorized" {
+		t.Fatalf("unexpected second spec: %#v", specs[1])
+	}
+}
+
+func TestLoadIperf3ServerSpecsFileRejectsUnknownMetadata(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "iperf3-servers.txt")
+	if err := os.WriteFile(path, []byte("node-a:5201 auth=owned weight=10\n"), 0o600); err != nil {
+		t.Fatalf("failed to write iperf3 server file: %v", err)
+	}
+
+	_, err := loadIperf3ServerSpecsFile(path)
+	if err == nil {
+		t.Fatal("expected unknown metadata key to fail")
+	}
+	if !strings.Contains(err.Error(), "unsupported iperf3 server metadata key") {
+		t.Fatalf("expected unsupported key error, got %v", err)
+	}
+}
+
 func TestIperf3NetworkBackendRunsMatrixFromServerFile(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "iperf3-servers.txt")
 	content := `
-node-a:5201
-node-b:5201
-node-a:5201
+node-a:5201 name=Tokyo region=JP provider=SelfHosted auth=owned
+node-b:5201 name=Frankfurt region=DE provider=Lab auth=authorized
+node-a:5201 name=Tokyo region=JP provider=SelfHosted auth=owned
 `
 	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
 		t.Fatalf("failed to write iperf3 server file: %v", err)
@@ -623,7 +678,15 @@ node-a:5201
 	backend.AppendMetrics(metrics)
 	assertMetricInt(t, metrics, "iperf3_matrix_server_count", 2)
 	assertMetricString(t, metrics, "iperf3_matrix_1_server", "node-a:5201")
+	assertMetricString(t, metrics, "iperf3_matrix_1_name", "Tokyo")
+	assertMetricString(t, metrics, "iperf3_matrix_1_region", "JP")
+	assertMetricString(t, metrics, "iperf3_matrix_1_provider", "SelfHosted")
+	assertMetricString(t, metrics, "iperf3_matrix_1_authorization", "owned")
 	assertMetricString(t, metrics, "iperf3_matrix_2_server", "node-b:5201")
+	assertMetricString(t, metrics, "iperf3_matrix_2_name", "Frankfurt")
+	assertMetricString(t, metrics, "iperf3_matrix_2_region", "DE")
+	assertMetricString(t, metrics, "iperf3_matrix_2_provider", "Lab")
+	assertMetricString(t, metrics, "iperf3_matrix_2_authorization", "authorized")
 }
 
 func TestSpeedtestNetworkBackendReportsMissingBinary(t *testing.T) {
@@ -637,8 +700,60 @@ func TestSpeedtestNetworkBackendReportsMissingBinary(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected missing speedtest binary to fail")
 	}
-	if !strings.Contains(err.Error(), "speedtest CLI is not installed") {
+	if !strings.Contains(err.Error(), "安装 Ookla Speedtest CLI") {
 		t.Fatalf("expected install hint, got %v", err)
+	}
+	category, stage, hint, ok := benchmarkErrorFields(err)
+	if !ok {
+		t.Fatalf("expected benchmark error fields, got %T", err)
+	}
+	if category != BenchmarkErrorMissingDependency || stage != "speedtest_lookup" || hint == "" {
+		t.Fatalf("unexpected benchmark error fields: %q %q %q", category, stage, hint)
+	}
+}
+
+func TestSpeedtestNetworkBackendClassifiesNetworkFailure(t *testing.T) {
+	backend := NewSpeedtestNetworkBackend(SpeedtestConfig{
+		Runner: &fakeCommandRunner{
+			output:     []byte("Configuration - Could not resolve host"),
+			err:        fmt.Errorf("exit status 1"),
+			lookPathOK: true,
+		},
+	})
+
+	_, err := backend.MeasureDownload()
+	if err == nil {
+		t.Fatal("expected speedtest command failure")
+	}
+	category, stage, hint, ok := benchmarkErrorFields(err)
+	if !ok {
+		t.Fatalf("expected benchmark error fields, got %T", err)
+	}
+	if category != BenchmarkErrorNetwork || stage != "speedtest_run" || !strings.Contains(hint, "网络不可达") {
+		t.Fatalf("unexpected benchmark error fields: %q %q %q", category, stage, hint)
+	}
+}
+
+func TestNetworkTestAddsBenchmarkErrorMetricsForBackendFailure(t *testing.T) {
+	networkTest := NewNetworkTestWithBackend(newTestLogger(t), NewSpeedtestNetworkBackend(SpeedtestConfig{
+		Runner: &fakeCommandRunner{lookPathErr: fmt.Errorf("not found")},
+	}))
+	networkTest.qualityTargets = nil
+
+	result, err := networkTest.Execute()
+	if err != nil {
+		t.Fatalf("expected degraded network result without fatal error, got %v", err)
+	}
+	if result.Status != models.TestStatusDegraded {
+		t.Fatalf("expected degraded status, got %q", result.Status)
+	}
+	assertMetricString(t, result.Metrics, "error_category", BenchmarkErrorMissingDependency)
+	assertMetricString(t, result.Metrics, "error_stage", "speedtest_lookup")
+	assertMetricString(t, result.Metrics, "network_error_latency_category", BenchmarkErrorMissingDependency)
+	assertMetricString(t, result.Metrics, "network_error_download_category", BenchmarkErrorMissingDependency)
+	assertMetricString(t, result.Metrics, "network_error_upload_category", BenchmarkErrorMissingDependency)
+	if result.Metrics["error_hint"] == "" {
+		t.Fatalf("expected error_hint metric, got %#v", result.Metrics)
 	}
 }
 

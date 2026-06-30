@@ -5,9 +5,12 @@
 ## 项目文档
 
 - 项目分析与优化路线图: [docs/project-analysis-and-roadmap.md](docs/project-analysis-and-roadmap.md)
+- 主流 VPS 测评程序对标分析: [docs/mainstream-vps-benchmark-analysis.md](docs/mainstream-vps-benchmark-analysis.md)
+- 远程服务器测试手册: [docs/remote-test-runbook.md](docs/remote-test-runbook.md)
 - 发布前检查清单: [docs/release-checklist.md](docs/release-checklist.md)
+- GitHub Release 发布手册: [docs/release-runbook.md](docs/release-runbook.md)
+- 发布验证记录: [docs/release-validation-log.md](docs/release-validation-log.md)
 - 真实 VPS 验收流程: [docs/vps-acceptance.md](docs/vps-acceptance.md)
-- 真实回程探针设计: [docs/return-route-probe-design.md](docs/return-route-probe-design.md)
 
 ## 当前状态
 
@@ -20,6 +23,7 @@
 - 发布前验证、报告 schema、快照测试和 CI 的回归保护
 
 更完整的分析和后续优化路线见 `docs/project-analysis-and-roadmap.md`。
+另一台服务器的复制运行、Web 访问、失败排查和清理流程见 `docs/remote-test-runbook.md`。
 
 ## 快速开始
 
@@ -40,6 +44,16 @@ curl -fsSL https://raw.githubusercontent.com/E8A281E6ACA2/perfassess/main/script
 - `basic`：基础测评，CPU、内存、磁盘、网络，适合低配或 512MB 机器。
 - `standard`：标准完整报告，基础测评加路由追踪、standard 档流媒体解锁、AI 服务、IP 质量和安全体检，不跑压力测试。
 - `full`：全量测评，标准完整报告加 full 档流媒体解锁和压力测试，耗时更长且会明显占用资源。
+
+启动前会显示档位预算，帮助判断是否适合当前机器：
+
+- `basic + builtin`：预计 1-3 分钟，资源占用低，网络流量约 50-200 MB。
+- `standard + builtin`：预计 3-8 分钟，资源占用中等，网络流量约 200-800 MB。
+- `standard + mainstream`：预计 5-12 分钟，资源占用中等，网络流量约 500 MB-1.5 GB。
+- `full + builtin`：预计 6-15 分钟，资源占用中到高，网络流量约 500 MB-2 GB。
+- `full + mainstream`：预计 10-25 分钟，CPU、内存、磁盘占用高，网络流量可能超过 2 GB。
+
+实际耗时会受 CPU 核数、磁盘速度、网络质量、流媒体平台响应和外部后端影响；`network-profile full` 会额外增加更多网络目标，通常再增加 1-3 分钟。
 
 后端质量档位用于控制报告置信度和可比性：
 
@@ -70,19 +84,44 @@ curl -fsSL https://raw.githubusercontent.com/E8A281E6ACA2/perfassess/main/script
   | PERFASSESS_IPERF3_SERVER=1.2.3.4:5201 bash -s -- --quality mainstream
 ```
 
-512MB 等低内存机器会自动进入低内存模式：Go 构建并发会降到 1，Linux 主机会尽量创建临时 swap，默认跳过 `go test ./...`，但仍会构建二进制并运行完整测评和验收摘要。临时 swap 会在脚本退出时清理；如需强制跑单元测试可设置 `PERFASSESS_BOOTSTRAP_TESTS=1`，如需禁用临时 swap 可设置 `PERFASSESS_BOOTSTRAP_SWAP=0`。
+512MB 等低内存机器会自动进入低内存模式：bootstrap 会优先尝试下载 GitHub Release 中的预构建二进制，并在 Release 提供 `checksums.txt` 时校验 SHA256；校验会优先使用 `sha256sum`，没有时使用 macOS 常见的 `shasum -a 256`。成功后跳过本地 Go 编译和单元测试，直接运行测评。如果当前仓库还没有可用 Release 二进制，或二进制校验失败，脚本会回退到源码构建，并把 Go 构建并发降到 1、尽量创建临时 swap、默认跳过 `go test ./...`。临时 swap 会在脚本退出时清理。
+
+低内存二进制路径可以通过环境变量控制：
+
+```bash
+# 自动：低内存时优先下载预构建二进制，失败回退源码构建
+PERFASSESS_BOOTSTRAP_BINARY=auto
+
+# 强制尝试下载预构建二进制
+PERFASSESS_BOOTSTRAP_BINARY=1
+
+# 禁用预构建二进制，始终源码构建
+PERFASSESS_BOOTSTRAP_BINARY=0
+```
+
+如需强制跑单元测试可设置 `PERFASSESS_BOOTSTRAP_TESTS=1`，如需禁用临时 swap 可设置 `PERFASSESS_BOOTSTRAP_SWAP=0`。
 
 测评输出默认保留在 `/tmp/perfassess-auto/`：
 
 - `/tmp/perfassess-auto/console.txt`：终端纯文本报告
 - `/tmp/perfassess-auto/summary.md`：Markdown 摘要
 - `/tmp/perfassess-auto/default.json`：完整 JSON 报告
+- `/tmp/perfassess-auto/build.stdout.txt` 和 `/tmp/perfassess-auto/build.stderr.log`：源码构建输出，低内存或 Go 编译失败时优先查看
+- `/tmp/perfassess-auto/artifact_manifest.json`：报告产物清单，记录每个输出文件的大小、SHA256 和是否进入压缩包
 - `/tmp/perfassess-auto/hardware_quality.json`：硬件质量模块，包含系统、CPU、内存、磁盘和评分摘要
 - `/tmp/perfassess-auto/net_quality.json`：网络质量模块，包含吞吐、IPv4/IPv6、iperf3 多节点矩阵、路由、流媒体和 AI 服务摘要
+- `/tmp/perfassess-auto/calibration_sample.json`：脱敏校准样本，用于后续评分阈值回测，不包含公网 IP、ISP、ASN、精确地理位置、路由 hop 和原始日志
 - `/tmp/perfassess-auto/route_trace.json`：路由追踪模块，包含每个目标的跳数、末跳和错误信息
 - `/tmp/perfassess-auto/backroute_trace.json`：国内方向参考兼容模块，只包含本机到国内目标的出站路径，不是真实回程
 - `/tmp/perfassess-auto/ip_quality.json`：IP 质量模块，包含 ASN、rDNS、风险来源、DNSBL、邮件服务商矩阵、网络栈和风险评分
-- `/tmp/perfassess-auto/perfassess-report.zip`：报告压缩包，包含报告、日志和验收摘要
+- `/tmp/perfassess-auto/perfassess-report.zip`：报告压缩包，包含报告、构建日志、测评日志和验收摘要
+
+校验报告目录或压缩包解压目录中的产物完整性：
+
+```bash
+python3 scripts/verify-artifacts.py /tmp/perfassess-auto
+python3 scripts/verify-artifacts.py /tmp/perfassess-auto/perfassess-report.zip
+```
 
 最终控制台报告和 `summary.md` 会包含“耗时统计”，列出构建、依赖检查、完整 JSON 报告、文本报告生成、快速测评、验收流程和汇总生成各自耗时。自动脚本只执行一次完整测评，`default.txt`、`console.txt` 和 `summary.md` 会基于 JSON 结果在汇总阶段生成，不会为了文本输出重复执行 full 测评。
 
@@ -306,17 +345,19 @@ cat /tmp/perfassess-auto/console.txt
 
 ## 安装
 
-### 🚀 方式一：一键安装（推荐）
+### 🚀 方式一：一键测评和准备环境（推荐）
 
 **Linux / macOS**:
 ```bash
-curl -fsSL https://raw.githubusercontent.com/E8A281E6ACA2/perfassess/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/E8A281E6ACA2/perfassess/main/scripts/bootstrap.sh | bash
 ```
 
 或使用 wget:
 ```bash
-wget -qO- https://raw.githubusercontent.com/E8A281E6ACA2/perfassess/main/install.sh | bash
+wget -qO- https://raw.githubusercontent.com/E8A281E6ACA2/perfassess/main/scripts/bootstrap.sh | bash
 ```
+
+这会准备基础依赖、拉取源码、构建二进制并运行默认自动测评。报告默认输出到 `/tmp/perfassess-auto/`。
 
 **Windows (PowerShell)**:
 ```powershell
@@ -408,10 +449,13 @@ make install
 ### 🗑️ 卸载
 
 ```bash
-# 使用卸载脚本
-curl -fsSL https://raw.githubusercontent.com/E8A281E6ACA2/perfassess/main/uninstall.sh | bash
+# 清理 bootstrap 生成的构建产物和测评输出
+scripts/bootstrap.sh --clean
 
-# 或手动删除
+# 连同默认克隆目录 ~/perfassess 一起清理
+scripts/bootstrap.sh --clean-all
+
+# 如果手动安装到了系统路径，再删除二进制
 sudo rm /usr/local/bin/perfassess
 ```
 
@@ -533,7 +577,7 @@ make run
 # 使用 iperf3 多节点矩阵测试网络吞吐（逗号分隔，支持 host:port 和 [IPv6]:port）
 ./build/perfassess -b network --network-backend iperf3 --iperf3-servers 1.2.3.4:5201,[2001:db8::1]:5201
 
-# 使用 iperf3 节点文件测试网络吞吐（支持空行和 # 注释）
+# 使用 iperf3 节点文件测试网络吞吐（支持空行、# 注释和 name/region/provider 标签）
 ./build/perfassess -b network --network-backend iperf3 --iperf3-server-file docs/examples/iperf3-servers.txt
 
 # 使用 Ookla Speedtest CLI 后端测试网络（需要预装 speedtest）
@@ -628,12 +672,6 @@ ssh -L 8080:localhost:8080 root@SERVER_PUBLIC_IP
 # 输出机器可读对比结果
 ./build/perfassess compare vps-a.json vps-b.json --format json
 
-# 把 JSON 报告加入本地历史库
-./build/perfassess history add report.json
-
-# 查看历史趋势
-./build/perfassess history trend
-
 # 批量排序目录中的 JSON 报告
 ./build/perfassess compare-dir ./reports --sort-by total
 
@@ -659,7 +697,6 @@ Commands:
   check-deps               检查外部测试工具依赖
   compare                  对比两份 JSON 评估报告
   compare-dir              批量排序目录中的 JSON 评估报告
-  history                  管理本地 JSON 报告历史库
   version                  显示版本信息
 
 Flags:
@@ -705,7 +742,7 @@ Flags:
 提示：使用 `--cpu-backend geekbench` 时，请提前安装 Geekbench 6 并确认 `geekbench6` 可通过 PATH 访问。程序只检测并提示，不会自动安装依赖。
 提示：使用 `--memory-backend sysbench` 时，请提前安装 sysbench。程序只检测并提示，不会自动安装依赖。
 提示：使用 `--disk-backend fio` 时，请提前安装 fio。程序只检测并提示，不会自动安装依赖。
-提示：使用 `--network-backend iperf3` 时，请提前安装 iperf3，并提供可访问的 `--iperf3-server`、`--iperf3-servers` 或 `--iperf3-server-file`。服务端可写为 `host`、`host:port` 或 `[IPv6]:port`，程序会把端口转换为 iperf3 的 `-p` 参数。节点文件支持空行、整行 `#` 注释和行尾注释。程序只检测并提示，不会自动安装依赖，也不会内置公共 iperf3 节点。
+提示：使用 `--network-backend iperf3` 时，请提前安装 iperf3，并提供可访问的 `--iperf3-server`、`--iperf3-servers` 或 `--iperf3-server-file`。服务端可写为 `host`、`host:port` 或 `[IPv6]:port`，程序会把端口转换为 iperf3 的 `-p` 参数。节点文件支持空行、整行 `#` 注释、行尾注释，并要求每行写明 `auth=owned` 或 `auth=authorized`，避免误用未授权公共节点；还可追加 `name=Tokyo region=JP provider=SelfHosted` 这类元数据标签。标签会进入 JSON、控制台和 Markdown 报告，方便定位慢节点或失败节点。程序只检测并提示，不会自动安装依赖，也不会内置公共 iperf3 节点。
 ```
 
 ### 使用示例
@@ -895,17 +932,32 @@ CPU评分:        100.00 / 100
 # 运行所有单元测试
 make test
 
-# 日常开发验证：格式、schema、测试、构建、CLI 冒烟
+# 日常开发验证：格式、schema、测试、构建、CLI、报告/Web 契约、校准样本、产物清单和严格验收资源预检
 make validate
+
+# 远程测试手册冒烟：检查新服务器复制命令、Web 访问、失败排查和清理说明
+make remote-runbook-smoke
+
+# JSON 报告脱敏工具冒烟：检查公开归档前的敏感字段处理
+make redact-report-smoke
 
 # 发布前验证：validate、发布二进制冒烟、跨平台构建
 make release-check
 
-# 发布二进制端到端冒烟：版本、help、依赖检查、JSON 报告、对比和历史趋势
+# 发布二进制端到端冒烟：版本、help、依赖检查、JSON 报告、对比和目录排序
 make release-smoke
 
 # 真实 VPS 验收：保留验收产物并检查报告关键字段
 scripts/vps-acceptance.sh
+
+# 真实 VPS 矩阵验收：低配 + 标准完整报告
+PERFASSESS_ACCEPTANCE_MATRIX=low,standard scripts/vps-acceptance.sh
+
+# 发布前严格矩阵：要求核心 CPU、内存、磁盘、网络全部成功
+PERFASSESS_ACCEPTANCE_MATRIX=low,standard,full PERFASSESS_ACCEPTANCE_STRICT=1 scripts/vps-acceptance.sh
+
+# 如果当前机器负载较高或可用内存不足，先使用非严格矩阵生成可解释降级报告
+PERFASSESS_ACCEPTANCE_MATRIX=low,standard,full scripts/vps-acceptance.sh
 
 # 一键非交互测评与验收：构建、依赖检查、默认测评、核心验收、生成汇总
 scripts/perfassess-auto.sh
@@ -913,6 +965,8 @@ scripts/perfassess-auto.sh
 # 运行测试并生成覆盖率报告
 make test-coverage
 ```
+
+严格矩阵会在正式测评前和每个矩阵项开始前检查可用内存，默认要求 `MemAvailable >= 768 MB`；不满足时会提前失败并提示释放内存、增加 swap、停止其他工作负载，或改用非严格矩阵。
 
 ### 代码格式化
 
@@ -967,6 +1021,42 @@ make lint
 默认使用 `server` 基准。可以通过 `--score-profile vps|server|workstation` 切换不同设备类型的内存、磁盘和网络基准线，避免 VPS、通用服务器和工作站使用同一套阈值导致评分解释失真。
 
 JSON 报告会输出 `summary.score_calibration`，记录当前校准版本、三套 profile 的完整基准线、等级阈值和说明；`summary.score_breakdown.calibration_version` 会标记本次分项评分使用的校准版本。当前校准版本为 `2026-06-v1`，后续接入真实 VPS 样本后可继续回测调整。
+
+自动测评会额外生成 `/tmp/perfassess-auto/calibration_sample.json`，这是用于评分回测的脱敏样本。收集多台机器的样本后，可以在本地汇总 P50/P75/P90：
+
+```bash
+python3 scripts/calibration-summary.py /path/to/samples --format markdown -o calibration-summary.md
+python3 scripts/calibration-summary.py /path/to/samples --format json -o calibration-summary.json
+python3 scripts/calibration-summary.py /path/to/samples --format jsonl -o samples.jsonl
+```
+
+该工具会自动查找目录下的 `calibration_sample.json`，输出总分和 CPU、内存、磁盘、网络关键指标分布，并基于 P75 给出内存、磁盘、网络基准线的保守调整建议。样本少于 5 个时只显示候选值并提示继续收集，不建议直接改阈值。
+
+校准数据集准入规则见 `docs/calibration-dataset-policy.md`。汇总工具会输出 `Dataset Policy`，标记当前样本集是 `exploratory`、`candidate` 还是 `formal`，并列出阻断项和警告项。
+
+如果要把校准汇总接入发布流程，可以使用 `--require-policy candidate|formal` 强制检查数据集等级；样本不足、置信度不够或主流后端覆盖不足时命令会返回非零退出码：
+
+```bash
+python3 scripts/calibration-summary.py /path/to/samples \
+  --score-profile server \
+  --min-confidence medium \
+  --min-mainstream-count 3 \
+  --require-policy candidate \
+  --format markdown \
+  -o calibration-summary-candidate.md
+```
+
+用于正式校准时建议加质量过滤，避免 quick/builtin 或低置信样本污染阈值：
+
+```bash
+python3 scripts/calibration-summary.py /path/to/samples \
+  --score-profile server \
+  --min-confidence high \
+  --require-mainstream \
+  --require-policy formal \
+  --format markdown \
+  -o calibration-summary-mainstream.md
+```
 
 ### 性能等级
 
@@ -1088,8 +1178,6 @@ A: 默认从 8080 开始自动探测；如果 8080 被占用，会继续尝试 8
 | 保存报告 | `./build/perfassess -b all -o report.txt` |
 | 报告对比 | `./build/perfassess compare vps-a.json vps-b.json` |
 | 批量排序 | `./build/perfassess compare-dir ./reports --sort-by total` |
-| 加入历史 | `./build/perfassess history add report.json` |
-| 趋势分析 | `./build/perfassess history trend` |
 | 查看版本 | `./build/perfassess version` |
 | 路由追踪 | `./build/perfassess --route-trace`（直接运行需预装 traceroute/tracert；bootstrap 的 standard/full 会自动安装） |
 | 流媒体检测 | `./build/perfassess --streaming` |
@@ -1120,7 +1208,6 @@ A: 默认从 8080 开始自动探测；如果 8080 被占用，会继续尝试 8
 | `--disk-backend` | - | 磁盘测试后端 | `--disk-backend fio` |
 | `--network-backend` | - | 网络测试后端 | `--network-backend iperf3` |
 | `--iperf3-server-file` | - | iperf3 节点文件 | `--iperf3-server-file docs/examples/iperf3-servers.txt` |
-| `--store` | - | history 子命令历史库路径 | `history list --store ./history.jsonl` |
 | `--sort-by` | - | compare-dir 排序字段 | `compare-dir ./reports --sort-by cpu` |
 | `--route-trace` | - | 路由追踪 | `--route-trace` |
 | `--streaming` | - | 流媒体检测 | `--streaming` |

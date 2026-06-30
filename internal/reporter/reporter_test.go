@@ -345,6 +345,9 @@ func TestFormatSingleTestResultShowsNetworkError(t *testing.T) {
 			"download_speed_mbps": -1.0,
 			"upload_speed_mbps":   -1.0,
 			"network_error":       "iperf3 is not installed",
+			"error_category":      "missing_dependency",
+			"error_stage":         "iperf3_lookup",
+			"error_hint":          "安装 iperf3 后重试。",
 			"score":               0.0,
 		},
 	}
@@ -352,6 +355,15 @@ func TestFormatSingleTestResultShowsNetworkError(t *testing.T) {
 	formatted := generator.formatSingleTestResult("网络性能测试", result)
 	if !strings.Contains(formatted, "网络说明:     iperf3 is not installed") {
 		t.Fatalf("expected formatted report to include network error, got:\n%s", formatted)
+	}
+	for _, snippet := range []string{
+		"错误分类:     依赖缺失",
+		"错误阶段:     iperf3_lookup",
+		"处理建议:     安装 iperf3 后重试。",
+	} {
+		if !strings.Contains(formatted, snippet) {
+			t.Fatalf("expected formatted report to include %q, got:\n%s", snippet, formatted)
+		}
 	}
 }
 
@@ -371,6 +383,10 @@ func TestFormatSingleTestResultShowsIperf3Matrix(t *testing.T) {
 			"upload_speed_source":           "iperf3_upload",
 			"iperf3_matrix_server_count":    2,
 			"iperf3_matrix_1_server":        "node-a:5201",
+			"iperf3_matrix_1_name":          "Tokyo",
+			"iperf3_matrix_1_region":        "JP",
+			"iperf3_matrix_1_provider":      "SelfHosted",
+			"iperf3_matrix_1_authorization": "owned",
 			"iperf3_matrix_1_protocol":      "ipv4",
 			"iperf3_matrix_1_latency_ms":    10.0,
 			"iperf3_matrix_1_download_mbps": 100.0,
@@ -388,9 +404,9 @@ func TestFormatSingleTestResultShowsIperf3Matrix(t *testing.T) {
 
 	expectedSnippets := []string{
 		"测试后端:     iperf3",
-		"iperf3矩阵:   server | proto | latency ms | download Mbps | upload Mbps",
-		"node-a:5201 | ipv4 | 10.00 | 100.00 | 50.00",
-		"[2001:db8::2]:5201 | ipv6 | 20.00 | 300.00 | 150.00",
+		"iperf3矩阵:   node | region | provider | auth | proto | latency ms | download Mbps | upload Mbps",
+		"Tokyo (node-a:5201) | JP | SelfHosted | owned | ipv4 | 10.00 | 100.00 | 50.00",
+		"[2001:db8::2]:5201 | - | - | - | ipv6 | 20.00 | 300.00 | 150.00",
 	}
 	for _, snippet := range expectedSnippets {
 		if !strings.Contains(formatted, snippet) {
@@ -781,6 +797,13 @@ func TestWebReportTemplateRendersMaterialSummary(t *testing.T) {
 	html := output.String()
 	for _, snippet := range []string{
 		"Material Design 3 Web Report",
+		"决策摘要",
+		"短板排序",
+		"优先建议",
+		"关键证据",
+		"模块置信度",
+		"证据",
+		"限制",
 		"报告目录",
 		"评分基准",
 		"置信度",
@@ -1146,6 +1169,23 @@ func TestAddSummaryMarksIncompleteReport(t *testing.T) {
 	if note, _ := report.Summary["performance_note"].(string); note == "" {
 		t.Fatal("expected performance_note to be populated for incomplete report")
 	}
+	conclusion, ok := report.Summary["assessment_conclusion"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected assessment conclusion, got %#v", report.Summary["assessment_conclusion"])
+	}
+	if headline, _ := conclusion["headline"].(string); !strings.Contains(headline, "核心测试未完成") {
+		t.Fatalf("expected incomplete conclusion headline, got %q", headline)
+	}
+	evidence, ok := conclusion["evidence"].([]map[string]interface{})
+	if !ok || len(evidence) == 0 {
+		t.Fatalf("expected incomplete conclusion evidence, got %#v", conclusion["evidence"])
+	}
+	if evidence[0]["category"] != "score" {
+		t.Fatalf("expected first evidence to describe score, got %#v", evidence[0])
+	}
+	if evidence[0]["status"] != "failed" {
+		t.Fatalf("expected incomplete score evidence to be failed, got %#v", evidence[0])
+	}
 	if success, _ := report.Summary["tests_success"].(int); success != 2 {
 		t.Fatalf("expected 2 successful tests, got %d", success)
 	}
@@ -1216,6 +1256,20 @@ func TestFormatReportIncludesIncompleteNote(t *testing.T) {
 			"tests_failed":     0,
 			"tests_skipped":    0,
 			"performance_note": "由于未执行所有性能测试，无法给出完整的性能结论。",
+			"assessment_conclusion": map[string]interface{}{
+				"headline":        "核心测试未完成，当前结果仅适合作为排查参考，置信度 low。",
+				"scenario":        "未完成全部核心测试，不建议直接用于采购或迁移决策。",
+				"suitability":     []string{"已完成分项可作为局部参考，不建议直接判定整体适用场景"},
+				"limitations":     []string{"由于未执行所有性能测试，无法给出完整的性能结论。"},
+				"recommendations": []string{"补齐 CPU、内存、磁盘和网络核心测试后再判断。"},
+				"bottlenecks": []map[string]interface{}{
+					{"component": "disk", "label": "磁盘", "score": 0.0, "severity": "weak"},
+					{"component": "network", "label": "网络", "score": 0.0, "severity": "weak"},
+				},
+				"confidence":  "low",
+				"grade":       "未完成",
+				"total_score": 76.0,
+			},
 			"score_breakdown": map[string]interface{}{
 				"cpu": map[string]interface{}{
 					"score":   80.0,
@@ -1233,6 +1287,7 @@ func TestFormatReportIncludesIncompleteNote(t *testing.T) {
 	formatted := generator.FormatReport(report)
 
 	expectedSnippets := []string{
+		"=== 测评结论 ===",
 		"性能等级:       未完成",
 		"说明:           由于未执行所有性能测试，无法给出完整的性能结论。",
 		"评分说明:",
@@ -1320,6 +1375,9 @@ func TestAddSummaryAddsQualityNotes(t *testing.T) {
 
 	if _, ok := report.Summary["score_breakdown"].(map[string]interface{}); !ok {
 		t.Fatalf("expected score breakdown, got %#v", report.Summary["score_breakdown"])
+	}
+	if _, ok := report.Summary["assessment_conclusion"].(map[string]interface{}); !ok {
+		t.Fatalf("expected assessment conclusion, got %#v", report.Summary["assessment_conclusion"])
 	}
 
 	notes, ok := report.Summary["quality_notes"].([]string)
@@ -1436,5 +1494,130 @@ func TestAddSummaryDetectsQuickBenchmarkProfile(t *testing.T) {
 	}
 	if profile["name"] != "quick" {
 		t.Fatalf("expected quick profile, got %#v", profile)
+	}
+}
+
+func TestModuleAssessmentsDescribeNetworkEvidence(t *testing.T) {
+	generator := NewReportGenerator()
+	report, err := generator.GenerateReport("module_assessment_session", snapshotSystemInfo(), snapshotTestResults())
+	if err != nil {
+		t.Fatalf("expected report generation to succeed, got %v", err)
+	}
+
+	modules, ok := report.Summary["module_assessments"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected module assessments, got %#v", report.Summary["module_assessments"])
+	}
+	network, ok := modules["network"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected network module assessment, got %#v", modules["network"])
+	}
+	if network["confidence"] != "high" {
+		t.Fatalf("expected high network confidence, got %#v", network)
+	}
+	evidence, ok := network["evidence"].([]map[string]interface{})
+	if !ok || len(evidence) == 0 {
+		t.Fatalf("expected network evidence, got %#v", network["evidence"])
+	}
+}
+
+func TestModuleAssessmentsDescribeCoreHardwareEvidence(t *testing.T) {
+	generator := NewReportGenerator()
+	report, err := generator.GenerateReport("core_module_assessment_session", snapshotSystemInfo(), snapshotTestResults())
+	if err != nil {
+		t.Fatalf("expected report generation to succeed, got %v", err)
+	}
+
+	modules, ok := report.Summary["module_assessments"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected module assessments, got %#v", report.Summary["module_assessments"])
+	}
+	for _, key := range []string{"cpu", "memory", "disk"} {
+		module, ok := modules[key].(map[string]interface{})
+		if !ok {
+			t.Fatalf("expected %s module assessment, got %#v", key, modules[key])
+		}
+		if module["status"] != "success" {
+			t.Fatalf("expected %s module success, got %#v", key, module["status"])
+		}
+		if module["confidence"] == "" {
+			t.Fatalf("expected %s module confidence, got %#v", key, module)
+		}
+		evidence, ok := module["evidence"].([]map[string]interface{})
+		if !ok || len(evidence) == 0 {
+			t.Fatalf("expected %s module evidence, got %#v", key, module["evidence"])
+		}
+	}
+}
+
+func TestRefreshModuleAssessmentsIncludesOptionalModules(t *testing.T) {
+	generator := NewReportGenerator()
+	report, err := generator.GenerateReport("optional_module_session", snapshotSystemInfo(), snapshotTestResults())
+	if err != nil {
+		t.Fatalf("expected report generation to succeed, got %v", err)
+	}
+	report.Summary["streaming_results"] = map[string]*models.StreamingResult{
+		"Netflix": {Platform: "Netflix", Available: true, Region: "US", UnlockType: "full"},
+		"Disney+": {Platform: "Disney+", Available: false, UnlockType: "blocked"},
+	}
+	report.Summary["ai_results"] = map[string]*models.AIServiceResult{
+		"ChatGPT": {Service: "ChatGPT", Available: true, AccessType: "login_required"},
+		"Gemini":  {Service: "Gemini", Available: false, AccessType: "restricted"},
+	}
+
+	generator.RefreshModuleAssessments(report)
+
+	modules := report.Summary["module_assessments"].(map[string]interface{})
+	streaming := modules["streaming"].(map[string]interface{})
+	if streaming["status"] != "warning" {
+		t.Fatalf("expected partial streaming status warning, got %#v", streaming)
+	}
+	ai := modules["ai_services"].(map[string]interface{})
+	if ai["status"] != "warning" {
+		t.Fatalf("expected partial AI status warning, got %#v", ai)
+	}
+}
+
+func TestRouteModuleAssessmentExplainsReturnRouteBoundary(t *testing.T) {
+	generator := NewReportGenerator()
+	report, err := generator.GenerateReport("route_module_session", snapshotSystemInfo(), snapshotTestResults())
+	if err != nil {
+		t.Fatalf("expected report generation to succeed, got %v", err)
+	}
+	report.Summary["route_trace_results"] = []*models.TraceResult{
+		{
+			Target:           "cloudflare.com",
+			Success:          true,
+			TotalHops:        8,
+			TimeoutHops:      1,
+			AverageLatencyMs: 12.5,
+			LastVisibleHop:   "1.1.1.1",
+			Recommendations:  []string{"该结果是本机出站路径参考，不是真实回程；真实回程需要远端探针或第三方平台配合。"},
+		},
+	}
+
+	generator.RefreshModuleAssessments(report)
+
+	modules := report.Summary["module_assessments"].(map[string]interface{})
+	route := modules["route"].(map[string]interface{})
+	if route["status"] != "success" {
+		t.Fatalf("expected route module success, got %#v", route)
+	}
+	limitations := summaryStringSlice(route["limitations"])
+	if len(limitations) == 0 || !strings.Contains(strings.Join(limitations, "\n"), "不等同于真实回程") {
+		t.Fatalf("expected return route limitation, got %#v", limitations)
+	}
+	evidence := summaryEvidence(route["evidence"])
+	if len(evidence) == 0 {
+		t.Fatalf("expected route evidence, got %#v", route["evidence"])
+	}
+	foundBoundary := false
+	for _, item := range evidence {
+		if item.Label == "真实回程" && strings.Contains(item.Detail, "本机出站路径") {
+			foundBoundary = true
+		}
+	}
+	if !foundBoundary {
+		t.Fatalf("expected return-route boundary evidence, got %#v", evidence)
 	}
 }

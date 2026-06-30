@@ -5,6 +5,9 @@ REPO_URL="${PERFASSESS_REPO_URL:-https://github.com/E8A281E6ACA2/perfassess.git}
 WORK_DIR="${PERFASSESS_BOOTSTRAP_DIR:-$HOME/perfassess}"
 GO_VERSION="${PERFASSESS_GO_VERSION:-1.25.3}"
 OUTPUT_DIR="${PERFASSESS_AUTO_DIR:-/tmp/perfassess-auto}"
+BOOTSTRAP_BINARY_MODE="${PERFASSESS_BOOTSTRAP_BINARY:-auto}"
+BOOTSTRAP_BINARY_VERSION="${PERFASSESS_BOOTSTRAP_BINARY_VERSION:-latest}"
+BOOTSTRAP_BINARY_BASE_URL="${PERFASSESS_BOOTSTRAP_BINARY_BASE_URL:-https://github.com/E8A281E6ACA2/perfassess/releases}"
 BOOTSTRAP_TESTS_SET="${PERFASSESS_BOOTSTRAP_TESTS+x}"
 RUN_TESTS="${PERFASSESS_BOOTSTRAP_TESTS:-1}"
 START_WEB="${PERFASSESS_BOOTSTRAP_WEB:-0}"
@@ -57,6 +60,8 @@ Options:
 Environment:
   PERFASSESS_BOOTSTRAP_TESTS=0   Skip go test ./...
   PERFASSESS_BOOTSTRAP_WEB=1     Start the realtime Material Design progress page.
+  PERFASSESS_BOOTSTRAP_BINARY=auto  Use release binary on low-memory hosts. Set 1 to force, 0 to disable.
+  PERFASSESS_BOOTSTRAP_BINARY_VERSION=latest  Release version or latest for binary download.
   PERFASSESS_WEB_TTL_SECONDS=600 Stop Web server 10 minutes after completion.
   PERFASSESS_WEB_PORT_SCAN_LIMIT=50  Limit automatic port probing attempts. 0 means until 65535.
   PERFASSESS_BOOTSTRAP_SWAP=auto Create temporary swap on low-memory Linux hosts. Set 0 to disable.
@@ -324,6 +329,160 @@ install_go() {
   success "Go installed: $(go version)"
 }
 
+release_asset_name() {
+  local os arch
+  os="$(uname -s | tr '[:upper:]' '[:lower:]')"
+  case "$(uname -m)" in
+    x86_64|amd64) arch="amd64" ;;
+    aarch64|arm64) arch="arm64" ;;
+    *) return 1 ;;
+  esac
+
+  case "$os" in
+    linux|darwin)
+      printf 'perfassess_%s_%s' "$os" "$arch"
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+release_download_url() {
+  local asset="$1"
+  if [[ "$BOOTSTRAP_BINARY_VERSION" == "latest" ]]; then
+    printf '%s/latest/download/%s' "$BOOTSTRAP_BINARY_BASE_URL" "$asset"
+  else
+    printf '%s/download/%s/%s' "$BOOTSTRAP_BINARY_BASE_URL" "$BOOTSTRAP_BINARY_VERSION" "$asset"
+  fi
+}
+
+release_checksums_url() {
+  if [[ "$BOOTSTRAP_BINARY_VERSION" == "latest" ]]; then
+    printf '%s/latest/download/checksums.txt' "$BOOTSTRAP_BINARY_BASE_URL"
+  else
+    printf '%s/download/%s/checksums.txt' "$BOOTSTRAP_BINARY_BASE_URL" "$BOOTSTRAP_BINARY_VERSION"
+  fi
+}
+
+sha256_file() {
+  local path="$1"
+  if command -v sha256sum >/dev/null 2>&1; then
+    if sha256sum "$path" | awk '{ print $1 }'; then
+      return 0
+    fi
+    if ! command -v shasum >/dev/null 2>&1; then
+      return 1
+    fi
+    echo "[INFO] sha256sum failed; retrying checksum with shasum -a 256" >&2
+  fi
+  if command -v shasum >/dev/null 2>&1; then
+    shasum -a 256 "$path" | awk '{ print $1 }'
+    return
+  fi
+  return 1
+}
+
+verify_release_binary_checksum() {
+  local asset="$1"
+  local binary_path="$2"
+  local checksum_url checksums expected actual
+
+  if ! command -v sha256sum >/dev/null 2>&1 && ! command -v shasum >/dev/null 2>&1; then
+    info "sha256sum and shasum are unavailable; skipping prebuilt binary checksum verification"
+    return 0
+  fi
+
+  checksum_url="$(release_checksums_url)"
+  checksums="$(mktemp)"
+  if ! curl -fsSL --retry 2 --connect-timeout 10 --max-time 60 "$checksum_url" -o "$checksums"; then
+    rm -f "$checksums"
+    info "release checksum file is unavailable; continuing without checksum verification"
+    return 0
+  fi
+
+  expected="$(awk -v asset="$asset" '$2 == asset { print $1; found=1 } END { if (!found) exit 1 }' "$checksums" 2>/dev/null || true)"
+  rm -f "$checksums"
+  if [[ -z "$expected" ]]; then
+    info "release checksum file does not contain $asset; continuing without checksum verification"
+    return 0
+  fi
+
+  actual="$(sha256_file "$binary_path" || true)"
+  if [[ -z "$actual" ]]; then
+    info "no SHA256 tool is available; skipping prebuilt binary checksum verification"
+    return 0
+  fi
+  if [[ "$actual" != "$expected" ]]; then
+    info "prebuilt binary checksum mismatch; falling back to source build"
+    return 1
+  fi
+
+  success "prebuilt binary checksum verified"
+  return 0
+}
+
+should_try_release_binary() {
+  case "$BOOTSTRAP_BINARY_MODE" in
+    1|true|yes|force)
+      return 0
+      ;;
+    0|false|no|never)
+      return 1
+      ;;
+    auto)
+      [[ "${PERFASSESS_LOW_MEMORY:-0}" == "1" ]]
+      ;;
+    *)
+      fail "PERFASSESS_BOOTSTRAP_BINARY must be auto, 1, or 0"
+      ;;
+  esac
+}
+
+download_release_binary() {
+  should_try_release_binary || return 1
+
+  local asset url target tmp
+  if ! asset="$(release_asset_name)"; then
+    info "no release binary is available for $(uname -s)/$(uname -m); falling back to source build"
+    return 1
+  fi
+
+  url="$(release_download_url "$asset")"
+  target="$WORK_DIR/build/perfassess"
+  tmp="$(mktemp)"
+  mkdir -p "$(dirname "$target")"
+
+  info "trying prebuilt Perfassess binary: $url"
+  if ! curl -fL --retry 2 --connect-timeout 10 --max-time 120 "$url" -o "$tmp"; then
+    rm -f "$tmp"
+    info "prebuilt binary download failed; falling back to source build"
+    return 1
+  fi
+  if [[ ! -s "$tmp" ]]; then
+    rm -f "$tmp"
+    info "prebuilt binary download was empty; falling back to source build"
+    return 1
+  fi
+
+  mv "$tmp" "$target"
+  chmod +x "$target"
+  if ! verify_release_binary_checksum "$asset" "$target"; then
+    rm -f "$target"
+    return 1
+  fi
+  if ! "$target" version >/dev/null 2>&1; then
+    rm -f "$target"
+    info "prebuilt binary did not pass version check; falling back to source build"
+    return 1
+  fi
+
+  export PERFASSESS_SKIP_BUILD="1"
+  export PERFASSESS_BINARY="$target"
+  success "using prebuilt binary: $target"
+  return 0
+}
+
 memory_total_mb() {
   if [[ -r /proc/meminfo ]]; then
     awk '/MemTotal:/ { printf "%d", $2 / 1024 }' /proc/meminfo
@@ -521,6 +680,80 @@ network_profile_description() {
   esac
 }
 
+profile_budget() {
+  local profile="$1"
+  local quality="$2"
+  local network="$3"
+
+  case "$profile" in
+    basic)
+      case "$quality" in
+        mainstream)
+          echo "预计耗时 2-5 分钟；资源占用低到中等；网络流量约 100-500 MB；适合低配机器或首次摸底。"
+          ;;
+        *)
+          echo "预计耗时 1-3 分钟；资源占用低；网络流量约 50-200 MB；适合 512MB/低配机器和快速验收。"
+          ;;
+      esac
+      ;;
+    full)
+      case "$quality" in
+        mainstream)
+          echo "预计耗时 10-25 分钟；CPU/内存/磁盘占用高；网络流量可能超过 2 GB；适合发布前深度测评。"
+          ;;
+        *)
+          echo "预计耗时 6-15 分钟；CPU/内存/磁盘占用中到高；网络流量约 500 MB-2 GB；包含压力测试。"
+          ;;
+      esac
+      ;;
+    standard|*)
+      case "$quality" in
+        mainstream)
+          echo "预计耗时 5-12 分钟；资源占用中等；网络流量约 500 MB-1.5 GB；适合主流口径对比。"
+          ;;
+        *)
+          echo "预计耗时 3-8 分钟；资源占用中等；网络流量约 200-800 MB；适合常规 VPS 完整报告。"
+          ;;
+      esac
+      ;;
+  esac
+
+  case "$network" in
+    full)
+      echo "网络档位 full 会增加更多目标，可能额外增加 1-3 分钟。"
+      ;;
+    standard)
+      echo "网络档位 standard 会增加国内方向参考，耗时适中。"
+      ;;
+    quick)
+      echo "网络档位 quick 只做轻量出站质量参考。"
+      ;;
+  esac
+}
+
+profile_budget_inline() {
+  local profile="$1"
+  local quality="$2"
+  local network="$3"
+  local line combined=""
+  while IFS= read -r line; do
+    [[ -n "$line" ]] || continue
+    if [[ -z "$combined" ]]; then
+      combined="$line"
+    else
+      combined="$combined $line"
+    fi
+  done < <(profile_budget "$profile" "$quality" "$network")
+  echo "$combined"
+}
+
+print_budget_summary() {
+  local profile="$1"
+  local quality="$2"
+  local network="$3"
+  echo "Budget: $(profile_budget_inline "$profile" "$quality" "$network")"
+}
+
 choose_auto_profile() {
   local fixed_profile="0"
 
@@ -581,14 +814,18 @@ choose_auto_profile() {
   fi
   echo "Recommended quality: ${recommended_quality} - $(quality_description "$recommended_quality")"
   echo "Recommended network: ${recommended_network} - $(network_profile_description "$recommended_network")"
+  print_budget_summary "$recommended" "$recommended_quality" "$recommended_network"
 
   if can_prompt; then
     if [[ "$fixed_profile" != "1" ]]; then
       echo ""
       echo "Choose benchmark profile:"
       echo "  1) basic    - $(profile_description basic)"
+      echo "              $(profile_budget_inline basic "$recommended_quality" "$(recommended_network_profile basic)")"
       echo "  2) standard - $(profile_description standard)"
+      echo "              $(profile_budget_inline standard "$recommended_quality" "$(recommended_network_profile standard)")"
       echo "  3) full     - $(profile_description full)"
+      echo "              $(profile_budget_inline full "$recommended_quality" "$(recommended_network_profile full)")"
       printf "Selection [recommended: %s]: " "$recommended"
       read_tty selected
       case "${selected:-$recommended}" in
@@ -653,6 +890,7 @@ choose_auto_profile() {
   success "auto profile selected: $AUTO_PROFILE"
   success "quality profile selected: $QUALITY_PROFILE"
   success "network profile selected: $NETWORK_PROFILE"
+  print_budget_summary "$AUTO_PROFILE" "$QUALITY_PROFILE" "$NETWORK_PROFILE"
 }
 
 checkout_repo() {
@@ -795,16 +1033,22 @@ stop_progress_server() {
 
 run_all() {
   install_packages
-  install_go
   configure_low_memory_mode
   checkout_repo
 
-  info "downloading Go modules"
-  go mod download
+  if ! download_release_binary; then
+    install_go
 
-  if [[ "$RUN_TESTS" == "1" ]]; then
-    info "running unit tests"
-    go test ./...
+    info "downloading Go modules"
+    go mod download
+
+    if [[ "$RUN_TESTS" == "1" ]]; then
+      info "running unit tests"
+      go test ./...
+    fi
+  else
+    RUN_TESTS="0"
+    info "skipping source build and unit tests because a prebuilt binary is active"
   fi
 
   choose_auto_profile

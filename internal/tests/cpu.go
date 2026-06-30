@@ -15,6 +15,12 @@ import (
 
 const cpuSampleRuns = 3
 
+const (
+	builtinCPUTestTimeout   = 60 * time.Second
+	sysbenchCPUTestTimeout  = 2 * time.Minute
+	geekbenchCPUTestTimeout = 20 * time.Minute
+)
+
 // CPUTest CPU性能测试
 // 测试单核和多核CPU的计算性能
 type CPUTest struct {
@@ -74,7 +80,7 @@ func NewCPUTest(logger *logger.Logger) *CPUTest {
 
 func NewCPUTestWithBackend(logger *logger.Logger, backend CPUBenchmarkBackend) *CPUTest {
 	test := &CPUTest{
-		BaseTest: NewBaseTest("CPU性能测试", 60*time.Second, logger),
+		BaseTest: NewBaseTest("CPU性能测试", cpuTestTimeoutForBackend(backend), logger),
 	}
 	if backend != nil {
 		test.backend = backend
@@ -82,6 +88,20 @@ func NewCPUTestWithBackend(logger *logger.Logger, backend CPUBenchmarkBackend) *
 		test.backend = &BuiltinCPUBackend{test: test}
 	}
 	return test
+}
+
+func cpuTestTimeoutForBackend(backend CPUBenchmarkBackend) time.Duration {
+	if backend == nil {
+		return builtinCPUTestTimeout
+	}
+	switch backend.Name() {
+	case models.CPUBackendSysbench:
+		return sysbenchCPUTestTimeout
+	case models.CPUBackendGeekbench:
+		return geekbenchCPUTestTimeout
+	default:
+		return builtinCPUTestTimeout
+	}
 }
 
 // Execute 执行CPU性能测试
@@ -103,6 +123,7 @@ func (ct *CPUTest) Execute() (*models.TestResult, error) {
 	singleCoreSamples, err := ct.collectSamples(cpuSampleRuns, ct.backend.MeasureSingleCore)
 	if err != nil {
 		status = "failed"
+		addBenchmarkErrorMetrics(metrics, err)
 		return ct.CreateResult("failed", metrics, fmt.Sprintf("单核测试失败: %v", err)), err
 	}
 	singleCoreStats := calculateScoreStats(singleCoreSamples)
@@ -119,6 +140,7 @@ func (ct *CPUTest) Execute() (*models.TestResult, error) {
 	multiCoreSamples, err := ct.collectSamples(cpuSampleRuns, ct.backend.MeasureMultiCore)
 	if err != nil {
 		status = "failed"
+		addBenchmarkErrorMetrics(metrics, err)
 		return ct.CreateResult("failed", metrics, fmt.Sprintf("多核测试失败: %v", err)), err
 	}
 	multiCoreStats := calculateScoreStats(multiCoreSamples)

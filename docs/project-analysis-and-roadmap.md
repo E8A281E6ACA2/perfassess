@@ -4,6 +4,8 @@
 
 本文档用于沉淀当前项目的阶段性判断，统一后续优化方向，避免讨论内容只停留在即时沟通中。
 
+主流 VPS 测评工具的对标分析见 [主流 VPS 测评程序对标分析](mainstream-vps-benchmark-analysis.md)。后续路线应优先吸收其中的主流口径、报告结构和证据化输出原则。
+
 ## 当前项目定位
 
 当前项目已经具备可运行的 VPS 测评脚本雏形，覆盖以下能力：
@@ -13,7 +15,7 @@
 - CPU、内存、磁盘、网络基础性能测试
 - sysbench、Geekbench、fio、iperf3、speedtest 等主流后端接入边界
 - 网络质量矩阵、fio mixed 矩阵、iperf3 多节点矩阵
-- VPS 测评摘要、JSON 报告、文本报告、报告对比、批量排序和历史趋势
+- VPS 测评摘要、JSON 报告、文本报告、报告对比和批量排序
 - 路由追踪、流媒体检测、AI 服务可达性检测
 - 压力测试、安全体检
 - 终端报告与 Web 报告
@@ -281,7 +283,7 @@
 - CI 已补充 CLI help、依赖检查和 JSON 示例报告契约 smoke
 - 已新增 `make validate`，统一本地日常验证入口
 - 已新增 `make release-check`，统一发布前验证入口并覆盖发布二进制冒烟、跨平台构建和 JSON 报告契约
-- 已新增发布二进制端到端冒烟脚本，覆盖版本命令、help、依赖检查、快速 JSON 报告、报告对比和历史趋势链路
+- 已新增发布二进制端到端冒烟脚本，覆盖版本命令、help、依赖检查、快速 JSON 报告、报告对比和目录批量排序链路
 - Release workflow 会在上传产物前对 Linux amd64 发布二进制执行端到端冒烟测试
 - 已新增 [发布前检查清单](release-checklist.md)
 - 已建立文本报告快照测试，防止核心输出格式无意回归
@@ -292,6 +294,9 @@
 - 报告摘要已增加 `quality_notes`，用于记录估算、降级、未执行和波动风险
 - 输出层已支持 `--output-format json`，便于自动化采集和批量对比
 - 已增加 JSON 示例契约测试和文本报告快照测试，防止报告字段、评分说明和质量提示静默回归
+- 已新增报告/Web 契约 smoke，校验测评结论、关键证据、模块可信度、分享模板和 Web 首屏决策面板
+- 已新增校准样本汇总 smoke，校验脱敏样本汇总、筛选条件、candidate/formal 数据集准入失败路径
+- 已新增报告产物清单校验 smoke，校验报告目录、压缩包内容、目录篡改和压缩包内部篡改均能被 SHA256 发现
 - 首批覆盖重点为：
   - 网络评分在“真实上传”和“估算上传”场景下的差异
   - 终端报告对网络来源和估算标记的展示
@@ -318,7 +323,7 @@
 下一批增强建议：
 
 1. 收集更多真实 VPS 样本，基于 `score_calibration.version` 做下一轮阈值回测
-2. 基于脱敏样本补充一组稳定的评分校准样本集
+2. 使用 `python3 scripts/calibration-summary.py` 汇总脱敏样本，按 `docs/calibration-dataset-policy.md` 检查数据集准入状态，再基于 P50/P75/P90 调整下一版评分校准阈值
 
 当前已落地的 VPS 测评摘要边界：
 
@@ -345,16 +350,11 @@
 - `compare-dir` 支持按 `total`、`cpu`、`memory`、`disk`、`network` 排序
 - `compare-dir` 支持 `--format text|json`
 
-当前已落地的历史趋势边界：
+当前已收敛的历史追踪边界：
 
-- 新增 `perfassess history add <report.json>` 子命令
-- 默认历史库路径为 `~/.perfassess/history.jsonl`
-- 支持 `--store` 指定历史库路径，便于 CI、脚本和临时目录测试
-- 新增 `perfassess history list` 子命令
-- 新增 `perfassess history trend` 子命令
-- `history trend` 输出总分、CPU、内存、磁盘、网络从首条到末条的差值和百分比变化
-- history 输出支持 `--format text|json`
-- 历史条目只保存报告索引和关键评分字段，不复制完整报告正文
+- 已移除本地持久历史库和 `history add/list/trend` 子命令，避免默认工具写入长期追踪数据
+- 保留 `compare-dir` 作为一次性目录内排序能力，不写入 `~/.perfassess` 或其他历史库
+- 后续若需要趋势能力，应优先交给外部平台或用户显式管理的数据目录，而不是 CLI 默认内置追踪
 
 当前已落地的网络后端边界：
 
@@ -551,20 +551,118 @@
 
 建议在每完成一个阶段后，更新本文件中的“当前结论”和“优先级路线图”。
 
-## 下一阶段设计：真实回程探针
+## 下一阶段设计：路由边界、证据化报告与发布收口
 
-目标：在不混淆本机出站路由和真实回程的前提下，引入远端探针能力，让报告可以展示探针端到被测服务器公网 IP 的反向路径。
+当前阶段不实现远端探针、回调服务或公共探针池。原因是这类能力需要额外节点授权、安全隔离、滥用防护和运维成本；如果没有这些前提，容易把本机出站路径误包装成“真实回程”，反而降低报告可信度。
 
-设计文档见 [真实回程探针设计](return-route-probe-design.md)。
+后续路线改为：
 
-优先实施顺序：
+- 当前 `--route-trace` 和国内方向参考只标记为本机出站路径，不称为真实回程。
+- 自动报告保留 `backroute_trace.json` 兼容产物，但文件内必须说明它不是第三方真实回程。
+- Web、Markdown、控制台报告都应把路由证据、限制和建议分开展示。
+- 如果未来重新评估真实回程能力，应先完成安全设计和授权节点方案，再作为显式可选插件或外部集成，不进入默认一把梭。
 
-- Phase 1：实现 `probe-route` 手动探针导出和 `--return-route-file` 导入。
-- Phase 2：实现一次性 token 回传模式，降低手动复制 JSON 的操作成本。
-- Phase 3：支持自建探针服务，但不内置未经授权的公共探针池。
+当前证据化报告已经进入验证链路，下一步优先实施顺序调整为：
 
-边界要求：
+- 在真实 VPS 上执行 `PERFASSESS_ACCEPTANCE_MATRIX=low,standard scripts/vps-acceptance.sh`，确认低配降级、标准完整报告和失败摘要都稳定。
+- 收集多台服务器的 `calibration_sample.json`，使用 `python3 scripts/calibration-summary.py /path/to/samples --require-policy candidate` 做候选校准观察。
+- 继续把控制台、Markdown 和 Web 报告中的“结论 + 证据 + 限制 + 建议”保持为同一语义，避免某个报告入口信息缩水。
+- full/mainstream 档位发布前必须额外验证 sysbench、fio、speedtest 或授权 iperf3 节点，不把缺少外部后端的结果包装成高置信结论。
+- VPS 验收脚本应区分核心报告失败、可选后端成功和可选后端可解释跳过；非严格模式保留降级报告，严格模式阻断发布。
 
-- 只有远端探针到被测端公网 IP 的结果才能标记 `is_real_return_route=true`。
-- 当前 `--route-trace` 和国内方向参考继续标记为本机出站路径，不得称为真实回程。
-- 未提供探针时报告应清楚提示“真实回程未执行”，不能让用户误解为已经测过。
+## 企业级推进路线
+
+对标 YABS、IPQuality 和 RegionRestrictionCheck 后，后续推进顺序调整为“先可信，再丰富”。项目已经覆盖大量功能，继续堆模块的收益低于建立结果可信闭环。
+
+### 当前最优先：发布基线收口
+
+当前工作区包含报告、自动化、产物校验、校准、验收和历史功能移除等大批改动。下一步应先完成验证并拆分提交，形成一个可发布基线。
+
+建议拆分：
+
+- `refactor(history): 移除本地历史追踪能力`
+- `feat(report): 增加证据化报告和模块可信度`
+- `scripts(auto): 增强自动测评进度和产物校验`
+- `scripts(acceptance): 增强真实 VPS 验收矩阵`
+- `docs(roadmap): 更新主流 VPS 对标和校准规范`
+- `ci(release): 发布流程增加验证门禁`
+
+提交前最低验证：
+
+```bash
+git status --short --branch
+git diff --check
+bash -n install.sh uninstall.sh scripts/*.sh
+python3 -m py_compile scripts/perfassess-progress-server.py scripts/calibration-summary.py scripts/verify-artifacts.py
+make project-invariants-smoke
+make validate
+make pre-commit
+```
+
+发布前额外验证：
+
+```bash
+make release-check
+PERFASSESS_ACCEPTANCE_MATRIX=low,standard scripts/vps-acceptance.sh
+```
+
+### 第二优先：真实 VPS 校准样本
+
+评分系统已经具备 profile、权重、置信度和校准版本，但仍需要真实样本证明阈值合理。下一步应开始有计划地收集脱敏样本：
+
+- 低配样本：512MB-1GB 内存、1C VPS，验证低资源降级和跳过解释。
+- 常规样本：2C-4C、2GB-8GB 内存，作为 server/vps 基准主力。
+- 高配样本：更多核心、更高磁盘和网络，用于观察评分上限。
+- 网络样本：不同地区、IPv4/IPv6、不同运营商，验证网络质量和 IP 质量报告。
+
+样本汇总命令：
+
+```bash
+python3 scripts/calibration-summary.py /path/to/samples \
+  --require-policy candidate \
+  --min-confidence medium \
+  --format markdown \
+  -o calibration-summary-candidate.md
+```
+
+评分基准变更前必须达到 formal 数据集要求，并保留汇总输出。
+
+### 第三优先：报告产品化
+
+报告下一步重点不是更多字段，而是更强结构：
+
+- 控制台：一屏总览 + 分节详情，适合截图和论坛复制。
+- Markdown：保持短摘要，完整细节留给附件和 Web。
+- JSON：保持 schema 稳定，所有降级和失败原因结构化。
+- Web：Material Design 3 / Google 风格，左侧固定导航，右侧模块证据表。
+
+每个模块都应包含：
+
+- 结论：这一项适合/不适合说明什么。
+- 指标：关键数值和单位。
+- 证据：来源、状态、耗时、错误或跳过原因。
+- 限制：估算、启发式、外部依赖或平台限制。
+- 建议：用户下一步如何复测或修复。
+
+### 第四优先：主流后端稳定化
+
+主流口径不是简单调用外部工具，而是把外部工具的失败、跳过和环境限制解释清楚。
+
+重点增强：
+
+- `iperf3`: 授权节点文件、`auth=owned|authorized` 节点授权声明、节点标签、失败节点保留、上下行分开统计。
+- `speedtest`: 节点信息、出口 IP、jitter、结果 URL、许可或网络失败分类。
+- `fio`: direct I/O、磁盘空间、权限、文件系统能力和低配机器跳过策略。
+- `sysbench`: CPU/内存时间预算、低内存跳过、结果波动解释。
+- `Geekbench`: 只保留显式可选路径，不默认下载运行。
+
+### 第五优先：平台化边界
+
+以下能力暂不进入默认一把梭：
+
+- 默认上传在线报告。
+- 默认长期本地历史追踪。
+- 内置真实回程探针或公共探针池。
+- 未授权公共 iperf3 节点池。
+
+如果后续要做平台化，应先实现显式上传到用户自有 endpoint、脱敏报告导入导出、schema 驱动排行和授权节点安全设计。

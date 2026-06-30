@@ -20,6 +20,65 @@ iperf3_servers="${PERFASSESS_IPERF3_SERVERS:-}"
 iperf3_server_file="${PERFASSESS_IPERF3_SERVER_FILE:-}"
 current_progress_step="prepare"
 heartbeat_pid=""
+failure_summary_written="0"
+
+profile_budget() {
+  local profile="$1"
+  local quality="$2"
+  local network="$3"
+
+  case "$profile" in
+    basic)
+      if [[ "$quality" == "mainstream" ]]; then
+        echo "预计耗时 2-5 分钟；资源占用低到中等；网络流量约 100-500 MB；适合低配机器或首次摸底。"
+      else
+        echo "预计耗时 1-3 分钟；资源占用低；网络流量约 50-200 MB；适合 512MB/低配机器和快速验收。"
+      fi
+      ;;
+    full)
+      if [[ "$quality" == "mainstream" ]]; then
+        echo "预计耗时 10-25 分钟；CPU/内存/磁盘占用高；网络流量可能超过 2 GB；适合发布前深度测评。"
+      else
+        echo "预计耗时 6-15 分钟；CPU/内存/磁盘占用中到高；网络流量约 500 MB-2 GB；包含压力测试。"
+      fi
+      ;;
+    standard|*)
+      if [[ "$quality" == "mainstream" ]]; then
+        echo "预计耗时 5-12 分钟；资源占用中等；网络流量约 500 MB-1.5 GB；适合主流口径对比。"
+      else
+        echo "预计耗时 3-8 分钟；资源占用中等；网络流量约 200-800 MB；适合常规 VPS 完整报告。"
+      fi
+      ;;
+  esac
+
+  case "$network" in
+    full)
+      echo "网络档位 full 会增加更多目标，可能额外增加 1-3 分钟。"
+      ;;
+    standard)
+      echo "网络档位 standard 会增加国内方向参考，耗时适中。"
+      ;;
+    quick)
+      echo "网络档位 quick 只做轻量出站质量参考。"
+      ;;
+  esac
+}
+
+profile_budget_inline() {
+  local profile="$1"
+  local quality="$2"
+  local network="$3"
+  local line combined=""
+  while IFS= read -r line; do
+    [[ -n "$line" ]] || continue
+    if [[ -z "$combined" ]]; then
+      combined="$line"
+    else
+      combined="$combined $line"
+    fi
+  done < <(profile_budget "$profile" "$quality" "$network")
+  echo "$combined"
+}
 
 case "$auto_profile" in
   auto) auto_profile="standard" ;;
@@ -76,6 +135,8 @@ if [[ "$auto_profile" == "full" ]]; then
   stress_enabled="1"
 fi
 
+budget_summary="$(profile_budget_inline "$auto_profile" "$quality_profile" "$network_profile")"
+
 default_args=(--output-format json -o "$output_dir/default.json")
 default_text_args=(-o "$output_dir/default.txt")
 default_args+=(--network-profile "$network_profile")
@@ -123,11 +184,12 @@ progress_update() {
   local step_id="$1"
   local step_status="$2"
   local message="${3:-}"
+  local activity="${4:-}"
 
   [[ -n "$progress_file" ]] || return 0
   mkdir -p "$(dirname "$progress_file")"
 
-  python3 - "$progress_file" "$output_dir" "$step_id" "$step_status" "$message" <<'PY'
+  python3 - "$progress_file" "$output_dir" "$step_id" "$step_status" "$message" "$activity" <<'PY'
 import json
 import pathlib
 import sys
@@ -138,6 +200,7 @@ output_dir = pathlib.Path(sys.argv[2])
 step_id = sys.argv[3]
 step_status = sys.argv[4]
 message = sys.argv[5]
+activity = sys.argv[6]
 now = datetime.now(timezone.utc).isoformat()
 
 step_defs = [
@@ -155,12 +218,14 @@ data = {
     "title": "Perfassess 实时测评",
     "status": "running",
     "message": message,
+    "activity": activity,
+    "activity_updated_at": now if activity else "",
     "output_dir": str(output_dir),
     "started_at": now,
     "updated_at": now,
     "current_step": step_id,
     "steps": [
-        {"id": sid, "label": label, "status": "pending", "message": "", "started_at": "", "updated_at": "", "finished_at": "", "duration_seconds": None}
+        {"id": sid, "label": label, "status": "pending", "message": "", "activity": "", "started_at": "", "updated_at": "", "finished_at": "", "duration_seconds": None}
         for sid, label in step_defs
     ],
 }
@@ -169,7 +234,7 @@ if progress_path.exists():
     try:
         old = json.loads(progress_path.read_text(encoding="utf-8"))
         if isinstance(old, dict):
-            data.update({k: v for k, v in old.items() if k not in {"steps", "updated_at", "current_step", "message", "status"}})
+            data.update({k: v for k, v in old.items() if k not in {"steps", "updated_at", "current_step", "message", "status", "activity", "activity_updated_at"}})
             old_steps = {step.get("id"): step for step in old.get("steps", []) if isinstance(step, dict)}
             for step in data["steps"]:
                 if step["id"] in old_steps:
@@ -185,6 +250,8 @@ for step in data["steps"]:
             step["started_at"] = now
         step["status"] = step_status
         step["message"] = message
+        if activity:
+            step["activity"] = activity
         step["updated_at"] = now
         if step_status in {"success", "failed"}:
             step["finished_at"] = now
@@ -210,11 +277,13 @@ artifacts = [
     ("终端彩色报告", "console.ansi"),
     ("终端纯文本报告", "console.txt"),
     ("报告压缩包", "perfassess-report.zip"),
+    ("报告产物清单", "artifact_manifest.json"),
     ("Markdown 摘要", "summary.md"),
     ("默认 JSON 报告", "default.json"),
     ("默认文本报告", "default.txt"),
     ("硬件质量报告", "hardware_quality.json"),
     ("网络质量报告", "net_quality.json"),
+    ("脱敏校准样本", "calibration_sample.json"),
     ("路由追踪报告", "route_trace.json"),
     ("国内方向参考报告", "backroute_trace.json"),
     ("IP 质量报告", "ip_quality.json"),
@@ -225,6 +294,12 @@ artifacts = [
 
 data["status"] = overall
 data["message"] = message
+if activity:
+    data["activity"] = activity
+    data["activity_updated_at"] = now
+elif not data.get("activity"):
+    data["activity"] = ""
+    data["activity_updated_at"] = ""
 data["updated_at"] = now
 data["current_step"] = step_id
 data["artifacts"] = [
@@ -243,7 +318,7 @@ mark_failed() {
   stop_heartbeat
   if [[ "$code" -ne 0 ]]; then
     progress_update "$current_progress_step" "failed" "步骤失败，退出码: $code"
-    if [[ ! -f "$output_dir/summary.md" ]]; then
+    if [[ "$failure_summary_written" != "1" ]]; then
       write_failure_summary "$code" "$current_progress_step" "自动测评在 $current_progress_step 阶段失败。"
     fi
   fi
@@ -307,6 +382,7 @@ start_heartbeat() {
   local label="$1"
   local start_seconds="$2"
   local activity_file="${3:-}"
+  local step_id="${4:-$current_progress_step}"
   [[ "$show_progress" == "1" ]] || return 0
   [[ "$heartbeat_interval" =~ ^[0-9]+$ && "$heartbeat_interval" -gt 0 ]] || return 0
   (
@@ -317,6 +393,10 @@ start_heartbeat() {
       if [[ -n "$activity_file" ]]; then
         activity="$(current_activity "$activity_file")"
       fi
+      if [[ -n "$activity" ]]; then
+        progress_update "$step_id" "running" "$label" "$activity"
+      fi
+      write_running_summary "running" "$step_id" "$label" "$activity"
       if [[ -n "$activity" ]]; then
         echo "[..] $(time_bar "$elapsed") $label 运行中，已耗时 $(format_duration "$elapsed")，当前: $activity"
       else
@@ -369,11 +449,125 @@ append_log_tail_markdown() {
   } >>"$output_dir/summary.md"
 }
 
+write_running_summary() {
+  local status="${1:-running}"
+  local step_id="${2:-$current_progress_step}"
+  local message="${3:-自动测评运行中}"
+  local activity="${4:-}"
+  mkdir -p "$output_dir"
+
+  {
+    echo "# Perfassess 自动测评进度"
+    echo
+    echo "| 项目 | 值 |"
+    echo "|------|----|"
+    echo "| 状态 | $status |"
+    echo "| 当前步骤 | $step_id |"
+    echo "| 当前说明 | $message |"
+    if [[ -n "$activity" ]]; then
+      echo "| 当前活动 | $activity |"
+    fi
+    echo "| 自动档位 | $auto_profile |"
+    echo "| 质量档位 | $quality_profile |"
+    echo "| 网络档位 | $network_profile |"
+    echo "| 流媒体档位 | $streaming_profile |"
+    echo "| 输出目录 | $output_dir |"
+    echo "| 预算说明 | $budget_summary |"
+    echo
+    echo "## 步骤进度"
+    echo
+    echo "| 步骤 | 状态 | 耗时 | 说明 |"
+    echo "|------|------|------|------|"
+  } >"$output_dir/summary.md"
+
+  if [[ -f "$progress_file" ]]; then
+    python3 - "$progress_file" >>"$output_dir/summary.md" <<'PY' || true
+import json
+import pathlib
+import sys
+
+def text(value, default="-"):
+    if value is None:
+        return default
+    value = str(value).strip()
+    return value if value else default
+
+def duration(value):
+    try:
+        seconds = int(round(float(value)))
+    except (TypeError, ValueError):
+        return "-"
+    minutes, remain = divmod(seconds, 60)
+    return f"{minutes}m{remain:02d}s" if minutes else f"{remain}s"
+
+labels = {
+    "success": "完成",
+    "failed": "失败",
+    "running": "运行中",
+    "pending": "等待",
+    "skipped": "跳过",
+}
+
+try:
+    data = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"))
+except Exception:
+    data = {}
+
+for step in data.get("steps", []):
+    if not isinstance(step, dict):
+        continue
+    status = labels.get(step.get("status"), text(step.get("status")))
+    print(f"| {text(step.get('label'))} | {status} | {duration(step.get('duration_seconds'))} | {text(step.get('message'))} |")
+PY
+  else
+    echo "| 准备输出目录 | 运行中 | - | 进度文件尚未生成 |" >>"$output_dir/summary.md"
+  fi
+
+  {
+    echo
+    echo "## 已产出文件"
+    echo
+  } >>"$output_dir/summary.md"
+
+  local artifact label path
+  while IFS='|' read -r label path; do
+    if [[ -f "$output_dir/$path" ]]; then
+      echo "- $label: $output_dir/$path" >>"$output_dir/summary.md"
+    fi
+  done <<'EOF'
+进度状态|progress.json
+版本信息|version.txt
+依赖检查|check-deps.txt
+默认 JSON 报告|default.json
+快速 JSON 报告|quick.json
+验收摘要|acceptance/summary.md
+报告压缩包|perfassess-report.zip
+完整文本报告|default.txt
+EOF
+
+  {
+    echo
+    echo "## 排查文件"
+    echo
+    echo "- 默认 JSON 标准输出: $output_dir/default.stdout.txt"
+    echo "- 默认 JSON 错误输出: $output_dir/default.stdout.txt.stderr.log"
+    echo "- 快速测评标准输出: $output_dir/quick.stdout.txt"
+    echo "- 快速测评错误输出: $output_dir/quick.stdout.txt.stderr.log"
+    echo "- 验收标准输出: $output_dir/acceptance.stdout.txt"
+    echo "- 验收错误输出: $output_dir/acceptance.stdout.txt.stderr.log"
+    echo
+    echo "完整测评成功后，本文件会被最终结构化 Markdown 报告覆盖。"
+  } >>"$output_dir/summary.md"
+
+  cp "$output_dir/summary.md" "$output_dir/console.txt" 2>/dev/null || true
+}
+
 write_failure_summary() {
   local code="$1"
   local step_id="${2:-$current_progress_step}"
   local message="${3:-自动测评失败}"
   mkdir -p "$output_dir"
+  failure_summary_written="1"
   {
     echo "# Perfassess 自动测评失败"
     echo
@@ -396,6 +590,8 @@ write_failure_summary() {
     echo "## 排查文件"
     echo
     echo "- 进度状态: $progress_file"
+    echo "- 构建标准输出: $output_dir/build.stdout.txt"
+    echo "- 构建错误输出: $output_dir/build.stderr.log"
     echo "- 默认 JSON 标准输出: $output_dir/default.stdout.txt"
     echo "- 默认 JSON 错误输出: $output_dir/default.stdout.txt.stderr.log"
     echo "- 文本报告标准输出: $output_dir/default-text.stdout.txt"
@@ -403,8 +599,31 @@ write_failure_summary() {
     echo "- 快速测评标准输出: $output_dir/quick.stdout.txt"
     echo "- 快速测评错误输出: $output_dir/quick.stdout.txt.stderr.log"
     echo "- 依赖检查: $output_dir/check-deps.txt"
+    echo
+    echo "## 已产出文件"
+    echo
   } >"$output_dir/summary.md"
 
+  local label path
+  while IFS='|' read -r label path; do
+    if [[ -f "$output_dir/$path" ]]; then
+      echo "- $label: $output_dir/$path" >>"$output_dir/summary.md"
+    fi
+  done <<'EOF'
+进度状态|progress.json
+构建标准输出|build.stdout.txt
+构建错误输出|build.stderr.log
+版本信息|version.txt
+依赖检查|check-deps.txt
+默认 JSON 报告|default.json
+快速 JSON 报告|quick.json
+验收摘要|acceptance/summary.md
+报告压缩包|perfassess-report.zip
+完整文本报告|default.txt
+EOF
+
+  append_log_tail_markdown "构建标准输出" "$output_dir/build.stdout.txt"
+  append_log_tail_markdown "构建错误输出" "$output_dir/build.stderr.log"
   append_log_tail_markdown "当前步骤标准输出" "$output_dir/default.stdout.txt"
   append_log_tail_markdown "当前步骤错误输出" "$output_dir/default.stdout.txt.stderr.log"
   append_log_tail_markdown "文本报告标准输出" "$output_dir/default-text.stdout.txt"
@@ -425,8 +644,9 @@ run_capture() {
   step "$label"
   current_progress_step="$step_id"
   progress_update "$step_id" "running" "$label"
+  write_running_summary "running" "$step_id" "$label"
   local start_seconds="$SECONDS"
-  start_heartbeat "$label" "$start_seconds" "$stdout_file"
+  start_heartbeat "$label" "$start_seconds" "$stdout_file" "$step_id"
   set +e
   "$@" >"$stdout_file" 2>"$output_dir/${stdout_file##*/}.stderr.log"
   local code="$?"
@@ -437,14 +657,16 @@ run_capture() {
   if [[ "$code" -ne 0 ]]; then
     local stderr_file="$output_dir/${stdout_file##*/}.stderr.log"
     local message="$label 失败，用时 $duration，退出码: $code"
-    progress_update "$step_id" "failed" "$message"
+    progress_update "$step_id" "failed" "$message" "$(current_activity "$stdout_file")"
+    write_running_summary "failed" "$step_id" "$message" "$(current_activity "$stdout_file")"
     echo "[FAIL] $message" >&2
     print_log_tail "$label 标准输出尾部" "$stdout_file"
     print_log_tail "$label 错误输出尾部" "$stderr_file"
     write_failure_summary "$code" "$step_id" "$message"
     return "$code"
   fi
-  progress_update "$step_id" "success" "$label 完成，用时 $duration"
+  progress_update "$step_id" "success" "$label 完成，用时 $duration" "$(current_activity "$stdout_file")"
+  write_running_summary "running" "$step_id" "$label 完成，用时 $duration" "$(current_activity "$stdout_file")"
   finish_step "$label" "$duration"
 }
 
@@ -456,6 +678,15 @@ fi
 mkdir -p "$output_dir"
 rm -f "$output_dir"/*.json "$output_dir"/*.txt "$output_dir"/*.md "$output_dir"/*.log
 progress_update "prepare" "success" "输出目录已准备: $output_dir"
+write_running_summary "running" "prepare" "输出目录已准备: $output_dir"
+if [[ "$show_progress" == "1" ]]; then
+  echo
+  echo "==> 测评预算"
+  echo "自动档位: $auto_profile"
+  echo "质量档位: $quality_profile"
+  echo "网络档位: $network_profile"
+  echo "预算说明: $budget_summary"
+fi
 
 if [[ "$skip_build" != "1" ]]; then
   if ! command -v go >/dev/null 2>&1; then
@@ -465,18 +696,37 @@ if [[ "$skip_build" != "1" ]]; then
   fi
   mkdir -p "$(dirname "$binary")"
   step "building: $binary"
+  current_progress_step="build"
   progress_update "build" "running" "构建二进制: $binary"
+  write_running_summary "running" "build" "构建二进制: $binary"
   build_start="$SECONDS"
-  go build -o "$binary" cmd/main.go
+  set +e
+  go build -o "$binary" cmd/main.go >"$output_dir/build.stdout.txt" 2>"$output_dir/build.stderr.log"
+  build_code="$?"
+  set -e
   build_duration="$(format_duration "$((SECONDS - build_start))")"
+  if [[ "$build_code" -ne 0 ]]; then
+    progress_update "build" "failed" "二进制构建失败，用时 $build_duration，退出码: $build_code"
+    write_running_summary "failed" "build" "二进制构建失败，用时 $build_duration，退出码: $build_code"
+    echo "[FAIL] building: $binary 失败，用时 $build_duration，退出码: $build_code" >&2
+    print_log_tail "构建标准输出尾部" "$output_dir/build.stdout.txt"
+    print_log_tail "构建错误输出尾部" "$output_dir/build.stderr.log"
+    write_failure_summary "$build_code" "build" "二进制构建失败，用时 $build_duration，退出码: $build_code"
+    exit "$build_code"
+  fi
   progress_update "build" "success" "二进制构建完成，用时 $build_duration"
+  write_running_summary "running" "build" "二进制构建完成，用时 $build_duration"
   finish_step "building: $binary" "$build_duration"
 else
+  printf 'build skipped; using existing binary: %s\n' "$binary" >"$output_dir/build.stdout.txt"
+  : >"$output_dir/build.stderr.log"
   progress_update "build" "success" "跳过构建，使用已有二进制"
+  write_running_summary "running" "build" "跳过构建，使用已有二进制"
 fi
 
 if [[ ! -x "$binary" ]]; then
   progress_update "build" "failed" "二进制不可执行: $binary"
+  write_running_summary "failed" "build" "二进制不可执行: $binary"
   echo "perfassess auto failed: binary is not executable: $binary" >&2
   exit 1
 fi
@@ -484,11 +734,13 @@ fi
 step "checking version and dependencies"
 current_progress_step="deps"
 progress_update "deps" "running" "检查版本和依赖"
+write_running_summary "running" "deps" "检查版本和依赖"
 deps_start="$SECONDS"
 "$binary" version >"$output_dir/version.txt"
 "$binary" check-deps >"$output_dir/check-deps.txt"
 deps_duration="$(format_duration "$((SECONDS - deps_start))")"
 progress_update "deps" "success" "版本和依赖检查完成，用时 $deps_duration"
+write_running_summary "running" "deps" "版本和依赖检查完成，用时 $deps_duration"
 finish_step "checking version and dependencies" "$deps_duration"
 
 run_capture "default_json" "运行自动测评档位: $auto_profile (JSON 报告)" "$output_dir/default.stdout.txt" \
@@ -498,8 +750,10 @@ python3 -m json.tool "$output_dir/default.json" >/dev/null
 step "生成自动测评文本报告"
 current_progress_step="default_text"
 progress_update "default_text" "running" "等待汇总阶段生成文本报告"
+write_running_summary "running" "default_text" "等待汇总阶段生成文本报告"
 touch "$output_dir/default-text.stdout.txt" "$output_dir/default-text.stdout.txt.stderr.log"
 progress_update "default_text" "success" "文本报告将在汇总阶段由 JSON 结果生成"
+write_running_summary "running" "default_text" "文本报告将在汇总阶段由 JSON 结果生成"
 finish_step "生成自动测评文本报告" "0s"
 
 run_capture "quick" "运行快速测评" "$output_dir/quick.stdout.txt" \
@@ -512,6 +766,7 @@ case "$acceptance_enabled" in
     progress_update "acceptance" "success" "已按配置跳过验收流程"
     mkdir -p "$output_dir/acceptance"
     printf '# VPS Acceptance Summary\n\n- status: skipped\n' >"$output_dir/acceptance/summary.md"
+    write_running_summary "running" "acceptance" "已按配置跳过验收流程"
     finish_step "跳过验收流程" "0s"
     ;;
   *)
@@ -525,18 +780,22 @@ esac
 
 current_progress_step="summary"
 progress_update "summary" "running" "生成汇总"
-python3 - "$output_dir" "$auto_profile" "$quality_profile" "$network_profile" "$streaming_profile" <<'PY'
+write_running_summary "running" "summary" "生成最终结构化汇总"
+python3 - "$output_dir" "$auto_profile" "$quality_profile" "$network_profile" "$streaming_profile" "$budget_summary" <<'PY'
 import json
 import pathlib
 import sys
+import hashlib
 import unicodedata
 import zipfile
+from datetime import datetime, timezone
 
 out = pathlib.Path(sys.argv[1])
 auto_profile = sys.argv[2]
 quality_profile = sys.argv[3]
 network_profile = sys.argv[4]
 streaming_profile = sys.argv[5]
+budget_summary = sys.argv[6]
 
 def load(name):
     with (out / name).open(encoding="utf-8") as f:
@@ -545,9 +804,17 @@ def load(name):
 default_report = load("default.json")
 quick_report = load("quick.json")
 default_summary = default_report["summary"]
+default_summary["budget_summary"] = budget_summary
 quick_summary = quick_report["summary"]
 acceptance_summary_path = out / "acceptance" / "summary.md"
 progress_report = load("progress.json") if (out / "progress.json").exists() else {}
+if isinstance(progress_report, dict):
+    for step in progress_report.get("steps", []):
+        if isinstance(step, dict) and step.get("id") == "summary" and step.get("status") == "running":
+            step["status"] = "success"
+            step["message"] = "汇总生成中"
+            step["duration_seconds"] = step.get("duration_seconds") or 0
+            break
 
 def text(value, default="-"):
     if value is None:
@@ -772,6 +1039,53 @@ def status_text(value):
         return "未执行"
     return text(value)
 
+def bottleneck_label(value):
+    value = text(value)
+    return {
+        "good": "表现正常",
+        "watch": "需要关注",
+        "weak": "明显短板",
+    }.get(value, value)
+
+def evidence_label(value):
+    value = text(value)
+    return {
+        "success": "通过",
+        "partial": "部分",
+        "warning": "注意",
+        "failed": "风险",
+    }.get(value, value)
+
+def module_status_label(value):
+    value = text(value)
+    return {
+        "success": "通过",
+        "warning": "注意",
+        "failed": "风险",
+        "skipped": "未执行",
+    }.get(value, value)
+
+def module_assessment_rows(modules):
+    if not isinstance(modules, dict):
+        return []
+    rows = []
+    for key in ["cpu", "memory", "disk", "network", "route", "ip_quality", "streaming", "ai_services"]:
+        item = modules.get(key)
+        if not isinstance(item, dict) or item.get("status") == "skipped":
+            continue
+        evidence = item.get("evidence") if isinstance(item.get("evidence"), list) else []
+        first_evidence = "-"
+        if evidence and isinstance(evidence[0], dict):
+            first_evidence = f"{text(evidence[0].get('label'))}: {text(evidence[0].get('value'))}"
+        rows.append([
+            text(item.get("title")),
+            module_status_label(item.get("status")),
+            text(item.get("confidence")),
+            text(item.get("summary")),
+            first_evidence,
+        ])
+    return rows
+
 def number_value(value):
     if isinstance(value, bool) or value is None:
         return None
@@ -788,6 +1102,252 @@ def int_value(value, default=0):
 
 def json_dump(path, value):
     path.write_text(json.dumps(value, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+def sha256_file(path):
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+def artifact_manifest_entry(rel, label, include_in_archive=True):
+    path = out / rel
+    exists = path.is_file()
+    entry = {
+        "path": rel,
+        "label": label,
+        "exists": exists,
+        "included_in_archive": bool(include_in_archive and exists),
+    }
+    if exists:
+        entry["size_bytes"] = path.stat().st_size
+        entry["sha256"] = sha256_file(path)
+    return entry
+
+def artifact_manifest_defs():
+    return [
+        ("console.ansi", "终端彩色报告"),
+        ("console.txt", "终端纯文本报告"),
+        ("summary.md", "Markdown 摘要"),
+        ("default.json", "完整 JSON 报告"),
+        ("default.txt", "完整文本报告"),
+        ("hardware_quality.json", "硬件质量模块"),
+        ("hardware_quality.txt", "硬件质量文本"),
+        ("net_quality.json", "网络质量模块"),
+        ("net_quality.txt", "网络质量文本"),
+        ("calibration_sample.json", "脱敏校准样本"),
+        ("route_trace.json", "路由追踪模块"),
+        ("route_trace.txt", "路由追踪文本"),
+        ("backroute_trace.json", "国内方向参考模块"),
+        ("backroute_trace.txt", "国内方向参考文本"),
+        ("ip_quality.json", "IP 质量模块"),
+        ("ip_quality.txt", "IP 质量文本"),
+        ("streaming_unlock.json", "流媒体模块"),
+        ("ai_services.json", "AI 服务模块"),
+        ("security_scan.json", "安全体检模块"),
+        ("stress_test.json", "压力测试模块"),
+        ("quick.json", "快速测评 JSON"),
+        ("build.stdout.txt", "构建标准输出"),
+        ("build.stderr.log", "构建错误输出"),
+        ("check-deps.txt", "依赖检查"),
+        ("version.txt", "版本信息"),
+        ("default.stdout.txt", "完整测评标准输出"),
+        ("default.stdout.txt.stderr.log", "完整测评错误输出"),
+        ("default-text.stdout.txt", "文本报告标准输出"),
+        ("default-text.stdout.txt.stderr.log", "文本报告错误输出"),
+        ("quick.stdout.txt", "快速测评标准输出"),
+        ("quick.stdout.txt.stderr.log", "快速测评错误输出"),
+        ("acceptance/summary.md", "验收摘要"),
+        ("acceptance.stdout.txt", "验收标准输出"),
+        ("acceptance.stderr.log", "验收错误输出"),
+    ]
+
+def build_artifact_manifest(include_archive=False):
+    entries = [artifact_manifest_entry(rel, label) for rel, label in artifact_manifest_defs()]
+    if include_archive:
+        entries.append(artifact_manifest_entry("perfassess-report.zip", "报告压缩包", include_in_archive=False))
+    existing = [entry for entry in entries if entry.get("exists")]
+    return {
+        "schema_version": "perfassess-artifact-manifest-v1",
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "tool": {
+            "name": "perfassess",
+            "version": version,
+        },
+        "run": {
+            "output_dir": str(out),
+            "auto_profile": auto_profile,
+            "quality_profile": quality_profile,
+            "network_profile": network_profile,
+            "streaming_profile": streaming_profile,
+            "budget_summary": budget_summary,
+            "session_id": default_report.get("session_id"),
+        },
+        "summary": {
+            "total_artifacts": len(entries),
+            "existing_artifacts": len(existing),
+            "archive": "perfassess-report.zip" if include_archive else None,
+        },
+        "artifacts": entries,
+    }
+
+def write_artifact_manifest(include_archive=False):
+    manifest = build_artifact_manifest(include_archive=include_archive)
+    json_dump(out / "artifact_manifest.json", manifest)
+    return manifest
+
+def metric_value(metrics, key, fallback=None):
+    if not isinstance(metrics, dict):
+        return fallback
+    value = metrics.get(key)
+    return fallback if value is None else value
+
+def result_metrics(test_results, key):
+    if not isinstance(test_results, dict):
+        return {}
+    result = test_results.get(key)
+    if not isinstance(result, dict):
+        return {}
+    metrics = result.get("metrics")
+    return metrics if isinstance(metrics, dict) else {}
+
+def redacted_system_sample(system):
+    if not isinstance(system, dict):
+        return {}
+    return {
+        "cpu_model": text(system.get("cpu_model")),
+        "cpu_cores": system.get("cpu_cores"),
+        "cpu_threads": system.get("cpu_threads"),
+        "memory_total_mb": system.get("memory_total_mb"),
+        "disk_total_gb": system.get("disk_total_gb"),
+        "os": text(system.get("os")),
+        "architecture": text(system.get("architecture")),
+        "virtualization": text(system.get("virtualization")),
+    }
+
+def module_confidence_sample(modules):
+    if not isinstance(modules, dict):
+        return {}
+    sample = {}
+    for key in ["cpu", "memory", "disk", "network", "route", "ip_quality", "streaming", "ai_services"]:
+        item = modules.get(key)
+        if not isinstance(item, dict):
+            continue
+        sample[key] = {
+            "status": item.get("status"),
+            "confidence": item.get("confidence"),
+            "evidence_count": len(item.get("evidence")) if isinstance(item.get("evidence"), list) else 0,
+        }
+    return sample
+
+def calibration_component_samples(default_report, default_summary, vps, modules):
+    test_results = default_report.get("test_results") if isinstance(default_report.get("test_results"), dict) else {}
+    cpu_metrics = result_metrics(test_results, "cpu_result")
+    memory_metrics = result_metrics(test_results, "memory_result")
+    disk_metrics = result_metrics(test_results, "disk_result")
+    network_metrics = result_metrics(test_results, "network_result")
+    score_breakdown = default_summary.get("score_breakdown") if isinstance(default_summary.get("score_breakdown"), dict) else {}
+    vps_cpu = vps.get("cpu", {}) if isinstance(vps.get("cpu"), dict) else {}
+    vps_memory = vps.get("memory", {}) if isinstance(vps.get("memory"), dict) else {}
+    vps_disk = vps.get("disk", {}) if isinstance(vps.get("disk"), dict) else {}
+    vps_network = vps.get("network", {}) if isinstance(vps.get("network"), dict) else {}
+    return {
+        "cpu": {
+            "backend": metric_value(cpu_metrics, "backend", vps_cpu.get("backend")),
+            "score": default_summary.get("cpu_score"),
+            "single_core_score": metric_value(cpu_metrics, "single_core_score", vps_cpu.get("single_core_score")),
+            "multi_core_score": metric_value(cpu_metrics, "multi_core_score", vps_cpu.get("multi_core_score")),
+            "total_score": metric_value(cpu_metrics, "total_score", vps_cpu.get("total_score")),
+            "events_single": metric_value(cpu_metrics, "single_core_events_per_sec", vps_cpu.get("single_core_events_per_sec")),
+            "events_multi": metric_value(cpu_metrics, "multi_core_events_per_sec", vps_cpu.get("multi_core_events_per_sec")),
+            "breakdown": score_breakdown.get("cpu", {}),
+            "module": modules.get("cpu", {}) if isinstance(modules, dict) else {},
+        },
+        "memory": {
+            "backend": metric_value(memory_metrics, "backend", vps_memory.get("backend")),
+            "score": default_summary.get("memory_score"),
+            "read_mbps": metric_value(memory_metrics, "read_speed_mbps", vps_memory.get("read_mbps")),
+            "write_mbps": metric_value(memory_metrics, "write_speed_mbps", vps_memory.get("write_mbps")),
+            "breakdown": score_breakdown.get("memory", {}),
+            "module": modules.get("memory", {}) if isinstance(modules, dict) else {},
+        },
+        "disk": {
+            "backend": metric_value(disk_metrics, "backend", vps_disk.get("backend")),
+            "score": default_summary.get("disk_score"),
+            "sequential_read_mbps": metric_value(disk_metrics, "sequential_read_mbps", vps_disk.get("sequential_read_mbps")),
+            "sequential_write_mbps": metric_value(disk_metrics, "sequential_write_mbps", vps_disk.get("sequential_write_mbps")),
+            "random_iops": metric_value(disk_metrics, "random_iops", vps_disk.get("random_iops")),
+            "breakdown": score_breakdown.get("disk", {}),
+            "module": modules.get("disk", {}) if isinstance(modules, dict) else {},
+        },
+        "network": {
+            "backend": metric_value(network_metrics, "backend", vps_network.get("backend")),
+            "score": default_summary.get("network_score"),
+            "latency_ms": metric_value(network_metrics, "latency_ms", vps_network.get("latency_ms")),
+            "download_mbps": metric_value(network_metrics, "download_speed_mbps", vps_network.get("download_mbps")),
+            "upload_mbps": metric_value(network_metrics, "upload_speed_mbps", vps_network.get("upload_mbps")),
+            "upload_estimated": metric_value(network_metrics, "upload_speed_estimated", vps_network.get("upload_estimated")),
+            "quality_failure_rate": metric_value(network_metrics, "network_quality_failure_rate", vps_network.get("quality_failure_rate")),
+            "quality_jitter_ms": metric_value(network_metrics, "network_quality_jitter_ms", vps_network.get("quality_jitter_ms")),
+            "breakdown": score_breakdown.get("network", {}),
+            "module": modules.get("network", {}) if isinstance(modules, dict) else {},
+        },
+    }
+
+def strip_module_details(component_samples):
+    stripped = {}
+    for key, value in component_samples.items():
+        if not isinstance(value, dict):
+            continue
+        item = dict(value)
+        module = item.get("module")
+        if isinstance(module, dict):
+            item["module"] = {
+                "status": module.get("status"),
+                "confidence": module.get("confidence"),
+                "evidence_count": len(module.get("evidence")) if isinstance(module.get("evidence"), list) else 0,
+            }
+        stripped[key] = item
+    return stripped
+
+def calibration_sample(default_report, default_summary, vps, modules):
+    calibration_info = default_summary.get("score_calibration") if isinstance(default_summary.get("score_calibration"), dict) else {}
+    score_breakdown = default_summary.get("score_breakdown") if isinstance(default_summary.get("score_breakdown"), dict) else {}
+    confidence_info = default_summary.get("confidence_level") if isinstance(default_summary.get("confidence_level"), dict) else {}
+    system_info = vps.get("system", {}) if isinstance(vps.get("system"), dict) else {}
+    component_samples = strip_module_details(calibration_component_samples(default_report, default_summary, vps, modules))
+    return {
+        "schema_version": "perfassess-calibration-sample-v1",
+        "redacted": True,
+        "privacy_note": "该样本用于评分阈值回测，已排除公网 IP、ISP、ASN、精确地理位置、会话 ID、路由 hop、原始日志和完整原始报告。",
+        "generated_at": default_report.get("timestamp"),
+        "tool": {
+            "name": "perfassess",
+            "version": version,
+            "auto_profile": auto_profile,
+            "quality_profile": quality_profile,
+            "network_profile": network_profile,
+            "streaming_profile": streaming_profile,
+        },
+        "environment": redacted_system_sample(system_info),
+        "scores": {
+            "total_score": default_summary.get("total_score"),
+            "grade": default_summary.get("grade"),
+            "score_profile": default_summary.get("score_profile"),
+            "calibration_version": calibration_info.get("version"),
+            "confidence_level": confidence_info.get("level"),
+            "tests_success": default_summary.get("tests_success"),
+            "tests_failed": default_summary.get("tests_failed"),
+            "tests_skipped": default_summary.get("tests_skipped"),
+            "tests_degraded": default_summary.get("tests_degraded"),
+        },
+        "benchmark_profile": default_summary.get("benchmark_profile", {}),
+        "score_calibration": calibration_info,
+        "score_breakdown": score_breakdown,
+        "component_samples": component_samples,
+        "module_confidence": module_confidence_sample(modules),
+        "quality_notes": default_summary.get("quality_notes", []),
+    }
 
 def md_cell(value):
     return text(value).replace("|", "\\|")
@@ -951,6 +1511,9 @@ def iperf3_matrix_nodes(metrics):
         nodes.append({
             "index": index,
             "server": text(metrics.get(f"{prefix}_server")),
+            "name": text(metrics.get(f"{prefix}_name"), ""),
+            "region": text(metrics.get(f"{prefix}_region"), ""),
+            "provider": text(metrics.get(f"{prefix}_provider"), ""),
             "host": text(metrics.get(f"{prefix}_host")),
             "port": text(metrics.get(f"{prefix}_port"), ""),
             "protocol": text(metrics.get(f"{prefix}_protocol")),
@@ -981,8 +1544,13 @@ def iperf3_console_rows(metrics):
     rows = []
     for node in iperf3_matrix_nodes(metrics):
         status = node["status"] if not node["error"] else f"{node['status']}: {node['error']}"
+        label = node["server"]
+        if node["name"]:
+            label = f"{node['name']} ({node['server']})"
         rows.append([
-            node["server"],
+            label,
+            node["region"] or "-",
+            node["provider"] or "-",
             node["protocol"],
             f"{num(node['download_mbps'])} Mbps" if node["download_mbps"] is not None else "-",
             f"{num(node['upload_mbps'])} Mbps" if node["upload_mbps"] is not None else "-",
@@ -1040,12 +1608,14 @@ def write_report_archive():
         "console.ansi",
         "console.txt",
         "summary.md",
+        "artifact_manifest.json",
         "default.json",
         "default.txt",
         "hardware_quality.json",
         "hardware_quality.txt",
         "net_quality.json",
         "net_quality.txt",
+        "calibration_sample.json",
         "route_trace.json",
         "route_trace.txt",
         "backroute_trace.json",
@@ -1057,9 +1627,10 @@ def write_report_archive():
         "security_scan.json",
         "stress_test.json",
         "quick.json",
+        "build.stdout.txt",
+        "build.stderr.log",
         "check-deps.txt",
         "version.txt",
-        "progress.json",
         "default.stdout.txt",
         "default.stdout.txt.stderr.log",
         "default-text.stdout.txt",
@@ -1088,6 +1659,7 @@ def write_module_artifacts():
         "quality_profile": quality_profile,
         "network_profile": network_profile,
         "streaming_profile": streaming_profile,
+        "budget_summary": budget_summary,
     }
     hardware_payload = {
         **module_common,
@@ -1110,6 +1682,7 @@ def write_module_artifacts():
     }
     net_payload = {
         **module_common,
+        "assessment": module_assessments.get("network", {}),
         "network": network,
         "network_metrics": network_metrics,
         "iperf3_matrix": iperf3_matrix_summary(network_metrics),
@@ -1121,6 +1694,7 @@ def write_module_artifacts():
     }
     route_payload = {
         **module_common,
+        "assessment": module_assessments.get("route", {}),
         "note": route_note,
         "direction_summary": route_direction_summary(default_summary.get("route_trace_results")),
         "groups": split_route_results(default_summary.get("route_trace_results")),
@@ -1136,6 +1710,7 @@ def write_module_artifacts():
     }
     ip_payload = {
         **module_common,
+        "assessment": module_assessments.get("ip_quality", {}),
         "verdict": ip_verdict(ip_report),
         "evidence": ip_report.get("evidence", []) if isinstance(ip_report, dict) else [],
         "recommendations": ip_recommendations(ip_report),
@@ -1146,16 +1721,18 @@ def write_module_artifacts():
     }
     streaming_payload = {
         **module_common,
+        "assessment": module_assessments.get("streaming", {}),
         "profile": text(default_summary.get("streaming_profile"), streaming_profile),
         "results": default_summary.get("streaming_results", {}),
         "rows": streaming_rows(default_summary.get("streaming_results")),
     }
-    ai_payload = {**module_common, "results": default_summary.get("ai_results", {}), "rows": ai_rows(default_summary.get("ai_results"))}
+    ai_payload = {**module_common, "assessment": module_assessments.get("ai_services", {}), "results": default_summary.get("ai_results", {}), "rows": ai_rows(default_summary.get("ai_results"))}
     security_payload = {**module_common, "report": default_summary.get("security_report", {})}
     stress_payload = {**module_common, "report": stress_report}
 
     json_dump(out / "hardware_quality.json", hardware_payload)
     json_dump(out / "net_quality.json", net_payload)
+    json_dump(out / "calibration_sample.json", calibration_sample(default_report, default_summary, vps, module_assessments))
     json_dump(out / "route_trace.json", route_payload)
     json_dump(out / "backroute_trace.json", backroute_payload)
     json_dump(out / "ip_quality.json", ip_payload)
@@ -1231,6 +1808,7 @@ ai_ok, ai_total = availability_count(default_summary.get("ai_results"))
 security_total, security_severity = security_count(default_summary.get("security_report"))
 ip_report = default_summary.get("ip_quality_report") if isinstance(default_summary.get("ip_quality_report"), dict) else {}
 stress_report = default_summary.get("stress_report") if isinstance(default_summary.get("stress_report"), dict) else {}
+module_assessments = default_summary.get("module_assessments") if isinstance(default_summary.get("module_assessments"), dict) else {}
 version = (out / "version.txt").read_text(encoding="utf-8").strip()
 confidence = default_summary.get("confidence_level", {}).get("level")
 calibration = default_summary.get("score_calibration", {}).get("version")
@@ -1244,6 +1822,7 @@ network = vps.get("network", {}) if isinstance(vps.get("network"), dict) else {}
 network_metrics = default_report.get("test_results", {}).get("network_result", {}).get("metrics", {})
 if not isinstance(network_metrics, dict):
     network_metrics = {}
+conclusion = default_summary.get("assessment_conclusion") if isinstance(default_summary.get("assessment_conclusion"), dict) else {}
 write_module_artifacts()
 
 def console_report(color=False):
@@ -1304,6 +1883,7 @@ def console_report(color=False):
         f"{kv('版本', version)}    {kv('档位', auto_profile, 'yellow')}    {kv('质量', quality_profile, 'yellow')}",
         kv("网络档位", network_profile, "yellow"),
         kv("流媒体档位", streaming_profile, "yellow"),
+        kv("预算说明", budget_summary, "yellow"),
         kv("输出目录", out),
     ]
 
@@ -1327,6 +1907,46 @@ def console_report(color=False):
         [14, 22, 36],
         status_col=2,
     ))
+    if conclusion:
+        bottlenecks = conclusion.get("bottlenecks", []) if isinstance(conclusion.get("bottlenecks"), list) else []
+        evidence = conclusion.get("evidence", []) if isinstance(conclusion.get("evidence"), list) else []
+        limitations = conclusion.get("limitations", []) if isinstance(conclusion.get("limitations"), list) else []
+        recommendations = conclusion.get("recommendations", []) if isinstance(conclusion.get("recommendations"), list) else []
+        suitability = conclusion.get("suitability", []) if isinstance(conclusion.get("suitability"), list) else []
+        rows += section("测评结论")
+        rows.extend([
+            kv("结论", text(conclusion.get("headline"))),
+            kv("适用判断", text(conclusion.get("scenario"))),
+            kv("适合场景", "、".join(text(item) for item in suitability) if suitability else "-"),
+        ])
+        if bottlenecks:
+            rows.extend(table(
+                ["模块", "评分", "状态"],
+                [[text(item.get("label")), num(item.get("score")), bottleneck_label(item.get("severity"))] for item in bottlenecks if isinstance(item, dict)],
+                [12, 12, 18],
+                status_col=2,
+            ))
+        if evidence:
+            rows.extend(table(
+                ["证据", "结果", "状态", "说明"],
+                [[text(item.get("label")), text(item.get("value")), evidence_label(item.get("status")), text(item.get("detail"))] for item in evidence[:5] if isinstance(item, dict)],
+                [16, 24, 10, 28],
+                status_col=2,
+            ))
+        if limitations:
+            rows.append(kv("主要限制", text(limitations[0]), "yellow"))
+        if recommendations:
+            rows.append(kv("优先建议", text(recommendations[0]), "yellow"))
+
+    module_rows = module_assessment_rows(module_assessments)
+    if module_rows:
+        rows += section("模块可信度")
+        rows.extend(table(
+            ["模块", "状态", "置信度", "结论", "首要证据"],
+            module_rows,
+            [12, 8, 8, 28, 22],
+            status_col=1,
+        ))
 
     rows += section("核心性能")
     rows.extend(table(
@@ -1366,10 +1986,10 @@ def console_report(color=False):
     if iperf3_rows:
         rows += section("iperf3 多节点矩阵")
         rows.extend(table(
-            ["节点", "协议", "下载", "上传", "延迟", "状态/错误"],
+            ["节点", "区域", "提供方", "协议", "下载", "上传", "延迟", "状态/错误"],
             iperf3_rows,
-            [20, 8, 12, 12, 10, 12],
-            status_col=5,
+            [24, 8, 12, 8, 12, 12, 10, 12],
+            status_col=7,
         ))
 
     rows += section("IP 质量")
@@ -1496,6 +2116,7 @@ def console_report(color=False):
         kv("文本", out / "default.txt"),
         kv("硬件模块", out / "hardware_quality.json"),
         kv("网络模块", out / "net_quality.json"),
+        kv("校准样本", out / "calibration_sample.json"),
         kv("路由模块", out / "route_trace.json"),
         kv("国内方向", out / "backroute_trace.json"),
         kv("IP 模块", out / "ip_quality.json"),
@@ -1516,6 +2137,7 @@ lines = [
     f"| 质量档位 | {quality_profile} |",
     f"| 网络档位 | {network_profile} |",
     f"| 流媒体档位 | {streaming_profile} |",
+    f"| 预算说明 | {budget_summary} |",
     f"| 综合评分 | {num(default_summary.get('total_score'))} / 100 |",
     f"| 等级 | {text(default_summary.get('grade'))} |",
     f"| 置信度 | {text(confidence)} |",
@@ -1534,6 +2156,62 @@ lines = [
     "",
 ]
 
+if conclusion:
+    bottlenecks = conclusion.get("bottlenecks", []) if isinstance(conclusion.get("bottlenecks"), list) else []
+    evidence = conclusion.get("evidence", []) if isinstance(conclusion.get("evidence"), list) else []
+    limitations = conclusion.get("limitations", []) if isinstance(conclusion.get("limitations"), list) else []
+    recommendations = conclusion.get("recommendations", []) if isinstance(conclusion.get("recommendations"), list) else []
+    suitability = conclusion.get("suitability", []) if isinstance(conclusion.get("suitability"), list) else []
+    lines.extend([
+        "## 测评结论",
+        "",
+        f"- 结论: {text(conclusion.get('headline'))}",
+        f"- 适用判断: {text(conclusion.get('scenario'))}",
+        f"- 适合场景: {', '.join(text(item) for item in suitability) if suitability else '-'}",
+        "",
+        "| 短板排序 | 评分 | 状态 |",
+        "|----------|------|------|",
+    ])
+    for item in bottlenecks:
+        if isinstance(item, dict):
+            lines.append(f"| {md_cell(text(item.get('label')))} | {num(item.get('score'))} | {md_cell(bottleneck_label(item.get('severity')))} |")
+    if evidence:
+        lines.extend([
+            "",
+            "### 关键证据",
+            "",
+            "| 证据 | 结果 | 状态 | 说明 |",
+            "|------|------|------|------|",
+        ])
+        for item in evidence[:5]:
+            if isinstance(item, dict):
+                lines.append(f"| {md_cell(text(item.get('label')))} | {md_cell(text(item.get('value')))} | {md_cell(evidence_label(item.get('status')))} | {md_cell(text(item.get('detail')))} |")
+    lines.extend([
+        "",
+        "### 主要限制",
+        "",
+    ])
+    lines.extend(f"- {text(item)}" for item in limitations[:5])
+    lines.extend([
+        "",
+        "### 建议",
+        "",
+    ])
+    lines.extend(f"- {text(item)}" for item in recommendations[:5])
+    lines.append("")
+
+module_rows = module_assessment_rows(module_assessments)
+if module_rows:
+    lines.extend([
+        "## 模块可信度",
+        "",
+        "| 模块 | 状态 | 置信度 | 结论 | 首要证据 |",
+        "|------|------|--------|------|----------|",
+    ])
+    for row in module_rows:
+        lines.append(f"| {md_cell(row[0])} | {md_cell(row[1])} | {md_cell(row[2])} | {md_cell(row[3])} | {md_cell(row[4])} |")
+    lines.append("")
+
 timing_rows = progress_step_rows()
 if timing_rows:
     lines.extend([
@@ -1551,11 +2229,11 @@ if iperf3_rows:
     lines.extend([
         "## iperf3 多节点矩阵",
         "",
-        "| 节点 | 协议 | 下载 | 上传 | 延迟 | 状态/错误 |",
-        "|------|------|------|------|------|-----------|",
+        "| 节点 | 区域 | 提供方 | 协议 | 下载 | 上传 | 延迟 | 状态/错误 |",
+        "|------|------|--------|------|------|------|------|-----------|",
     ])
     for row in iperf3_rows:
-        lines.append(f"| {md_cell(row[0])} | {md_cell(row[1])} | {md_cell(row[2])} | {md_cell(row[3])} | {md_cell(row[4])} | {md_cell(row[5])} |")
+        lines.append(f"| {md_cell(row[0])} | {md_cell(row[1])} | {md_cell(row[2])} | {md_cell(row[3])} | {md_cell(row[4])} | {md_cell(row[5])} | {md_cell(row[6])} | {md_cell(row[7])} |")
     lines.append("")
 
 lines.extend([
@@ -1690,11 +2368,13 @@ lines.extend([
     f"- 终端彩色报告: {out / 'console.ansi'}",
     f"- 终端纯文本报告: {out / 'console.txt'}",
     f"- 报告压缩包: {out / 'perfassess-report.zip'}",
+    f"- 报告产物清单: {out / 'artifact_manifest.json'}",
     f"- Markdown 摘要: {out / 'summary.md'}",
     f"- JSON 完整报告: {out / 'default.json'}",
     f"- 文本完整报告: {out / 'default.txt'}",
     f"- 硬件质量模块: {out / 'hardware_quality.json'}",
     f"- 网络质量模块: {out / 'net_quality.json'}",
+    f"- 脱敏校准样本: {out / 'calibration_sample.json'}",
     f"- 路由追踪模块: {out / 'route_trace.json'}",
     f"- 国内方向参考模块: {out / 'backroute_trace.json'}",
     f"- IP 质量模块: {out / 'ip_quality.json'}",
@@ -1708,10 +2388,13 @@ if share:
     lines.extend(["", "## 分享模板", "", "```text", share, "```"])
 
 (out / "summary.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+json_dump(out / "default.json", default_report)
 (out / "console.txt").write_text(console_report(color=False) + "\n", encoding="utf-8")
 (out / "console.ansi").write_text(console_report(color=True) + "\n", encoding="utf-8")
 (out / "default.txt").write_text(console_report(color=False) + "\n", encoding="utf-8")
+write_artifact_manifest(include_archive=False)
 write_report_archive()
+write_artifact_manifest(include_archive=True)
 PY
 progress_update "summary" "success" "汇总已生成"
 trap - EXIT

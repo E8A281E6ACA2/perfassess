@@ -187,6 +187,126 @@ const HTMLTemplate = `<!DOCTYPE html>
             margin-top: 24px;
         }
 
+        .decision-panel {
+            display: grid;
+            grid-template-columns: minmax(0, 1.15fr) minmax(280px, 0.85fr);
+            gap: 16px;
+            margin-top: 18px;
+        }
+
+        .decision-main,
+        .decision-side {
+            border-radius: 24px;
+            padding: 20px;
+            background: rgba(255, 255, 255, 0.86);
+            border: 1px solid rgba(196, 199, 197, 0.72);
+            box-shadow: var(--md-shadow-1);
+        }
+
+        .decision-kicker {
+            color: var(--md-primary);
+            font-size: 12px;
+            font-weight: 820;
+        }
+
+        .decision-title {
+            margin: 8px 0 8px;
+            font-size: 24px;
+            line-height: 1.25;
+        }
+
+        .decision-scenario {
+            margin: 0;
+            color: var(--md-muted);
+            font-size: 14px;
+            line-height: 1.7;
+        }
+
+        .pill-list,
+        .decision-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 14px;
+        }
+
+        .decision-pill {
+            border-radius: 999px;
+            padding: 7px 11px;
+            color: var(--md-on-primary-container);
+            background: var(--md-primary-container);
+            font-size: 12px;
+            font-weight: 720;
+        }
+
+        .evidence-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 10px;
+            margin-top: 16px;
+        }
+
+        .evidence-item {
+            min-height: 82px;
+            border-radius: 16px;
+            padding: 12px;
+            background: var(--md-surface-low);
+            border: 1px solid var(--md-outline-variant);
+        }
+
+        .evidence-label {
+            display: flex;
+            justify-content: space-between;
+            gap: 8px;
+            color: var(--md-muted);
+            font-size: 12px;
+            font-weight: 760;
+        }
+
+        .evidence-value {
+            margin-top: 7px;
+            color: var(--md-text);
+            font-size: 13px;
+            font-weight: 720;
+            overflow-wrap: anywhere;
+        }
+
+        .decision-side h2 {
+            margin: 0 0 10px;
+            font-size: 16px;
+        }
+
+        .decision-side ul {
+            margin: 8px 0 0;
+            padding-left: 19px;
+            color: var(--md-text);
+            font-size: 13px;
+            line-height: 1.7;
+        }
+
+        .bottleneck-row {
+            display: grid;
+            grid-template-columns: 64px 1fr auto;
+            gap: 10px;
+            align-items: center;
+            padding: 9px 0;
+            border-bottom: 1px solid var(--md-outline-variant);
+            font-size: 13px;
+        }
+
+        .bar-track {
+            height: 8px;
+            border-radius: 999px;
+            background: var(--md-surface-container);
+            overflow: hidden;
+        }
+
+        .bar-fill {
+            height: 100%;
+            border-radius: inherit;
+            background: var(--md-primary);
+        }
+
         .sidebar {
             position: sticky;
             top: 16px;
@@ -403,6 +523,53 @@ const HTMLTemplate = `<!DOCTYPE html>
             overflow-wrap: anywhere;
         }
 
+        .assessment-grid {
+            display: grid;
+            grid-template-columns: minmax(0, 1.2fr) minmax(220px, 0.8fr) minmax(220px, 0.8fr);
+            gap: 14px;
+            margin-top: 16px;
+            padding-top: 16px;
+            border-top: 1px solid var(--md-outline-variant);
+        }
+
+        .assessment-block h3 {
+            margin: 0 0 10px;
+            color: var(--md-muted);
+            font-size: 13px;
+            font-weight: 820;
+        }
+
+        .assessment-row {
+            display: grid;
+            grid-template-columns: auto minmax(0, 1fr);
+            gap: 10px;
+            align-items: start;
+            padding: 9px 0;
+            border-bottom: 1px solid var(--md-outline-variant);
+        }
+
+        .assessment-row strong {
+            display: block;
+            color: var(--md-text);
+            font-size: 13px;
+        }
+
+        .assessment-row p {
+            margin: 3px 0 0;
+            color: var(--md-muted);
+            font-size: 13px;
+            line-height: 1.5;
+            overflow-wrap: anywhere;
+        }
+
+        .assessment-block ul {
+            margin: 0;
+            padding-left: 18px;
+            color: var(--md-text);
+            font-size: 13px;
+            line-height: 1.7;
+        }
+
         .status-success {
             color: #0d3b1e;
             background: #c4e7c6;
@@ -536,6 +703,14 @@ const HTMLTemplate = `<!DOCTYPE html>
                 grid-template-columns: 1fr;
             }
 
+            .decision-panel {
+                grid-template-columns: 1fr;
+            }
+
+            .evidence-grid {
+                grid-template-columns: 1fr;
+            }
+
             .sidebar {
                 position: static;
                 display: flex;
@@ -568,7 +743,8 @@ const HTMLTemplate = `<!DOCTYPE html>
             }
 
             .hero-content,
-            .detail-grid {
+            .detail-grid,
+            .assessment-grid {
                 grid-template-columns: 1fr;
             }
 
@@ -650,6 +826,61 @@ const HTMLTemplate = `<!DOCTYPE html>
             </div>
         </section>
 
+        <section class="decision-panel" aria-label="测评决策面板">
+            <div class="decision-main">
+                <div class="decision-kicker">决策摘要</div>
+                <h2 class="decision-title">{{.DecisionPanel.Headline}}</h2>
+                <p class="decision-scenario">{{.DecisionPanel.Scenario}}</p>
+                {{if .DecisionPanel.Suitability}}
+                <div class="pill-list">
+                    {{range .DecisionPanel.Suitability}}
+                    <span class="decision-pill">{{.}}</span>
+                    {{end}}
+                </div>
+                {{end}}
+                {{if .DecisionPanel.Evidence}}
+                <div class="decision-kicker" style="margin-top: 16px;">关键证据</div>
+                <div class="evidence-grid">
+                    {{range .DecisionPanel.Evidence}}
+                    <div class="evidence-item">
+                        <div class="evidence-label">
+                            <span>{{.Label}}</span>
+                            <span class="status-badge status-{{.Status}}">{{.StatusText}}</span>
+                        </div>
+                        <div class="evidence-value">{{.Value}}</div>
+                    </div>
+                    {{end}}
+                </div>
+                {{end}}
+            </div>
+            <aside class="decision-side">
+                <h2>短板排序</h2>
+                {{range .DecisionPanel.Bottlenecks}}
+                <div class="bottleneck-row">
+                    <span>{{.Label}}</span>
+                    <span class="bar-track"><span class="bar-fill" style="width: {{.Percent}};"></span></span>
+                    <strong>{{printf "%.0f" .Score}}</strong>
+                </div>
+                {{end}}
+                {{if .DecisionPanel.Recommendations}}
+                <h2 style="margin-top: 18px;">优先建议</h2>
+                <ul>
+                    {{range .DecisionPanel.Recommendations}}
+                    <li>{{.}}</li>
+                    {{end}}
+                </ul>
+                {{end}}
+                {{if .DecisionPanel.Limitations}}
+                <h2 style="margin-top: 18px;">限制说明</h2>
+                <ul>
+                    {{range .DecisionPanel.Limitations}}
+                    <li>{{.}}</li>
+                    {{end}}
+                </ul>
+                {{end}}
+            </aside>
+        </section>
+
         <section class="report-layout">
             <nav class="sidebar" aria-label="报告目录">
                 <div class="sidebar-title">报告目录</div>
@@ -704,6 +935,39 @@ const HTMLTemplate = `<!DOCTYPE html>
                         <div class="detail-row">
                             <span class="detail-label">{{.Label}}</span>
                             <span class="detail-value">{{.Value}}</span>
+                        </div>
+                        {{end}}
+                    </div>
+                    {{end}}
+
+                    {{if .Evidence}}
+                    <div class="assessment-grid">
+                        <div class="assessment-block">
+                            <h3>证据</h3>
+                            {{range .Evidence}}
+                            <div class="assessment-row">
+                                <span class="status-badge status-{{.Status}}">{{.StatusText}}</span>
+                                <div>
+                                    <strong>{{.Label}}</strong>
+                                    <p>{{.Value}}</p>
+                                </div>
+                            </div>
+                            {{end}}
+                        </div>
+                        {{if .Recommendations}}
+                        <div class="assessment-block">
+                            <h3>建议</h3>
+                            <ul>
+                                {{range .Recommendations}}<li>{{.}}</li>{{end}}
+                            </ul>
+                        </div>
+                        {{end}}
+                        {{if .Limitations}}
+                        <div class="assessment-block">
+                            <h3>限制</h3>
+                            <ul>
+                                {{range .Limitations}}<li>{{.}}</li>{{end}}
+                            </ul>
                         </div>
                         {{end}}
                     </div>

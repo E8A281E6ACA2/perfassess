@@ -1,5 +1,5 @@
 #!/bin/bash
-# Perfassess - 卸载脚本
+# Perfassess - 发布二进制卸载脚本
 
 set -e
 
@@ -69,3 +69,4 @@ if [[ $REPLY =~ ^[Yy]$ ]]; then
 fi
 
 print_success "卸载完成"
+echo "如需清理 bootstrap 生成的源码、构建产物或 /tmp/perfassess-auto 报告，请在仓库目录运行 scripts/bootstrap.sh --clean 或 --clean-all。"

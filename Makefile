@@ -23,7 +23,7 @@ BINARY_LINUX=$(APP_NAME)_linux
 BINARY_DARWIN=$(APP_NAME)_darwin
 BINARY_WINDOWS=$(APP_NAME).exe
 
-.PHONY: all build build-all build-linux build-darwin build-windows clean test test-coverage deps install run run-verbose run-cpu run-all bootstrap auto fmt fmt-check lint schema-check cli-smoke json-smoke release-smoke vps-acceptance validate release-check help
+.PHONY: all build build-all build-linux build-darwin build-windows release-checksums clean test test-coverage deps install run run-verbose run-cpu run-all bootstrap auto fmt fmt-check lint schema-check cli-smoke json-smoke project-invariants-smoke remote-runbook-smoke release-runbook-smoke release-workflow-smoke report-contract-smoke calibration-summary-smoke redact-report-smoke auto-running-summary-smoke bootstrap-prebuilt-smoke artifact-verify-smoke vps-acceptance-strict-preflight-smoke release-smoke release-checksums-smoke verify-release-assets-smoke vps-acceptance vps-acceptance-low-standard validate pre-commit release-check help
 
 # 默认目标
 all: clean deps build
@@ -36,7 +36,7 @@ build:
 	@echo "构建完成: $(BUILD_DIR)/$(APP_NAME)"
 
 # 构建所有平台的可执行文件
-build-all: build-linux build-darwin build-windows
+build-all: build-linux build-darwin build-windows release-checksums
 	@echo "所有平台构建完成"
 
 # 构建 Linux 版本
@@ -61,6 +61,12 @@ build-windows:
 	@mkdir -p $(BUILD_DIR)
 	GOOS=windows GOARCH=amd64 $(GOBUILD) $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_WINDOWS) $(MAIN_FILE)
 	@echo "Windows 版本构建完成"
+
+# 生成发布产物 SHA256 清单
+release-checksums:
+	@echo "生成发布产物 SHA256 清单..."
+	@cd $(BUILD_DIR) && sha256sum $(BINARY_LINUX)_amd64 $(BINARY_LINUX)_arm64 $(BINARY_DARWIN)_amd64 $(BINARY_DARWIN)_arm64 $(BINARY_WINDOWS) > checksums.txt
+	@echo "SHA256 清单已生成: $(BUILD_DIR)/checksums.txt"
 
 # 清理构建产物
 clean:
@@ -159,22 +165,101 @@ json-smoke:
 	@$(GOCMD) run ./cmd --quick --output-format json -o /tmp/perfassess-release-smoke.json >/tmp/perfassess-release-smoke.stdout
 	@python3 -m json.tool /tmp/perfassess-release-smoke.json >/dev/null
 
+# 校验项目级不变量，防止旧命名、隐私边界和已移除能力回归
+project-invariants-smoke:
+	@echo "运行项目级不变量检查..."
+	@bash scripts/project-invariants-smoke.sh
+
+# 校验远程服务器测试手册，防止 bootstrap 使用文档漂移
+remote-runbook-smoke:
+	@echo "运行远程测试手册冒烟测试..."
+	@bash scripts/remote-runbook-smoke.sh
+
+# 校验 GitHub Release 发布手册
+release-runbook-smoke:
+	@echo "运行发布手册冒烟测试..."
+	@bash scripts/release-runbook-smoke.sh
+
+# 校验 GitHub Release workflow
+release-workflow-smoke:
+	@echo "运行发布 workflow 冒烟测试..."
+	@bash scripts/release-workflow-smoke.sh
+
+# 校验报告语义和 Web 渲染契约
+report-contract-smoke: build
+	@echo "运行报告和 Web 契约冒烟测试..."
+	@scripts/report-contract-smoke.sh $(BUILD_DIR)/$(APP_NAME)
+
+# 校验脱敏校准样本汇总工具
+calibration-summary-smoke: build
+	@echo "运行校准样本汇总冒烟测试..."
+	@scripts/calibration-summary-smoke.sh $(BUILD_DIR)/$(APP_NAME)
+
+# 校验 JSON 报告脱敏工具
+redact-report-smoke:
+	@echo "运行报告脱敏工具冒烟测试..."
+	@bash scripts/redact-report-smoke.sh
+
+# 校验自动测评运行中和失败时 summary.md 可用
+auto-running-summary-smoke:
+	@echo "运行自动测评运行中摘要冒烟测试..."
+	@bash scripts/auto-running-summary-smoke.sh
+
+# 校验 bootstrap 可使用预构建二进制跳过源码构建
+bootstrap-prebuilt-smoke:
+	@echo "运行 bootstrap 预构建二进制冒烟测试..."
+	@bash scripts/bootstrap-prebuilt-smoke.sh
+
+# 校验自动测评报告产物清单
+artifact-verify-smoke: build
+	@echo "运行报告产物清单校验冒烟测试..."
+	@bash scripts/artifact-verify-smoke.sh $(BUILD_DIR)/$(APP_NAME)
+
+# 校验严格 VPS 验收的资源预检会在报告生成前失败
+vps-acceptance-strict-preflight-smoke: build
+	@echo "运行严格 VPS 验收资源预检冒烟测试..."
+	@bash scripts/vps-acceptance-strict-preflight-smoke.sh $(BUILD_DIR)/$(APP_NAME)
+
 # 使用发布二进制执行端到端冒烟测试
 release-smoke: build
 	@echo "运行发布二进制端到端冒烟测试..."
 	@scripts/release-smoke.sh $(BUILD_DIR)/$(APP_NAME)
+
+# 校验发布产物 SHA256 清单
+release-checksums-smoke:
+	@echo "运行发布产物 SHA256 清单冒烟测试..."
+	@bash scripts/release-checksums-smoke.sh $(BUILD_DIR)
+
+# 校验发布后资产下载与 SHA256 校验脚本
+verify-release-assets-smoke:
+	@echo "运行 Release 资产校验脚本冒烟测试..."
+	@bash scripts/verify-release-assets-smoke.sh
 
 # 在真实 VPS 或测试机上执行验收
 vps-acceptance: build
 	@echo "运行真实 VPS 验收..."
 	@scripts/vps-acceptance.sh
 
+# 在真实 VPS 或测试机上执行推荐 low/standard 验收矩阵
+vps-acceptance-low-standard: build
+	@echo "运行真实 VPS low/standard 验收矩阵..."
+	@PERFASSESS_ACCEPTANCE_MATRIX=low,standard scripts/vps-acceptance.sh
+
 # 日常验证入口
-validate: fmt-check schema-check test build cli-smoke
+validate: fmt-check schema-check project-invariants-smoke remote-runbook-smoke release-runbook-smoke release-workflow-smoke test build cli-smoke report-contract-smoke calibration-summary-smoke redact-report-smoke auto-running-summary-smoke bootstrap-prebuilt-smoke verify-release-assets-smoke artifact-verify-smoke vps-acceptance-strict-preflight-smoke
 	@echo "日常验证通过"
 
+# 提交前验证入口
+pre-commit:
+	@git status --short --branch
+	@git diff --check
+	@bash -n install.sh uninstall.sh scripts/*.sh
+	@python3 -m py_compile scripts/perfassess-progress-server.py scripts/calibration-summary.py scripts/verify-artifacts.py scripts/redact-report.py
+	@$(MAKE) validate
+	@echo "提交前验证通过"
+
 # 发布前验证入口
-release-check: validate release-smoke build-all
+release-check: validate release-smoke build-all release-checksums-smoke
 	@echo "发布前验证通过"
 
 # 显示帮助信息
@@ -204,8 +289,23 @@ help:
 	@echo "  make schema-check   - 检查 JSON schema 和示例报告"
 	@echo "  make cli-smoke      - 运行 CLI 基础冒烟测试"
 	@echo "  make json-smoke     - 生成快速 JSON 报告并校验格式"
+	@echo "  make project-invariants-smoke - 校验项目级不变量"
+	@echo "  make remote-runbook-smoke - 校验远程测试手册"
+	@echo "  make release-runbook-smoke - 校验 GitHub Release 发布手册"
+	@echo "  make release-workflow-smoke - 校验 GitHub Release workflow"
+	@echo "  make report-contract-smoke - 校验报告语义和 Web 渲染契约"
+	@echo "  make calibration-summary-smoke - 校验脱敏校准样本汇总工具"
+	@echo "  make redact-report-smoke - 校验 JSON 报告脱敏工具"
+	@echo "  make auto-running-summary-smoke - 校验自动测评运行中摘要"
+	@echo "  make bootstrap-prebuilt-smoke - 校验 bootstrap 预构建二进制路径"
+	@echo "  make artifact-verify-smoke - 校验自动测评报告产物清单"
+	@echo "  make vps-acceptance-strict-preflight-smoke - 校验严格 VPS 验收资源预检"
 	@echo "  make release-smoke  - 使用发布二进制执行端到端冒烟测试"
+	@echo "  make release-checksums-smoke - 校验发布产物 SHA256 清单"
+	@echo "  make verify-release-assets-smoke - 校验 Release 资产校验脚本"
 	@echo "  make vps-acceptance - 在真实 VPS 或测试机上执行验收"
-	@echo "  make validate       - 日常验证：格式、schema、测试、构建、CLI 冒烟"
+	@echo "  make vps-acceptance-low-standard - 在真实 VPS 上执行 low/standard 验收矩阵"
+	@echo "  make validate       - 日常验证：格式、schema、项目不变量、测试、构建、CLI、报告契约、校准样本、产物清单和严格验收预检"
+	@echo "  make pre-commit     - 提交前验证：状态、diff、脚本语法、Python 编译和 validate"
 	@echo "  make release-check  - 发布前验证：validate、二进制冒烟、跨平台构建"
 	@echo "  make help           - 显示此帮助信息"

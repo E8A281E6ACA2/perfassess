@@ -1,10 +1,12 @@
 # iperf3 节点组示例
 # 每行一个服务端，支持 host、host:port 和 [IPv6]:port。
+# 每行必须追加 auth=owned 或 auth=authorized，声明该节点为自有或已授权使用。
+# 服务端后可追加 name=、region=、provider= 元数据，用于报告展示和排查。
 # 空行和 # 注释会被忽略；行尾注释也会被忽略。
 #
 # 请替换为你自己可访问、已授权使用的 iperf3 服务端。
 # 程序不会内置公共 iperf3 节点，避免依赖不稳定或未授权的公共服务。
 
-1.2.3.4:5201
-[2001:db8::1]:5201
-iperf3.example.com:5201
+1.2.3.4:5201 auth=owned name=Tokyo region=JP provider=SelfHosted
+[2001:db8::1]:5201 auth=authorized name=Frankfurt-v6 region=DE provider=Lab
+iperf3.example.com:5201 auth=authorized name=LosAngeles region=US provider=Example
