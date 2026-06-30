@@ -10,7 +10,9 @@
 - 发布前检查清单: [docs/release-checklist.md](docs/release-checklist.md)
 - GitHub Release 发布手册: [docs/release-runbook.md](docs/release-runbook.md)
 - 发布验证记录: [docs/release-validation-log.md](docs/release-validation-log.md)
+- 候选基线拆分提交计划: [docs/candidate-baseline-split-plan.md](docs/candidate-baseline-split-plan.md)
 - 真实 VPS 验收流程: [docs/vps-acceptance.md](docs/vps-acceptance.md)
+- 真实 VPS 校准样本矩阵: [docs/calibration-sampling-matrix.md](docs/calibration-sampling-matrix.md)
 
 ## 当前状态
 
@@ -77,11 +79,11 @@ curl -fsSL https://raw.githubusercontent.com/E8A281E6ACA2/perfassess/main/script
 
 流媒体检测档位默认跟随自动测评档位：`basic` 不启用，`standard` 使用主流平台集合，`full` 增加区域型平台。需要单独指定时可设置 `PERFASSESS_STREAMING_PROFILE=quick|standard|full`。
 
-如需让 `mainstream` 使用真实 iperf3 上传/下载，需要提供可访问的 iperf3 服务端：
+如需让 `mainstream` 使用真实 iperf3 上传/下载，需要提供自有或授权的 iperf3 服务端。下面的 `192.0.2.10:5201` 是文档保留地址，只表示格式，运行前必须替换：
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/E8A281E6ACA2/perfassess/main/scripts/bootstrap.sh \
-  | PERFASSESS_IPERF3_SERVER=1.2.3.4:5201 bash -s -- --quality mainstream
+  | PERFASSESS_IPERF3_SERVER=192.0.2.10:5201 bash -s -- --quality mainstream
 ```
 
 512MB 等低内存机器会自动进入低内存模式：bootstrap 会优先尝试下载 GitHub Release 中的预构建二进制，并在 Release 提供 `checksums.txt` 时校验 SHA256；校验会优先使用 `sha256sum`，没有时使用 macOS 常见的 `shasum -a 256`。成功后跳过本地 Go 编译和单元测试，直接运行测评。如果当前仓库还没有可用 Release 二进制，或二进制校验失败，脚本会回退到源码构建，并把 Go 构建并发降到 1、尽量创建临时 swap、默认跳过 `go test ./...`。临时 swap 会在脚本退出时清理。
@@ -520,14 +522,14 @@ make run
 # VPS 测评预设：sysbench + fio + speedtest + VPS 评分基准 + 常用网络检查 + IP 质量
 ./build/perfassess --vps-profile
 
-# VPS 测评预设 + 自建 iperf3 服务端
-./build/perfassess --vps-profile --iperf3-server 1.2.3.4:5201
+# VPS 测评预设 + 自建或授权 iperf3 服务端；192.0.2.10 是文档保留地址，运行前请替换
+./build/perfassess --vps-profile --iperf3-server 192.0.2.10:5201
 
-# 完整预设 + 主流网络吞吐后端（需要 iperf3 服务端）
-./build/perfassess --full --iperf3-server 1.2.3.4:5201
+# 完整预设 + 主流网络吞吐后端（需要自建或授权 iperf3 服务端）
+./build/perfassess --full --iperf3-server 192.0.2.10:5201
 
-# 完整预设 + iperf3 多节点矩阵
-./build/perfassess --full --iperf3-servers 1.2.3.4:5201,[2001:db8::1]:5201
+# 完整预设 + iperf3 多节点矩阵；推荐改用 --iperf3-server-file 记录授权声明和节点标签
+./build/perfassess --full --iperf3-servers 192.0.2.10:5201,[2001:db8::1]:5201
 
 # 标准网络档位：公共目标 + 国内三网方向参考
 ./build/perfassess --route-trace --network-profile standard
@@ -571,13 +573,13 @@ make run
 
 # 默认网络测试会输出网络质量矩阵，无需安装额外工具
 
-# 使用 iperf3 后端测试网络吞吐（需要预装 iperf3，并准备服务端）
-./build/perfassess -b network --network-backend iperf3 --iperf3-server 1.2.3.4:5201
+# 使用 iperf3 后端测试网络吞吐（需要预装 iperf3，并准备自建或授权服务端）
+./build/perfassess -b network --network-backend iperf3 --iperf3-server 192.0.2.10:5201
 
 # 使用 iperf3 多节点矩阵测试网络吞吐（逗号分隔，支持 host:port 和 [IPv6]:port）
-./build/perfassess -b network --network-backend iperf3 --iperf3-servers 1.2.3.4:5201,[2001:db8::1]:5201
+./build/perfassess -b network --network-backend iperf3 --iperf3-servers 192.0.2.10:5201,[2001:db8::1]:5201
 
-# 使用 iperf3 节点文件测试网络吞吐（支持空行、# 注释和 name/region/provider 标签）
+# 使用 iperf3 节点文件测试网络吞吐（推荐；每行必须声明 auth=owned 或 auth=authorized）
 ./build/perfassess -b network --network-backend iperf3 --iperf3-server-file docs/examples/iperf3-servers.txt
 
 # 使用 Ookla Speedtest CLI 后端测试网络（需要预装 speedtest）
@@ -1030,9 +1032,25 @@ python3 scripts/calibration-summary.py /path/to/samples --format json -o calibra
 python3 scripts/calibration-summary.py /path/to/samples --format jsonl -o samples.jsonl
 ```
 
+推荐先用收集助手归档样本，它只接受已脱敏的 `calibration_sample.json`，不会复制原始报告、日志、公网 IP 或压缩包：
+
+```bash
+scripts/calibration-collect.sh /tmp/perfassess-auto/calibration_sample.json /path/to/samples
+
+# 也可以直接传自动测评输出目录
+PERFASSESS_CALIBRATION_LABEL=vps-low-001 \
+scripts/calibration-collect.sh /tmp/perfassess-auto /path/to/samples
+```
+
+收集助手会在每个样本子目录生成 `manifest.json`，记录样本标签、归档时间、`calibration_sample.json` 的 SHA256，以及评分档位、校准版本、置信度和主流后端数量等非隐私摘要；样本集目录会生成 `summary.md`、`summary.json` 和 `samples.jsonl`，并复用 `calibration-summary.py` 的隐私校验和数据集准入规则。
+正式样本池收集时可以追加 `PERFASSESS_CALIBRATION_REQUIRE_MANIFEST=1`，让收集完成后立即强制校验整个样本集的 manifest 和 SHA256。
+
 该工具会自动查找目录下的 `calibration_sample.json`，输出总分和 CPU、内存、磁盘、网络关键指标分布，并基于 P75 给出内存、磁盘、网络基准线的保守调整建议。样本少于 5 个时只显示候选值并提示继续收集，不建议直接改阈值。
 
 校准数据集准入规则见 `docs/calibration-dataset-policy.md`。汇总工具会输出 `Dataset Policy`，标记当前样本集是 `exploratory`、`candidate` 还是 `formal`，并列出阻断项和警告项。
+`Dataset Policy` 还会输出 `Collection Plan`，说明下一批应优先补多少样本、是否需要提升主流后端覆盖、是否需要更多 high 置信样本，以及虚拟化或 CPU 型号是否过于集中。
+如果样本目录混合了 `vps`、`server`、`workstation`，还要查看 `Score Profile Policies`，按评分档位分别确认是否达到 candidate 或 formal。
+发布流程如果要求某些评分档位必须都有样本，可以使用 `--require-score-profiles vps,server,workstation` 强制检查缺失 profile。
 
 如果要把校准汇总接入发布流程，可以使用 `--require-policy candidate|formal` 强制检查数据集等级；样本不足、置信度不够或主流后端覆盖不足时命令会返回非零退出码：
 
@@ -1053,10 +1071,13 @@ python3 scripts/calibration-summary.py /path/to/samples \
   --score-profile server \
   --min-confidence high \
   --require-mainstream \
+  --require-manifest \
   --require-policy formal \
   --format markdown \
   -o calibration-summary-mainstream.md
 ```
+
+`--require-manifest` 会强制检查每个样本目录的 `manifest.json` 和 `calibration_sample.json` SHA256 是否一致，适合正式校准或发布前审计。
 
 ### 性能等级
 

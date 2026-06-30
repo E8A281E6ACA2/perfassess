@@ -565,7 +565,8 @@
 当前证据化报告已经进入验证链路，下一步优先实施顺序调整为：
 
 - 在真实 VPS 上执行 `PERFASSESS_ACCEPTANCE_MATRIX=low,standard scripts/vps-acceptance.sh`，确认低配降级、标准完整报告和失败摘要都稳定。
-- 收集多台服务器的 `calibration_sample.json`，使用 `python3 scripts/calibration-summary.py /path/to/samples --require-policy candidate` 做候选校准观察。
+- 收集多台服务器的 `calibration_sample.json`，使用 `python3 scripts/calibration-summary.py /path/to/samples --require-score-profiles vps,server,workstation --require-policy candidate` 做候选校准观察。
+- 按 [真实 VPS 校准样本矩阵](calibration-sampling-matrix.md) 分批采集 low-memory、small-vps、standard-vps、high-vps、arm64 和 IPv6 网络样本，避免样本只代表单一机器类型。
 - 继续把控制台、Markdown 和 Web 报告中的“结论 + 证据 + 限制 + 建议”保持为同一语义，避免某个报告入口信息缩水。
 - full/mainstream 档位发布前必须额外验证 sysbench、fio、speedtest 或授权 iperf3 节点，不把缺少外部后端的结果包装成高置信结论。
 - VPS 验收脚本应区分核心报告失败、可选后端成功和可选后端可解释跳过；非严格模式保留降级报告，严格模式阻断发布。
@@ -576,16 +577,13 @@
 
 ### 当前最优先：发布基线收口
 
-当前工作区包含报告、自动化、产物校验、校准、验收和历史功能移除等大批改动。下一步应先完成验证并拆分提交，形成一个可发布基线。
+当前工作区包含报告证据摘要、JSON schema、自动化验收、校准汇总和发布门禁等大批改动。下一步应先完成验证并按主题提交，形成一个可发布基线。
 
-建议拆分：
+当前基线建议作为一组可信度增强提交收口：
 
-- `refactor(history): 移除本地历史追踪能力`
-- `feat(report): 增加证据化报告和模块可信度`
-- `scripts(auto): 增强自动测评进度和产物校验`
-- `scripts(acceptance): 增强真实 VPS 验收矩阵`
-- `docs(roadmap): 更新主流 VPS 对标和校准规范`
-- `ci(release): 发布流程增加验证门禁`
+- `feat(report): 增强外部检测证据可信度`
+- 覆盖范围包括 IP 质量、流媒体、AI、路由、主流外部后端错误分类、VPS 验收摘要、校准 profile 门禁和发布手册同步。
+- 历史追踪和真实回程探针已经通过项目不变量保护，不应在本批次恢复。
 
 提交前最低验证：
 
@@ -619,13 +617,15 @@ PERFASSESS_ACCEPTANCE_MATRIX=low,standard scripts/vps-acceptance.sh
 
 ```bash
 python3 scripts/calibration-summary.py /path/to/samples \
+  --require-score-profiles vps,server,workstation \
   --require-policy candidate \
   --min-confidence medium \
   --format markdown \
   -o calibration-summary-candidate.md
 ```
 
-评分基准变更前必须达到 formal 数据集要求，并保留汇总输出。
+评分基准变更前必须达到 formal 数据集要求，并保留 `Dataset Policy`、`Collection Plan` 和 `Score Profile Policies` 汇总输出。多 profile 发布不能只看整体样本数，必须分别确认 `vps`、`server` 和 `workstation` 的 profile policy。
+正式校准和发布前审计还必须追加 `--require-manifest`，确保每个 `calibration_sample.json` 都能通过样本目录 `manifest.json` 的 SHA256 校验。
 
 ### 第三优先：报告产品化
 
@@ -651,9 +651,9 @@ python3 scripts/calibration-summary.py /path/to/samples \
 重点增强：
 
 - `iperf3`: 授权节点文件、`auth=owned|authorized` 节点授权声明、节点标签、失败节点保留、上下行分开统计。
-- `speedtest`: 节点信息、出口 IP、jitter、结果 URL、许可或网络失败分类。
-- `fio`: direct I/O、磁盘空间、权限、文件系统能力和低配机器跳过策略。
-- `sysbench`: CPU/内存时间预算、低内存跳过、结果波动解释。
+- `speedtest`: 节点信息、出口 IP、jitter、结果 URL、许可或网络失败分类；下一步用真实失败样本回归分类边界。
+- `fio`: direct I/O、磁盘空间、权限、文件系统能力和低配机器跳过策略；下一步补充真实文件系统/低配样本。
+- `sysbench`: CPU/内存时间预算、低内存跳过、结果波动解释；下一步补充低内存和旧版本 sysbench 样本。
 - `Geekbench`: 只保留显式可选路径，不默认下载运行。
 
 ### 第五优先：平台化边界

@@ -172,14 +172,39 @@ python3 scripts/redact-report.py /tmp/perfassess-auto
 calibration_sample.redacted.json
 ```
 
-多台机器样本放到同一个目录后，可以在开发机上汇总：
+从远程服务器取回样本时，只复制这一个脱敏样本文件。下面的 `SERVER_PUBLIC_IP` 和 `vps-standard-001` 按实际机器替换：
+
+```bash
+mkdir -p incoming
+scp root@SERVER_PUBLIC_IP:/tmp/perfassess-auto/calibration_sample.json ./incoming/vps-standard-001.calibration_sample.json
+```
+
+回到维护样本池的开发机后，用收集助手归档。收集助手会拒绝未脱敏样本，并生成 `manifest.json`、样本 SHA256 和样本集汇总：
+
+```bash
+PERFASSESS_CALIBRATION_LABEL=vps-standard-001 \
+PERFASSESS_CALIBRATION_REQUIRE_MANIFEST=1 \
+scripts/calibration-collect.sh ./incoming/vps-standard-001.calibration_sample.json calibration-samples
+```
+
+也可以直接把自动测评输出目录作为输入：
+
+```bash
+PERFASSESS_CALIBRATION_LABEL=vps-standard-001 \
+PERFASSESS_CALIBRATION_REQUIRE_MANIFEST=1 \
+scripts/calibration-collect.sh /tmp/perfassess-auto calibration-samples
+```
+
+不要把原始 `default.json`、日志、压缩包或完整报告目录作为校准输入；这些文件只适合内部排查。`calibration-samples/` 已被 `.gitignore` 忽略，不应提交到仓库。
+
+多台机器样本归档后，可以在开发机上汇总：
 
 ```bash
 python3 scripts/calibration-summary.py /path/to/samples --format markdown -o calibration-summary.md
 python3 scripts/calibration-summary.py /path/to/samples --require-policy candidate
 ```
 
-样本分级和正式校准准入规则见 `docs/calibration-dataset-policy.md`。`builtin`、低置信、低内存降级或未完成模块的样本可以用于研发观察，但不能直接用于发布新评分阈值。
+采样分组见 `docs/calibration-sampling-matrix.md`，样本分级和正式校准准入规则见 `docs/calibration-dataset-policy.md`。`builtin`、低置信、低内存降级或未完成模块的样本可以用于研发观察，但不能直接用于发布新评分阈值。
 
 ## 真实 VPS 验收
 
@@ -205,12 +230,13 @@ scripts/vps-acceptance.sh
 ## iperf3 授权节点
 
 Perfassess 不内置公共 iperf3 节点。只使用自有或授权节点。
+下面的 `192.0.2.10:5201` 是文档保留地址，只表示格式，运行前必须替换。
 
 单节点：
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/E8A281E6ACA2/perfassess/main/scripts/bootstrap.sh \
-  | PERFASSESS_IPERF3_SERVER=1.2.3.4:5201 bash -s -- --profile full --quality mainstream
+  | PERFASSESS_IPERF3_SERVER=192.0.2.10:5201 bash -s -- --profile full --quality mainstream
 ```
 
 节点文件必须声明授权，例如 `auth=owned` 或 `auth=authorized`。示例见 `docs/examples/iperf3-servers.txt`。
